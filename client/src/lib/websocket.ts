@@ -16,12 +16,10 @@ class GameWebSocket {
     let wsUrl: string;
 
     if (API_BASE) {
-      // Deployed - use proxy path
       const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "");
       wsUrl = `${protocol}//${window.location.host}${base}/${API_BASE}/ws`;
     } else {
-      // Local dev
-      wsUrl = `${protocol}//${window.location.hostname}:5000/ws`;
+      wsUrl = `${protocol}//${window.location.host}/ws`;
     }
 
     this.ws = new WebSocket(wsUrl);
@@ -34,11 +32,10 @@ class GameWebSocket {
       try {
         const data = JSON.parse(event.data);
         this.handlers.forEach((handler) => handler(data));
-      } catch { /* ignore */ }
+      } catch {}
     };
 
     this.ws.onclose = () => {
-      // Reconnect after 3 seconds
       this.reconnectTimer = setTimeout(() => {
         if (this.campaignId) this.connect(this.campaignId);
       }, 3000);
