@@ -1,15 +1,16 @@
 import "dotenv/config";
-import express, { type Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import { createServer } from "http";
+
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { createServer } from "http";
 import { runMigrations } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
 
-// ── Raw body for Stripe webhooks ───────────────────────────────────────────
+// Raw body for Stripe webhooks
 app.use(
   express.json({
     verify: (req: any, _res, buf) => {
@@ -20,9 +21,10 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// ── Security headers for production ───────────────────────────────────────
+// Security headers for production
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
+
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -32,7 +34,7 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// ── Request logging ────────────────────────────────────────────────────────
+// Request logging
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -40,6 +42,7 @@ export function log(message: string, source = "express") {
     second: "2-digit",
     hour12: true,
   });
+
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
@@ -48,19 +51,22 @@ app.use((req, res, next) => {
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  const originalResJson = res.json.bind(res);
+  res.json = function (bodyJson: any) {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+    return originalResJson(bodyJson);
+  } as typeof res.json;
 
   res.on("finish", () => {
     const duration = Date.now() - start;
+
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+
       if (capturedJsonResponse && res.statusCode >= 400) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse).slice(0, 200)}`;
       }
+
       log(logLine);
     }
   });
@@ -68,8 +74,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Run DB migrations before starting
+async function startServer() {
   try {
     runMigrations();
     log("Database migrations complete", "db");
@@ -82,11 +87,14 @@ app.use((req, res, next) => {
 
   // Error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const status = err?.status || err?.statusCode || 500;
+    const message = err?.message || "Internal Server Error";
+
     console.error("Internal Server Error:", err);
+
     if (res.headersSent) return;
-    return res.status(status).json({ message });
+
+    res.status(status).json({ message });
   });
 
   // Serve frontend
@@ -97,8 +105,14 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  const port = Number(process.env.PORT) || 8080;
+
+  httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
-})();
+}
+
+startServer().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});
