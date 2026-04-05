@@ -62,10 +62,8 @@ function broadcastToUser(userId: number, campaignId: number, data: any) {
 }
 
 function getVisitorId(req: Request): string {
-  // If the user is logged in, use their userId as the stable identity.
-  // This ensures character lookups work regardless of browser session/header.
   if (req.user?.id) return `user-${req.user.id}`;
-  return req.headers["x-visitor-id"] as string || `anon-${randomBytes(8).toString("hex")}`;
+  return (req.headers["x-visitor-id"] as string) || `anon-${randomBytes(8).toString("hex")}`;
 }
 
 // ── AI extractors ───────────────────────────────────────────────────────────
