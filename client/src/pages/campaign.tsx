@@ -3,7 +3,6 @@ import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
-import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
@@ -224,7 +223,8 @@ export default function CampaignPage() {
 
   const characterCurrenciesQuery = useQuery({
     queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
-    queryFn: () => api<CurrencyBalance[]>(`/api/characters/${myCharacterQuery.data!.id}/currencies`),
+    queryFn: () =>
+      api<CurrencyBalance[]>(`/api/characters/${myCharacterQuery.data!.id}/currencies`),
     enabled: !!myCharacterQuery.data?.id,
   });
 
@@ -245,6 +245,7 @@ export default function CampaignPage() {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] }),
       ]);
     },
     onError: () => setDmThinking(false),
@@ -266,6 +267,7 @@ export default function CampaignPage() {
         qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] }),
       ]);
     },
     onError: () => setDmThinking(false),
@@ -317,7 +319,9 @@ export default function CampaignPage() {
           break;
 
         case "currencies_updated":
-          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"] });
+          qc.invalidateQueries({
+            queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+          });
           break;
 
         case "effects_updated":
@@ -340,7 +344,9 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] });
           qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
-          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"] });
+          qc.invalidateQueries({
+            queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+          });
           break;
       }
     });
@@ -412,7 +418,8 @@ export default function CampaignPage() {
             Could not load your character
           </div>
           <p className="text-sm text-muted-foreground">
-            The campaign loaded, but your character did not. Try refreshing. If it still fails, the state is out of sync somewhere, which is deeply on-brand for software.
+            The campaign loaded, but your character did not. Refresh first. If it still fails,
+            something is still out of sync somewhere, which is very software of it.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => navigate("/dashboard")}>
@@ -435,7 +442,6 @@ export default function CampaignPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
-      {/* Sidebar */}
       <aside className="hidden xl:flex xl:w-[420px] shrink-0 border-r border-border bg-card/40">
         <div className="w-full h-screen overflow-hidden">
           <SidebarCharacterSheet
@@ -448,7 +454,6 @@ export default function CampaignPage() {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 min-w-0 flex flex-col h-screen">
         <div className="border-b border-border bg-background/90 backdrop-blur px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -489,7 +494,6 @@ export default function CampaignPage() {
         </div>
 
         <div className="flex-1 min-h-0 flex">
-          {/* Messages */}
           <section className={cn("flex-1 min-w-0 flex flex-col", shopVisible && "border-r border-border")}>
             <ScrollArea className="flex-1 px-5 py-5">
               <div ref={scrollRef} className="space-y-4 pr-2">
@@ -500,7 +504,8 @@ export default function CampaignPage() {
                       <div className="space-y-2">
                         <div className="font-medium">Your campaign is ready.</div>
                         <p className="text-sm text-muted-foreground">
-                          Click <strong>Begin Adventure</strong> to start. No one should have to fight the interface before they can fight goblins, but here we are.
+                          Click <strong>Begin Adventure</strong> to start. Ideally software would
+                          not make this dramatic, but here we are.
                         </p>
                       </div>
                     </div>
@@ -590,7 +595,9 @@ export default function CampaignPage() {
                   </div>
 
                   <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-3">
-                    <span>Playing as <strong>{myCharacter.name}</strong></span>
+                    <span>
+                      Playing as <strong>{myCharacter.name}</strong>
+                    </span>
                     {primaryCurrency && (
                       <span className="inline-flex items-center gap-1">
                         <Coins className="w-3 h-3" />
@@ -608,7 +615,6 @@ export default function CampaignPage() {
             </div>
           </section>
 
-          {/* Shop */}
           {shopVisible && shopQuery.data?.shop && (
             <aside className="w-[420px] shrink-0 bg-card/40">
               <ShopPanel
