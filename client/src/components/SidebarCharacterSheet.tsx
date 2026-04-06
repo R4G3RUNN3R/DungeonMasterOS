@@ -142,6 +142,7 @@ function AbilityBox({ label, value }: { label: string; value: string }) {
         <span style={{ fontSize: 10, fontWeight: 700, color: C.crimson, fontFamily: "serif" }}>{modifier}</span>
       </div>
     </div>
+    </div>
   );
 }
 
@@ -498,7 +499,8 @@ function AddItemForm({ characterId, campaignId, onDone }: { characterId: number;
   const isPossession = ["mount","vessel","property","vehicle","creature","retainer"].includes(type);
 
   return (
-    <div style={{
+    <div style={{ width: "100%", zoom: 1.18 }}>
+      <div style={{
       background: C.paper, border: `1px solid ${C.border}`, borderRadius: 5,
       padding: 8, marginTop: 6,
     }}>
@@ -960,6 +962,7 @@ export default function SidebarCharacterSheet({ character, isMyChar, onHpChange 
           ✦ Dungeons & Dragons ✦
         </div>
       </div>
+    </div>
     </div>
   );
 }
