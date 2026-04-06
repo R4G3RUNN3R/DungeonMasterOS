@@ -1,459 +1,676 @@
-/**
- * CharacterSheetView — renders parsed character data as a visual D&D-style sheet.
- * All fields are editable inline. Supports non-D&D characters gracefully
- * (custom resources, narrative-only, isekai etc.).
- */
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Backpack,
+  Sword,
+  Shield,
+  Sparkles,
+  Coins,
+  Wrench,
+  Castle,
+  Car,
+  Ship,
+  PawPrint,
+  UserRound,
+  KeyRound,
+  Package,
+  Plus,
+  Trash2,
+  ChevronDown,
+} from "lucide-react";
 
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, Shield, Star, Scroll, Package, Users, Zap, BookOpen, Plus, Trash2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+type Entry = {
+  id: string;
+  key?: string;
+  name?: string;
+  value?: string;
+  description?: string;
+  quantity?: number;
+  equipped?: boolean;
+  identified?: boolean;
+  charges?: number | null;
+  maxCharges?: number | null;
+  locationNote?: string;
+  statMods?: any[];
+};
 
-export interface SheetSection {
+type SectionType =
+  | "notes"
+  | "abilities"
+  | "weapon"
+  | "armor"
+  | "consumable"
+  | "gear"
+  | "tool"
+  | "magic"
+  | "currency"
+  | "property"
+  | "vehicle"
+  | "vessel"
+  | "mount"
+  | "creature"
+  | "retainer"
+  | "key"
+  | "misc";
+
+type Section = {
+  id: string;
   label: string;
-  entries: Array<{ key: string; value: string }>;
+  type: SectionType;
+  entries: Entry[];
+};
+
+type CharacterSheetData = {
+  sections: Section[];
+  raw?: string;
+};
+
+type Props = {
+  value?: string;
+  onChange?: (nextValue: string) => void;
+  readOnly?: boolean;
+  className?: string;
+};
+
+const SECTION_OPTIONS: Array<{
+  value: SectionType;
+  label: string;
+  icon: React.ComponentType<any>;
+}> = [
+  { value: "notes", label: "Notes", icon: Package },
+  { value: "abilities", label: "Abilities", icon: Sparkles },
+  { value: "weapon", label: "Weapons", icon: Sword },
+  { value: "armor", label: "Armor", icon: Shield },
+  { value: "consumable", label: "Consumables", icon: Sparkles },
+  { value: "gear", label: "Gear", icon: Backpack },
+  { value: "tool", label: "Tools", icon: Wrench },
+  { value: "magic", label: "Magic Items", icon: Sparkles },
+  { value: "currency", label: "Currency", icon: Coins },
+  { value: "property", label: "Property", icon: Castle },
+  { value: "vehicle", label: "Vehicles", icon: Car },
+  { value: "vessel", label: "Vessels", icon: Ship },
+  { value: "mount", label: "Mounts", icon: PawPrint },
+  { value: "creature", label: "Creatures", icon: PawPrint },
+  { value: "retainer", label: "Retainers", icon: UserRound },
+  { value: "key", label: "Keys", icon: KeyRound },
+  { value: "misc", label: "Miscellaneous", icon: Package },
+];
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
-export interface CharacterSheetData {
-  name: string;
-  race: string;
-  charClass: string;
-  level: number | null;
-  hp: number | null;
-  maxHp: number | null;
-  traits: string;
-  backstory: string;
-  characterData: string; // JSON: { sections: SheetSection[], raw: string }
+function defaultLabelForType(type: SectionType) {
+  return SECTION_OPTIONS.find((s) => s.value === type)?.label || "Section";
 }
 
-interface Props {
-  data: CharacterSheetData;
-  onChange: (updated: CharacterSheetData) => void;
-}
+function safeParse(value?: string): CharacterSheetData {
+  if (!value?.trim()) return { sections: [] };
 
-// ── Stat Box — the classic hexagonal-ish D&D ability score display ─────────────
-
-function StatBox({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  // Parse modifier from value if it's a number
-  const num = parseInt(value);
-  const mod = !isNaN(num) ? Math.floor((num - 10) / 2) : null;
-  const modStr = mod !== null ? (mod >= 0 ? `+${mod}` : `${mod}`) : null;
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
-      <div className="relative w-14 h-16 flex flex-col items-center justify-center border-2 border-border rounded-lg bg-card hover:border-primary/50 transition-colors">
-        <input
-          className="w-10 text-center text-lg font-bold bg-transparent border-none outline-none text-foreground"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          maxLength={4}
-        />
-        {modStr !== null && (
-          <span className="text-[11px] font-semibold text-primary">{modStr}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── HP Box ─────────────────────────────────────────────────────────────────────
-
-function HPTracker({ hp, maxHp, onHpChange, onMaxHpChange }: {
-  hp: number | null; maxHp: number | null;
-  onHpChange: (v: number | null) => void;
-  onMaxHpChange: (v: number | null) => void;
-}) {
-  const pct = (hp != null && maxHp != null && maxHp > 0) ? Math.min(100, (hp / maxHp) * 100) : 0;
-  const barColor = pct > 50 ? "bg-green-500" : pct > 25 ? "bg-yellow-500" : "bg-red-500";
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Heart className="w-4 h-4 text-red-400 shrink-0" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hit Points</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 text-sm font-bold">
-          <input
-            className="w-12 text-center bg-transparent border border-border rounded px-1 py-0.5 text-foreground outline-none focus:border-primary"
-            value={hp ?? "∞"}
-            onChange={(e) => {
-              const v = e.target.value;
-              onHpChange(v === "" || v === "∞" ? null : Number(v));
-            }}
-          />
-          <span className="text-muted-foreground">/</span>
-          <input
-            className="w-12 text-center bg-transparent border border-border rounded px-1 py-0.5 text-foreground outline-none focus:border-primary"
-            value={maxHp ?? "∞"}
-            onChange={(e) => {
-              const v = e.target.value;
-              onMaxHpChange(v === "" || v === "∞" ? null : Number(v));
-            }}
-          />
-        </div>
-        <span className="text-xs text-muted-foreground">HP</span>
-      </div>
-      {(hp !== null || maxHp !== null) && (
-        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-          <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${pct}%` }} />
-        </div>
-      )}
-      {hp === null && maxHp === null && (
-        <p className="text-xs text-muted-foreground italic">Non-HP health system — see character sections below</p>
-      )}
-    </div>
-  );
-}
-
-// ── Editable section (abilities, skills, equipment, etc.) ─────────────────────
-
-function SheetSectionBlock({
-  section,
-  onChange,
-  onDelete,
-}: {
-  section: SheetSection;
-  onChange: (s: SheetSection) => void;
-  onDelete: () => void;
-}) {
-  const addEntry = () => onChange({ ...section, entries: [...section.entries, { key: "", value: "" }] });
-  const removeEntry = (i: number) => onChange({ ...section, entries: section.entries.filter((_, idx) => idx !== i) });
-  const updateEntry = (i: number, key: string, value: string) => {
-    const entries = [...section.entries];
-    entries[i] = { key, value };
-    onChange({ ...section, entries });
-  };
-
-  // Pick icon by section label
-  const icon = (() => {
-    const l = section.label.toLowerCase();
-    if (l.includes("abil") || l.includes("stat") || l.includes("attr")) return <Star className="w-3.5 h-3.5" />;
-    if (l.includes("skill")) return <Zap className="w-3.5 h-3.5" />;
-    if (l.includes("equip") || l.includes("inventor") || l.includes("gear") || l.includes("resource")) return <Package className="w-3.5 h-3.5" />;
-    if (l.includes("spell") || l.includes("magic") || l.includes("power") || l.includes("abilit")) return <Zap className="w-3.5 h-3.5" />;
-    if (l.includes("faction") || l.includes("relation") || l.includes("npc")) return <Users className="w-3.5 h-3.5" />;
-    if (l.includes("note") || l.includes("backstory") || l.includes("lore")) return <BookOpen className="w-3.5 h-3.5" />;
-    return <Scroll className="w-3.5 h-3.5" />;
-  })();
-
-  return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      {/* Section header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
-        <div className="flex items-center gap-2 text-primary">
-          {icon}
-          <input
-            className="text-xs font-bold uppercase tracking-wider bg-transparent border-none outline-none text-primary w-full"
-            value={section.label}
-            onChange={(e) => onChange({ ...section, label: e.target.value })}
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={addEntry}
-            className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-            title="Add entry"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-            title="Remove section"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Entries */}
-      <div className="divide-y divide-border/50">
-        {section.entries.map((entry, ei) => (
-          <div key={ei} className="grid grid-cols-[1fr_1.5fr_auto] gap-2 items-center px-3 py-1.5">
-            <input
-              className="text-xs font-medium text-muted-foreground bg-transparent border-none outline-none truncate"
-              value={entry.key}
-              onChange={(e) => updateEntry(ei, e.target.value, entry.value)}
-              placeholder="Property"
-            />
-            <input
-              className="text-xs text-foreground bg-transparent border-none outline-none"
-              value={entry.value}
-              onChange={(e) => updateEntry(ei, entry.key, e.target.value)}
-              placeholder="Value"
-            />
-            <button
-              onClick={() => removeEntry(ei)}
-              className="p-0.5 text-muted-foreground/40 hover:text-destructive transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          </div>
-        ))}
-        {section.entries.length === 0 && (
-          <div className="px-3 py-2 text-xs text-muted-foreground italic">Empty — add entries above</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── D&D-style ability score extractor ─────────────────────────────────────────
-// Looks for a section that looks like ability scores and returns it separately
-
-function extractAbilityScores(sections: SheetSection[]): {
-  abilities: Record<string, string>;
-  sectionIndex: number;
-} | null {
-  const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha",
-    "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
-
-  for (let i = 0; i < sections.length; i++) {
-    const s = sections[i];
-    const entryKeys = s.entries.map(e => e.key.toLowerCase().replace(/[^a-z]/g, ""));
-    const matchCount = entryKeys.filter(k => ABILITY_KEYS.some(a => k.startsWith(a))).length;
-    if (matchCount >= 3) {
-      const abilities: Record<string, string> = {};
-      s.entries.forEach(e => {
-        const k = e.key.toLowerCase().replace(/[^a-z]/g, "");
-        const short = ABILITY_KEYS.find(a => k.startsWith(a));
-        if (short) {
-          // Normalise to 3-letter
-          const key = short.slice(0, 3).toUpperCase();
-          // Extract just the number from value (e.g. "16 (+3)" -> "16")
-          const num = e.value.match(/\d+/)?.[0] ?? e.value;
-          abilities[key] = num;
-        }
-      });
-      return { abilities, sectionIndex: i };
-    }
-  }
-  return null;
-}
-
-// ── Main component ─────────────────────────────────────────────────────────────
-
-export default function CharacterSheetView({ data, onChange }: Props) {
-  const [activeTab, setActiveTab] = useState<"sheet" | "notes">("sheet");
-
-  // Parse the characterData blob
-  let sections: SheetSection[] = [];
-  let rawText = "";
   try {
-    const cd = JSON.parse(data.characterData || "{}");
-    sections = cd.sections || [];
-    rawText = cd.raw || "";
-  } catch {}
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return { sections: [] };
 
-  const updateSections = (newSections: SheetSection[]) => {
-    try {
-      const cd = JSON.parse(data.characterData || "{}");
-      cd.sections = newSections;
-      onChange({ ...data, characterData: JSON.stringify(cd) });
-    } catch {
-      onChange({ ...data, characterData: JSON.stringify({ sections: newSections, raw: rawText }) });
-    }
+    const sections = Array.isArray(parsed.sections)
+      ? parsed.sections.map((section: any) => ({
+          id: section.id || uid(),
+          label: section.label || defaultLabelForType(section.type || "notes"),
+          type: (section.type || "notes") as SectionType,
+          entries: Array.isArray(section.entries)
+            ? section.entries.map((entry: any) => ({
+                id: entry.id || uid(),
+                key: entry.key || "",
+                name: entry.name || "",
+                value: entry.value || "",
+                description: entry.description || "",
+                quantity:
+                  typeof entry.quantity === "number" ? entry.quantity : 1,
+                equipped: !!entry.equipped,
+                identified:
+                  entry.identified === undefined ? true : !!entry.identified,
+                charges:
+                  typeof entry.charges === "number" ? entry.charges : null,
+                maxCharges:
+                  typeof entry.maxCharges === "number" ? entry.maxCharges : null,
+                locationNote: entry.locationNote || "",
+                statMods: Array.isArray(entry.statMods) ? entry.statMods : [],
+              }))
+            : [],
+        }))
+      : [];
+
+    return {
+      sections,
+      raw: typeof parsed.raw === "string" ? parsed.raw : "",
+    };
+  } catch {
+    return { sections: [], raw: value };
+  }
+}
+
+function serialize(data: CharacterSheetData) {
+  return JSON.stringify(data);
+}
+
+function makeEntryForType(type: SectionType): Entry {
+  if (type === "currency") {
+    return {
+      id: uid(),
+      name: "",
+      value: "",
+      quantity: 1,
+    };
+  }
+
+  if (
+    [
+      "weapon",
+      "armor",
+      "consumable",
+      "gear",
+      "tool",
+      "magic",
+      "property",
+      "vehicle",
+      "vessel",
+      "mount",
+      "creature",
+      "retainer",
+      "key",
+      "misc",
+    ].includes(type)
+  ) {
+    return {
+      id: uid(),
+      name: "",
+      description: "",
+      quantity: 1,
+      equipped: false,
+      identified: true,
+      charges: null,
+      maxCharges: null,
+      locationNote: "",
+      statMods: [],
+    };
+  }
+
+  return {
+    id: uid(),
+    key: "",
+    value: "",
+    description: "",
   };
+}
 
-  const updateSection = (i: number, updated: SheetSection) => {
-    const s = [...sections];
-    s[i] = updated;
-    updateSections(s);
-  };
+function sectionIcon(type: SectionType) {
+  return SECTION_OPTIONS.find((s) => s.value === type)?.icon || Package;
+}
 
-  const deleteSection = (i: number) => updateSections(sections.filter((_, idx) => idx !== i));
-
-  const addSection = () => {
-    updateSections([...sections, { label: "Custom Section", entries: [{ key: "", value: "" }] }]);
-  };
-
-  // Check if there are standard D&D ability scores to render separately
-  const abilityResult = extractAbilityScores(sections);
-  const STANDARD_ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
-
-  const updateAbility = (key: string, value: string) => {
-    if (!abilityResult) return;
-    const s = [...sections];
-    const section = { ...s[abilityResult.sectionIndex] };
-    const entries = section.entries.map(e => {
-      const k = e.key.toLowerCase().replace(/[^a-z]/g, "");
-      const short = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
-        .find(a => k.startsWith(a));
-      if (short && short.slice(0, 3).toUpperCase() === key) {
-        return { ...e, value };
-      }
-      return e;
-    });
-    s[abilityResult.sectionIndex] = { ...section, entries };
-    updateSections(s);
-  };
-
-  // Sections excluding ability scores (rendered separately)
-  const otherSections = abilityResult
-    ? sections.filter((_, i) => i !== abilityResult.sectionIndex)
-    : sections;
-
-  const otherSectionOriginalIndices = sections
-    .map((_, i) => i)
-    .filter(i => !abilityResult || i !== abilityResult.sectionIndex);
+function SectionTypeSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: SectionType;
+  onChange: (next: SectionType) => void;
+  disabled?: boolean;
+}) {
+  const current = SECTION_OPTIONS.find((s) => s.value === value);
+  const Icon = current?.icon || Package;
 
   return (
-    <div className="w-full space-y-4">
-      {/* ── Identity strip ── */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {/* Decorative header bar */}
-        <div className="h-1.5 bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
-        <div className="p-4 space-y-3">
-          {/* Name row */}
-          <div className="flex items-end gap-3">
-            <div className="flex-1 space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Character Name</label>
-              <input
-                className="w-full text-xl font-bold bg-transparent border-b-2 border-border focus:border-primary outline-none text-foreground pb-0.5 transition-colors"
-                value={data.name}
-                onChange={(e) => onChange({ ...data, name: e.target.value })}
-                placeholder="Unnamed Adventurer"
-              />
-            </div>
-            {data.level !== null && (
-              <div className="text-center shrink-0">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block">Level</label>
-                <input
-                  className="w-12 text-center text-lg font-bold bg-transparent border-2 border-border rounded-lg outline-none focus:border-primary text-foreground transition-colors py-0.5"
-                  value={data.level}
-                  type="number"
-                  min={1} max={99}
-                  onChange={(e) => onChange({ ...data, level: Number(e.target.value) })}
-                />
-              </div>
-            )}
-          </div>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as SectionType)}
+        disabled={disabled}
+        className="appearance-none w-full rounded-md border border-input bg-background px-3 py-2 pr-9 text-sm"
+      >
+        {SECTION_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <Icon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground hidden" />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    </div>
+  );
+}
 
-          {/* Class / Race / Background row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Class / Role</label>
-              <input
-                className="w-full text-sm font-medium bg-transparent border-b border-border focus:border-primary outline-none text-foreground pb-0.5 transition-colors"
-                value={data.charClass}
-                onChange={(e) => onChange({ ...data, charClass: e.target.value })}
-                placeholder="Fighter"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Race / Species</label>
-              <input
-                className="w-full text-sm font-medium bg-transparent border-b border-border focus:border-primary outline-none text-foreground pb-0.5 transition-colors"
-                value={data.race}
-                onChange={(e) => onChange({ ...data, race: e.target.value })}
-                placeholder="Human"
-              />
-            </div>
+function ItemEntryEditor({
+  type,
+  entry,
+  onChange,
+  onRemove,
+  readOnly,
+}: {
+  type: SectionType;
+  entry: Entry;
+  onChange: (next: Entry) => void;
+  onRemove: () => void;
+  readOnly?: boolean;
+}) {
+  const isCurrency = type === "currency";
+  const isBasicNote = type === "notes" || type === "abilities";
+
+  if (isCurrency) {
+    return (
+      <Card className="p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Currency Name / Code</label>
+            <Input
+              value={entry.name || ""}
+              onChange={(e) => onChange({ ...entry, name: e.target.value })}
+              placeholder="Gold, USD, Beri..."
+              disabled={readOnly}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Amount</label>
+            <Input
+              type="number"
+              value={entry.value || ""}
+              onChange={(e) => onChange({ ...entry, value: e.target.value })}
+              placeholder="0"
+              disabled={readOnly}
+            />
           </div>
         </div>
-      </div>
 
-      {/* ── Ability scores (only if D&D-style detected) ── */}
-      {abilityResult && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Star className="w-4 h-4 text-primary" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Ability Scores</span>
+        {!readOnly && (
+          <div className="flex justify-end">
+            <Button variant="destructive" size="sm" onClick={onRemove}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remove
+            </Button>
           </div>
-          <div className="grid grid-cols-6 gap-2 justify-items-center">
-            {STANDARD_ABILITIES.map((ab) => (
-              <StatBox
-                key={ab}
-                label={ab}
-                value={abilityResult.abilities[ab] ?? "—"}
-                onChange={(v) => updateAbility(ab, v)}
-              />
-            ))}
+        )}
+      </Card>
+    );
+  }
+
+  if (isBasicNote) {
+    return (
+      <Card className="p-3 space-y-3">
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">
+              {type === "abilities" ? "Ability Name" : "Property"}
+            </label>
+            <Input
+              value={entry.key || entry.name || ""}
+              onChange={(e) =>
+                onChange({ ...entry, key: e.target.value, name: e.target.value })
+              }
+              placeholder={type === "abilities" ? "Shadow Step" : "Title"}
+              disabled={readOnly}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground">
+              {type === "abilities" ? "Description" : "Value"}
+            </label>
+            <Textarea
+              value={entry.value || entry.description || ""}
+              onChange={(e) =>
+                onChange({
+                  ...entry,
+                  value: e.target.value,
+                  description: e.target.value,
+                })
+              }
+              placeholder={
+                type === "abilities"
+                  ? "What it does..."
+                  : "Details..."
+              }
+              disabled={readOnly}
+            />
           </div>
         </div>
-      )}
 
-      {/* ── HP + Traits (2-column) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <HPTracker
-            hp={data.hp}
-            maxHp={data.maxHp}
-            onHpChange={(v) => onChange({ ...data, hp: v })}
-            onMaxHpChange={(v) => onChange({ ...data, maxHp: v })}
+        {!readOnly && (
+          <div className="flex justify-end">
+            <Button variant="destructive" size="sm" onClick={onRemove}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remove
+            </Button>
+          </div>
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-3 space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="text-xs text-muted-foreground">Item Name</label>
+          <Input
+            value={entry.name || ""}
+            onChange={(e) => onChange({ ...entry, name: e.target.value })}
+            placeholder="Iron Sword"
+            disabled={readOnly}
           />
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-primary" />
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Traits</label>
-          </div>
-          <textarea
-            className="w-full text-xs bg-transparent border-none outline-none resize-none text-foreground leading-relaxed placeholder:text-muted-foreground/50"
-            value={data.traits}
-            onChange={(e) => onChange({ ...data, traits: e.target.value })}
-            placeholder="Personality traits, ideals, bonds, flaws..."
-            rows={4}
+
+        <div className="col-span-2">
+          <label className="text-xs text-muted-foreground">Description</label>
+          <Textarea
+            value={entry.description || ""}
+            onChange={(e) => onChange({ ...entry, description: e.target.value })}
+            placeholder="Short description..."
+            disabled={readOnly}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground">Quantity</label>
+          <Input
+            type="number"
+            min={1}
+            value={entry.quantity ?? 1}
+            onChange={(e) =>
+              onChange({
+                ...entry,
+                quantity: Math.max(1, Number(e.target.value) || 1),
+              })
+            }
+            disabled={readOnly}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground">Location / Note</label>
+          <Input
+            value={entry.locationNote || ""}
+            onChange={(e) =>
+              onChange({ ...entry, locationNote: e.target.value })
+            }
+            placeholder="Belt, bag, stable..."
+            disabled={readOnly}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground">Charges</label>
+          <Input
+            type="number"
+            value={entry.charges ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...entry,
+                charges:
+                  e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+            placeholder="Optional"
+            disabled={readOnly}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground">Max Charges</label>
+          <Input
+            type="number"
+            value={entry.maxCharges ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...entry,
+                maxCharges:
+                  e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+            placeholder="Optional"
+            disabled={readOnly}
           />
         </div>
       </div>
 
-      {/* ── Backstory ── */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-primary" />
-          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Backstory</label>
-        </div>
-        <textarea
-          className="w-full text-xs bg-transparent border-none outline-none resize-none text-foreground leading-relaxed placeholder:text-muted-foreground/50"
-          value={data.backstory}
-          onChange={(e) => onChange({ ...data, backstory: e.target.value })}
-          placeholder="Character history, origin, and motivations..."
-          rows={4}
-        />
-      </div>
-
-      {/* ── Other sections ── */}
-      {otherSections.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Character Sections — sent to DM verbatim
-            </span>
-            <button
-              onClick={addSection}
-              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-            >
-              <Plus className="w-3 h-3" /> Add section
-            </button>
-          </div>
-          {otherSections.map((section, localIdx) => {
-            const originalIdx = otherSectionOriginalIndices[localIdx];
-            return (
-              <SheetSectionBlock
-                key={originalIdx}
-                section={section}
-                onChange={(updated) => updateSection(originalIdx, updated)}
-                onDelete={() => deleteSection(originalIdx)}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Add section button if no sections yet */}
-      {otherSections.length === 0 && !abilityResult && (
-        <button
-          onClick={addSection}
-          className="w-full py-3 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors flex items-center justify-center gap-2"
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={entry.equipped ? "default" : "outline"}
+          onClick={() => onChange({ ...entry, equipped: !entry.equipped })}
+          disabled={readOnly}
         >
-          <Plus className="w-3.5 h-3.5" /> Add a section (skills, spells, equipment...)
-        </button>
+          Equipped: {entry.equipped ? "Yes" : "No"}
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          variant={entry.identified === false ? "outline" : "default"}
+          onClick={() =>
+            onChange({
+              ...entry,
+              identified: entry.identified === false ? true : false,
+            })
+          }
+          disabled={readOnly}
+        >
+          Identified: {entry.identified === false ? "No" : "Yes"}
+        </Button>
+      </div>
+
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button variant="destructive" size="sm" onClick={onRemove}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Remove
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function CharacterSheetView({
+  value,
+  onChange,
+  readOnly = false,
+  className,
+}: Props) {
+  const [data, setData] = useState<CharacterSheetData>(() => safeParse(value));
+
+  useEffect(() => {
+    setData(safeParse(value));
+  }, [value]);
+
+  useEffect(() => {
+    onChange?.(serialize(data));
+  }, [data, onChange]);
+
+  const sectionCount = data.sections.length;
+
+  const summary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const section of data.sections) {
+      counts[section.type] = (counts[section.type] || 0) + section.entries.length;
+    }
+    return counts;
+  }, [data.sections]);
+
+  function updateSection(sectionId: string, updater: (section: Section) => Section) {
+    setData((prev) => ({
+      ...prev,
+      sections: prev.sections.map((section) =>
+        section.id === sectionId ? updater(section) : section
+      ),
+    }));
+  }
+
+  function addSection(type: SectionType = "notes") {
+    setData((prev) => ({
+      ...prev,
+      sections: [
+        ...prev.sections,
+        {
+          id: uid(),
+          label: defaultLabelForType(type),
+          type,
+          entries: [makeEntryForType(type)],
+        },
+      ],
+    }));
+  }
+
+  function removeSection(sectionId: string) {
+    setData((prev) => ({
+      ...prev,
+      sections: prev.sections.filter((section) => section.id !== sectionId),
+    }));
+  }
+
+  return (
+    <div className={cn("space-y-4", className)}>
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="font-semibold flex items-center gap-2">
+              <Backpack className="h-4 w-4 text-primary" />
+              Character Sections
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Build structured inventory, abilities, notes, property, vehicles, currency and more.
+            </div>
+          </div>
+
+          {!readOnly && (
+            <Button onClick={() => addSection("gear")}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Section
+            </Button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">Sections: {sectionCount}</Badge>
+          {Object.entries(summary).map(([key, count]) => (
+            <Badge key={key} variant="outline">
+              {defaultLabelForType(key as SectionType)}: {count}
+            </Badge>
+          ))}
+        </div>
+      </Card>
+
+      {data.sections.length === 0 ? (
+        <Card className="p-6 text-sm text-muted-foreground">
+          No sections yet. Add one and stop making the app guess whether a cart, a dagger and a castle are all just “properties”.
+        </Card>
+      ) : (
+        data.sections.map((section) => {
+          const Icon = sectionIcon(section.type);
+
+          return (
+            <Card key={section.id} className="p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-lg border flex items-center justify-center bg-background">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Section Type</label>
+                      <SectionTypeSelect
+                        value={section.type}
+                        onChange={(nextType) =>
+                          updateSection(section.id, () => ({
+                            ...section,
+                            type: nextType,
+                            label: defaultLabelForType(nextType),
+                            entries:
+                              section.entries.length > 0 &&
+                              section.type === nextType
+                                ? section.entries
+                                : [makeEntryForType(nextType)],
+                          }))
+                        }
+                        disabled={readOnly}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-muted-foreground">Section Label</label>
+                      <Input
+                        value={section.label}
+                        onChange={(e) =>
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            label: e.target.value,
+                          }))
+                        }
+                        disabled={readOnly}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {!readOnly && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeSection(section.id)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Section
+                  </Button>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {section.entries.map((entry) => (
+                  <ItemEntryEditor
+                    key={entry.id}
+                    type={section.type}
+                    entry={entry}
+                    readOnly={readOnly}
+                    onChange={(nextEntry) =>
+                      updateSection(section.id, (current) => ({
+                        ...current,
+                        entries: current.entries.map((existing) =>
+                          existing.id === entry.id ? nextEntry : existing
+                        ),
+                      }))
+                    }
+                    onRemove={() =>
+                      updateSection(section.id, (current) => ({
+                        ...current,
+                        entries: current.entries.filter((existing) => existing.id !== entry.id),
+                      }))
+                    }
+                  />
+                ))}
+
+                {!readOnly && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      updateSection(section.id, (current) => ({
+                        ...current,
+                        entries: [...current.entries, makeEntryForType(current.type)],
+                      }))
+                    }
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Entry
+                  </Button>
+                )}
+              </div>
+            </Card>
+          );
+        })
       )}
     </div>
   );
