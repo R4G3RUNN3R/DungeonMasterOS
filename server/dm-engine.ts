@@ -1,120 +1,106 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Campaign, Character, Message, CampaignCurrency } from "../shared/schema";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI CLIENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// ─────────────────────────────────────────────────────────────
-// SYSTEM PROMPT (THIS IS THE IMPORTANT PART)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SYSTEM PROMPT BUILDER
+// This is the "brain contract" that forces the DM to behave properly
+// ─────────────────────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(campaign: any, characters: any[]) {
+function buildSystemPrompt(
+  campaign: Campaign,
+  characters: Character[],
+  currencies: CampaignCurrency[],
+): string {
   return `
-You are a highly competent Dungeon Master.
+You are a professional Dungeon Master running a persistent RPG world.
 
-STRICT RULES YOU MUST FOLLOW:
+STRICT RULES:
+- NEVER control player characters' decisions or dialogue
+- NEVER retcon past events
+- ALWAYS respect cause-and-effect
+- Keep responses between 2–6 paragraphs
+- Always end with a clear situation or prompt
 
-1. NEVER control player actions or decisions.
-2. NEVER retcon events.
-3. ALWAYS maintain cause-and-effect logic.
-4. KEEP responses between 2–6 paragraphs.
-5. END every response with a clear situation or prompt.
+CAMPAIGN SETTINGS:
+Tone: ${campaign.tone}
+Rules Weight: ${campaign.rulesWeight}
+Power Level: ${campaign.powerLevel}
+World Type: ${campaign.worldType}
+Combat Style: ${campaign.combatStyle}
+Story Mode: ${campaign.storyMode ? "enabled" : "disabled"}
+World Generation Style: ${campaign.worldGenStyle}
 
-───────────────────────────────
-🔥 CRITICAL INVENTORY RULE
-───────────────────────────────
+CUSTOM WORLD:
+${campaign.customWorldPrompt || "None"}
 
-Whenever a player OBTAINS, BUYS, PICKS UP, STEALS, LOOTS, or is GIVEN an item:
+HOMEBREW RULES:
+${campaign.homebrewRules || "None"}
 
-YOU MUST explicitly declare it using this EXACT format:
+CURRENCIES:
+${currencies.map(c => `${c.code} (${c.name}) ${c.symbol || ""}`).join(", ")}
 
-[[ITEM_GRANTED]]
-name: <item name>
-type: <weapon|armor|consumable|currency|gear|magic|property|vehicle|mount|retainer|misc>
-description: <short description>
-quantity: <number>
-[[/ITEM_GRANTED]]
+PARTY:
+${characters.map(c => `${c.name} (${c.race} ${c.charClass})`).join(", ")}
 
-Examples:
+WORLD STATE:
+${campaign.worldState || "{}"}
 
-[[ITEM_GRANTED]]
-name: Iron Longsword
-type: weapon
-description: A standard steel longsword, well-balanced.
-quantity: 1
-[[/ITEM_GRANTED]]
+IMPORTANT SYSTEM BEHAVIOR:
 
-[[ITEM_GRANTED]]
-name: Gold Coins
-type: currency
-description: Standard gold currency of the realm.
-quantity: 50
-[[/ITEM_GRANTED]]
+1. INVENTORY / REWARDS
+If a player gains an item, make it VERY CLEAR:
+Example:
+"You find a silver dagger and take it."
 
-DO NOT skip this.
-DO NOT imply items.
-DO NOT be vague.
+2. CURRENCY
+Explicitly state currency gains/losses:
+"You receive 50 gold."
 
-If you do not use this format, the system WILL NOT detect the item.
+3. SHOPS
+When a shop appears, format like this:
 
-───────────────────────────────
-🛒 SHOP SYSTEM
-───────────────────────────────
+[SHOP]
+Merchant: Blacksmith Torren
+Currency: gold
 
-When players enter a shop, you MUST present items like this:
+Items:
+- Iron Sword | 25 gold | stock: 3 | A sturdy blade
+- Healing Potion | 10 gold | stock: 5 | Restores vitality
 
-[[SHOP]]
-name: Blacksmith Forge
+[/SHOP]
 
-item:
-- Iron Sword | 25 Gold | 3 in stock
-- Steel Armor | 120 Gold | 1 in stock
-- Dagger | 10 Gold | 5 in stock
+4. ABILITIES
+Clearly state when abilities are gained:
+"You unlock the ability: Shadow Step"
 
-description:
-A rugged blacksmith wipes sweat from his brow as you enter.
+STYLE:
+- Cinematic but grounded
+- Clear consequences
+- No meta talk
+- No system explanations
 
-[[/SHOP]]
-
-Players can:
-- buy
-- haggle
-- steal
-- leave
-
-───────────────────────────────
-🌍 WORLD STATE
-───────────────────────────────
-
-At the END of important scenes, you may optionally include:
-
-[[WORLD_STATE]]
-location: <current location>
-npcs: <comma separated>
-flags: <important flags>
-[[/WORLD_STATE]]
-
-───────────────────────────────
-
-Campaign Settings:
-- Tone: ${campaign.tone}
-- Combat: ${campaign.combatStyle}
-- Rules Weight: ${campaign.rulesWeight}
-- Power Level: ${campaign.powerLevel}
-- Story Mode: ${campaign.storyMode ? "ON" : "OFF"}
-
-Characters:
-${characters.map(c => `- ${c.name} (${c.race} ${c.charClass})`).join("\n")}
-
-`.trim();
+Now continue the story.
+`;
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // OPENING SCENE
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateOpeningScene(campaign: any, characters: any[]) {
-  const system = buildSystemPrompt(campaign, characters);
+export async function generateOpeningScene(
+  campaign: Campaign,
+  characters: Character[],
+  currencies: CampaignCurrency[],
+): Promise<string> {
+  const system = buildSystemPrompt(campaign, characters, currencies);
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
@@ -123,7 +109,7 @@ export async function generateOpeningScene(campaign: any, characters: any[]) {
     messages: [
       {
         role: "user",
-        content: `Start the adventure. Introduce the setting and situation.`,
+        content: "Begin the adventure. Introduce the setting and situation.",
       },
     ],
   });
@@ -131,22 +117,23 @@ export async function generateOpeningScene(campaign: any, characters: any[]) {
   return extractText(response);
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN DM RESPONSE
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function generateDMResponse(
-  campaign: any,
-  characters: any[],
-  history: any[],
+  campaign: Campaign,
+  characters: Character[],
+  history: Message[],
   playerAction: string,
-  playerName: string
-) {
-  const system = buildSystemPrompt(campaign, characters);
+  playerName: string,
+  currencies: CampaignCurrency[],
+): Promise<string> {
+  const system = buildSystemPrompt(campaign, characters, currencies);
 
   const messages = history.map((m) => ({
     role: m.senderType === "player" ? "user" : "assistant",
-    content: m.content,
+    content: `${m.sender}: ${m.content}`,
   }));
 
   messages.push({
@@ -164,44 +151,84 @@ export async function generateDMResponse(
   return extractText(response);
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // TEXT EXTRACTION
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 function extractText(response: any): string {
   return response.content
     .filter((b: any) => b.type === "text")
     .map((b: any) => b.text)
-    .join("");
+    .join("")
+    .trim();
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // WORLD STATE EXTRACTION
-// ─────────────────────────────────────────────────────────────
+// Optional structured state inside narration
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function extractWorldState(text: string): {
   cleanContent: string;
   worldState: any | null;
 } {
-  const worldRegex = /\[\[WORLD_STATE\]\]([\s\S]*?)\[\[\/WORLD_STATE\]\]/;
-  const match = text.match(worldRegex);
+  try {
+    const match = text.match(/\[WORLD_STATE\]([\s\S]*?)\[\/WORLD_STATE\]/);
 
-  if (!match) {
+    if (!match) {
+      return { cleanContent: text, worldState: null };
+    }
+
+    const json = JSON.parse(match[1].trim());
+
+    const clean = text.replace(match[0], "").trim();
+
+    return {
+      cleanContent: clean,
+      worldState: json,
+    };
+  } catch {
     return { cleanContent: text, worldState: null };
   }
+}
 
-  const block = match[1];
+// ─────────────────────────────────────────────────────────────────────────────
+// SHOP EXTRACTION
+// Converts DM shop text → structured system
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const location = block.match(/location:\s*(.*)/)?.[1] || "";
-  const npcs = block.match(/npcs:\s*(.*)/)?.[1]?.split(",") || [];
-  const flags = block.match(/flags:\s*(.*)/)?.[1]?.split(",") || [];
+export function extractShopStateFromNarration(text: string) {
+  const match = text.match(/\[SHOP\]([\s\S]*?)\[\/SHOP\]/);
 
-  return {
-    cleanContent: text.replace(worldRegex, "").trim(),
-    worldState: {
-      location,
-      npcs,
-      flags,
-    },
-  };
+  if (!match) return null;
+
+  try {
+    const content = match[1];
+
+    const merchant = content.match(/Merchant:\s*(.+)/i)?.[1]?.trim();
+    const currency = content.match(/Currency:\s*(.+)/i)?.[1]?.trim();
+
+    const itemLines = content.split("\n").filter((l) => l.includes("|"));
+
+    const items = itemLines.map((line) => {
+      const [name, price, stock, desc] = line.split("|").map((x) => x.trim());
+
+      return {
+        name,
+        description: desc || "",
+        itemType: "gear",
+        stock: Number(stock?.replace(/\D/g, "")) || 1,
+        priceAmount: Number(price?.replace(/\D/g, "")) || 0,
+        priceCurrencyCode: currency?.toLowerCase(),
+      };
+    });
+
+    return {
+      merchantName: merchant || "Merchant",
+      currencyCode: currency?.toLowerCase() || "gold",
+      items,
+    };
+  } catch {
+    return null;
+  }
 }
