@@ -582,7 +582,7 @@ export default function CampaignPage() {
       <div className="flex flex-1 min-h-0">
         {/* Sidebar — Party & World */}
         {/* Parchment character sheet sidebar */}
-        <aside className="hidden md:flex flex-col w-72 border-r border-border shrink-0" style={{ background: "#1a1108" }}>
+        <aside className="hidden md:flex flex-col w-[34rem] xl:w-[36rem] border-r border-border shrink-0" style={{ background: "#1a1108" }}>
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
               {party.map((c) => (
@@ -647,7 +647,7 @@ export default function CampaignPage() {
 
           {/* Messages */}
           <ScrollArea className="flex-1 px-4">
-            <div className="max-w-3xl mx-auto py-4">
+            <div className="max-w-4xl mx-auto py-4">
               {messages.length === 0 && !isDMThinking && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <ScrollText className="w-10 h-10 text-muted-foreground/30 mb-4" />
