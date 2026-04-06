@@ -1,75 +1,129 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Campaign, Character, CampaignCurrency } from "../shared/schema";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AI CLIENT
-// ─────────────────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// SYSTEM PROMPT (THIS IS THE IMPORTANT PART)
+// ─────────────────────────────────────────────────────────────
 
-type ShopStatePayload = {
-  merchantName: string;
-  merchantDescription?: string;
-  currencyCode: string;
-  title?: string;
-  metadata?: Record<string, any>;
-  items: Array<{
-    itemKey?: string;
-    id?: string;
-    name: string;
-    description?: string;
-    itemType?:
-      | "weapon"
-      | "armor"
-      | "consumable"
-      | "gear"
-      | "tool"
-      | "magic"
-      | "misc"
-      | "property"
-      | "vehicle"
-      | "vessel"
-      | "mount"
-      | "creature"
-      | "retainer"
-      | "key";
-    quantityPerPurchase?: number;
-    stock?: number;
-    price?: number;
-    priceAmount?: number;
-    priceCurrencyCode?: string;
-    metadata?: Record<string, any>;
-  }>;
-};
+function buildSystemPrompt(campaign: any, characters: any[]) {
+  return `
+You are a highly competent Dungeon Master.
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC API
-// ─────────────────────────────────────────────────────────────────────────────
+STRICT RULES YOU MUST FOLLOW:
 
-export async function generateOpeningScene(
-  campaign: Campaign,
-  characters: Character[],
-  currencies: CampaignCurrency[] = [],
-): Promise<string> {
-  ensureAnthropicKey();
+1. NEVER control player actions or decisions.
+2. NEVER retcon events.
+3. ALWAYS maintain cause-and-effect logic.
+4. KEEP responses between 2–6 paragraphs.
+5. END every response with a clear situation or prompt.
 
-  const system = buildSystemPrompt(campaign, characters, currencies);
+───────────────────────────────
+🔥 CRITICAL INVENTORY RULE
+───────────────────────────────
+
+Whenever a player OBTAINS, BUYS, PICKS UP, STEALS, LOOTS, or is GIVEN an item:
+
+YOU MUST explicitly declare it using this EXACT format:
+
+[[ITEM_GRANTED]]
+name: <item name>
+type: <weapon|armor|consumable|currency|gear|magic|property|vehicle|mount|retainer|misc>
+description: <short description>
+quantity: <number>
+[[/ITEM_GRANTED]]
+
+Examples:
+
+[[ITEM_GRANTED]]
+name: Iron Longsword
+type: weapon
+description: A standard steel longsword, well-balanced.
+quantity: 1
+[[/ITEM_GRANTED]]
+
+[[ITEM_GRANTED]]
+name: Gold Coins
+type: currency
+description: Standard gold currency of the realm.
+quantity: 50
+[[/ITEM_GRANTED]]
+
+DO NOT skip this.
+DO NOT imply items.
+DO NOT be vague.
+
+If you do not use this format, the system WILL NOT detect the item.
+
+───────────────────────────────
+🛒 SHOP SYSTEM
+───────────────────────────────
+
+When players enter a shop, you MUST present items like this:
+
+[[SHOP]]
+name: Blacksmith Forge
+
+item:
+- Iron Sword | 25 Gold | 3 in stock
+- Steel Armor | 120 Gold | 1 in stock
+- Dagger | 10 Gold | 5 in stock
+
+description:
+A rugged blacksmith wipes sweat from his brow as you enter.
+
+[[/SHOP]]
+
+Players can:
+- buy
+- haggle
+- steal
+- leave
+
+───────────────────────────────
+🌍 WORLD STATE
+───────────────────────────────
+
+At the END of important scenes, you may optionally include:
+
+[[WORLD_STATE]]
+location: <current location>
+npcs: <comma separated>
+flags: <important flags>
+[[/WORLD_STATE]]
+
+───────────────────────────────
+
+Campaign Settings:
+- Tone: ${campaign.tone}
+- Combat: ${campaign.combatStyle}
+- Rules Weight: ${campaign.rulesWeight}
+- Power Level: ${campaign.powerLevel}
+- Story Mode: ${campaign.storyMode ? "ON" : "OFF"}
+
+Characters:
+${characters.map(c => `- ${c.name} (${c.race} ${c.charClass})`).join("\n")}
+
+`.trim();
+}
+
+// ─────────────────────────────────────────────────────────────
+// OPENING SCENE
+// ─────────────────────────────────────────────────────────────
+
+export async function generateOpeningScene(campaign: any, characters: any[]) {
+  const system = buildSystemPrompt(campaign, characters);
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 1400,
+    max_tokens: 1500,
     system,
     messages: [
       {
         role: "user",
-        content:
-          "Begin the campaign. Establish the scene, the immediate situation, and the first meaningful decision or tension point for the party. If the scene naturally opens in a merchant or vendor context, you MAY include a structured shop block.",
+        content: `Start the adventure. Introduce the setting and situation.`,
       },
     ],
   });
@@ -77,24 +131,23 @@ export async function generateOpeningScene(
   return extractText(response);
 }
 
+// ─────────────────────────────────────────────────────────────
+// MAIN DM RESPONSE
+// ─────────────────────────────────────────────────────────────
+
 export async function generateDMResponse(
-  campaign: Campaign,
-  characters: Character[],
-  history: Array<{ sender: string; senderType: string; content: string }>,
+  campaign: any,
+  characters: any[],
+  history: any[],
   playerAction: string,
-  playerName: string,
-  currencies: CampaignCurrency[] = [],
-): Promise<string> {
-  ensureAnthropicKey();
+  playerName: string
+) {
+  const system = buildSystemPrompt(campaign, characters);
 
-  const system = buildSystemPrompt(campaign, characters, currencies);
-
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = history
-    .slice(-20)
-    .map((msg) => ({
-      role: msg.senderType === "dm" ? "assistant" : "user",
-      content: `${msg.sender}: ${msg.content}`,
-    }));
+  const messages = history.map((m) => ({
+    role: m.senderType === "player" ? "user" : "assistant",
+    content: m.content,
+  }));
 
   messages.push({
     role: "user",
@@ -103,7 +156,7 @@ export async function generateDMResponse(
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 1400,
+    max_tokens: 1500,
     system,
     messages,
   });
@@ -111,231 +164,44 @@ export async function generateDMResponse(
   return extractText(response);
 }
 
-export function extractWorldState(raw: string): {
-  cleanContent: string;
-  worldState: Record<string, any> | null;
-} {
-  try {
-    const blocks = extractTaggedJsonBlocks(raw);
-    const worldBlock = blocks.find((b) => b.tag === "WORLD_STATE");
+// ─────────────────────────────────────────────────────────────
+// TEXT EXTRACTION
+// ─────────────────────────────────────────────────────────────
 
-    if (!worldBlock) {
-      return {
-        cleanContent: stripTaggedBlocks(raw).trim(),
-        worldState: null,
-      };
-    }
-
-    const parsed = JSON.parse(worldBlock.json);
-
-    return {
-      cleanContent: stripTaggedBlocks(raw).trim(),
-      worldState: parsed && typeof parsed === "object" ? parsed : null,
-    };
-  } catch {
-    return {
-      cleanContent: stripTaggedBlocks(raw).trim(),
-      worldState: null,
-    };
-  }
-}
-
-export function extractShopStateFromNarration(raw: string): ShopStatePayload | null {
-  try {
-    const blocks = extractTaggedJsonBlocks(raw);
-    const shopBlock = blocks.find((b) => b.tag === "SHOP_STATE");
-    if (!shopBlock) return null;
-
-    const parsed = JSON.parse(shopBlock.json);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!parsed.merchantName || !parsed.currencyCode || !Array.isArray(parsed.items)) return null;
-
-    return parsed as ShopStatePayload;
-  } catch {
-    return null;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ensureAnthropicKey() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is missing");
-  }
-}
-
-function extractText(response: Anthropic.Messages.Message): string {
+function extractText(response: any): string {
   return response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
+    .filter((b: any) => b.type === "text")
+    .map((b: any) => b.text)
+    .join("");
 }
 
-function buildCurrencyPrompt(currencies: CampaignCurrency[]): string {
-  if (!currencies.length) {
-    return `No explicit campaign currencies are defined. If currency appears, keep it grounded in the current world and do not assume D&D gold unless the setting supports it.`;
+// ─────────────────────────────────────────────────────────────
+// WORLD STATE EXTRACTION
+// ─────────────────────────────────────────────────────────────
+
+export function extractWorldState(text: string): {
+  cleanContent: string;
+  worldState: any | null;
+} {
+  const worldRegex = /\[\[WORLD_STATE\]\]([\s\S]*?)\[\[\/WORLD_STATE\]\]/;
+  const match = text.match(worldRegex);
+
+  if (!match) {
+    return { cleanContent: text, worldState: null };
   }
 
-  const primary =
-    currencies.find((c) => c.isPrimary) || currencies[0];
+  const block = match[1];
 
-  return `
-Campaign currencies:
-${currencies
-  .map(
-    (c) =>
-      `- code: ${c.code}, name: ${c.name}${c.symbol ? `, symbol: ${c.symbol}` : ""}${
-        c.isPrimary ? " [PRIMARY]" : ""
-      }`,
-  )
-  .join("\n")}
+  const location = block.match(/location:\s*(.*)/)?.[1] || "";
+  const npcs = block.match(/npcs:\s*(.*)/)?.[1]?.split(",") || [];
+  const flags = block.match(/flags:\s*(.*)/)?.[1]?.split(",") || [];
 
-Currency rules:
-- Use these currency names exactly when money is awarded, paid, found, stolen, or priced
-- Prefer the PRIMARY currency (${primary.code} / ${primary.name}) for merchant pricing unless the scene strongly implies otherwise
-- Do not invent additional currency systems unless the campaign setting absolutely requires it
-- If a shop block is emitted, every shop item must use a valid campaign currency code
-`.trim();
-}
-
-function buildSystemPrompt(
-  campaign: Campaign,
-  characters: Character[],
-  currencies: CampaignCurrency[],
-): string {
-  const partyBlock =
-    characters.length > 0
-      ? characters
-          .map(
-            (c) =>
-              `- ${c.name}: ${c.race} ${c.charClass}, level ${c.level}, HP ${c.hp}/${c.maxHp}, status ${c.status}`,
-          )
-          .join("\n")
-      : "- No characters provided";
-
-  const shopInstructions = `
-Optional structured blocks:
-You MAY include hidden structured JSON blocks for system synchronization.
-These blocks must appear exactly in the following format:
-
-[[WORLD_STATE]]
-{
-  "locations": ["Dockside Market", "Temple Steps"],
-  "npcs": [{ "name": "Tessara", "role": "merchant" }],
-  "factions": ["City Watch"],
-  "flags": ["party_entered_market"],
-  "currentScene": "The party stands in a cramped market lane beneath patched awnings."
-}
-[[/WORLD_STATE]]
-
-[[SHOP_STATE]]
-{
-  "merchantName": "Tessara",
-  "merchantDescription": "A sharp-eyed apothecary with ink-stained fingers.",
-  "currencyCode": "beri",
-  "title": "Tessara's Counter",
-  "metadata": {},
-  "items": [
-    {
-      "itemKey": "minor_healing_tonic",
-      "name": "Minor Healing Tonic",
-      "description": "A bitter red draft that closes minor wounds.",
-      "itemType": "consumable",
-      "quantityPerPurchase": 1,
-      "stock": 5,
-      "priceAmount": 50,
-      "priceCurrencyCode": "beri",
-      "metadata": {}
-    }
-  ]
-}
-[[/SHOP_STATE]]
-
-Rules for structured blocks:
-- They are OPTIONAL, not mandatory
-- They must be valid JSON
-- WORLD_STATE should only include meaningful changes or current context
-- SHOP_STATE should only be included when the party is clearly in a merchant/vendor/shop interaction
-- The visible narration should still read naturally even if the UI also renders a shop panel
-- Never mention the existence of JSON, tags, or hidden blocks in the visible narration
-`.trim();
-
-  return `
-You are the AI Dungeon Master for a persistent multiplayer RPG platform.
-
-Core DM rules:
-- Never control player character thoughts, dialogue, or choices
-- Never retcon past events
-- Keep the world internally consistent
-- Use cause and effect
-- Keep responses concise but vivid: usually 2 to 6 paragraphs
-- End with a clear situation, tension point, or invitation for the players to act
-- Combat should follow the campaign's selected combat style
-- Respect the campaign's tone and world assumptions
-- Do not inject multiversal or abstract nonsense unless the campaign explicitly supports it
-
-Campaign settings:
-- Name: ${campaign.name}
-- Tone: ${campaign.tone}
-- Rules weight: ${campaign.rulesWeight}
-- Power level: ${campaign.powerLevel}
-- World type: ${campaign.worldType}
-- Combat style: ${campaign.combatStyle}
-- Story mode: ${campaign.storyMode ? "enabled" : "disabled"}
-- World generation style: ${campaign.worldGenStyle}
-- Epic mode: ${campaign.epicMode ? "enabled" : "disabled"}
-- Anime world source: ${campaign.animeWorldSource || "none"}
-- Anime world mode: ${campaign.animeWorldMode || "none"}
-
-Homebrew rules:
-${campaign.homebrewRules?.trim() ? campaign.homebrewRules : "None"}
-
-Party:
-${partyBlock}
-
-${buildCurrencyPrompt(currencies)}
-
-Merchant and inventory rules:
-- If a player finds, receives, buys, pockets, loots, recovers, or clearly takes possession of an item, describe that clearly enough that the system can infer the ownership change
-- If currency is gained or lost, state the amount and currency name explicitly
-- If the party is browsing a shop, merchant stall, blacksmith, alchemist, vendor cart, quartermaster, fence, or similar seller, you may emit a SHOP_STATE block
-- Buying is handled by the system UI, but haggling, persuasion, intimidation, deception, distraction, theft, and negotiation stay narrative
-- Do not force a shop block for every merchant encounter. Only use it when the vendor is actively presenting stock
-
-Writing style:
-- Cinematic, grounded, reactive
-- NPC dialogue should feel distinct and intentional
-- Keep descriptions readable and not overblown
-- Do not bury key outcomes inside excessive flourish
-
-${shopInstructions}
-`.trim();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TAGGED BLOCK EXTRACTION
-// ─────────────────────────────────────────────────────────────────────────────
-
-function extractTaggedJsonBlocks(raw: string): Array<{ tag: string; json: string }> {
-  const regex = /\[\[(WORLD_STATE|SHOP_STATE)\]\]\s*([\s\S]*?)\s*\[\[\/\1\]\]/g;
-  const blocks: Array<{ tag: string; json: string }> = [];
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(raw)) !== null) {
-    blocks.push({
-      tag: match[1],
-      json: match[2].trim(),
-    });
-  }
-
-  return blocks;
-}
-
-function stripTaggedBlocks(raw: string): string {
-  return raw
-    .replace(/\[\[(WORLD_STATE|SHOP_STATE)\]\]\s*[\s\S]*?\s*\[\[\/\1\]\]/g, "")
-    .trim();
+  return {
+    cleanContent: text.replace(worldRegex, "").trim(),
+    worldState: {
+      location,
+      npcs,
+      flags,
+    },
+  };
 }
