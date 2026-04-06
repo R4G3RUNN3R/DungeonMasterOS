@@ -7,10 +7,12 @@ import { cn } from "@/lib/utils";
 
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import ShopPanel from "@/components/ShopPanel";
+import CharacterSheetView from "@/components/CharacterSheetView";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -24,6 +26,7 @@ import {
   ShieldAlert,
   Store,
   ArrowLeft,
+  UserPlus,
 } from "lucide-react";
 
 type Campaign = {
@@ -180,6 +183,22 @@ export default function CampaignPage() {
   const [dmThinking, setDmThinking] = useState(false);
   const [shopOpen, setShopOpen] = useState(true);
 
+  // Character creation state
+  const [name, setName] = useState("");
+  const [race, setRace] = useState("");
+  const [charClass, setCharClass] = useState("");
+  const [traits, setTraits] = useState("");
+  const [backstory, setBackstory] = useState("");
+  const [level, setLevel] = useState(1);
+  const [hp, setHp] = useState(20);
+  const [maxHp, setMaxHp] = useState(20);
+  const [speed, setSpeed] = useState(30);
+  const [attacksPerRound, setAttacksPerRound] = useState(1);
+  const [characterData, setCharacterData] = useState<string>(
+    JSON.stringify({ sections: [], raw: "" }),
+  );
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const qc = useQueryClient();
 
   const campaignQuery = useQuery({
@@ -235,6 +254,40 @@ export default function CampaignPage() {
     retry: false,
   });
 
+  const createCharacterMutation = useMutation({
+    mutationFn: () =>
+      api(`/api/campaigns/${campaignId}/characters`, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          race,
+          charClass,
+          traits,
+          backstory,
+          level,
+          hp,
+          maxHp,
+          speed,
+          attacksPerRound,
+          characterData,
+        }),
+      }),
+    onSuccess: async () => {
+      setCreateError(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "characters"] }),
+        qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
+        qc.invalidateQueries({
+          queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+        }),
+      ]);
+    },
+    onError: (err: any) => {
+      setCreateError(err?.message || "Failed to create character.");
+    },
+  });
+
   const startMutation = useMutation({
     mutationFn: () =>
       api(`/api/campaigns/${campaignId}/start`, {
@@ -264,7 +317,9 @@ export default function CampaignPage() {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
         qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
-        qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"] }),
+        qc.invalidateQueries({
+          queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+        }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] }),
@@ -284,7 +339,9 @@ export default function CampaignPage() {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] }),
         qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
-        qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"] }),
+        qc.invalidateQueries({
+          queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+        }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
       ]);
     },
@@ -384,6 +441,11 @@ export default function CampaignPage() {
     charactersQuery.isLoading ||
     messagesQuery.isLoading;
 
+  const noCharacter =
+    !myCharacterQuery.isLoading &&
+    !myCharacterQuery.data &&
+    !!myCharacterQuery.error;
+
   const startDisabled =
     startMutation.isPending ||
     dmThinking ||
@@ -398,7 +460,7 @@ export default function CampaignPage() {
     );
   }
 
-  if (loading) {
+  if (loading && !noCharacter) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -409,7 +471,189 @@ export default function CampaignPage() {
     );
   }
 
-  if (!campaign || !myCharacter) {
+  if (!campaign) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
+        <Card className="max-w-lg w-full p-6 space-y-4">
+          <div className="flex items-center gap-2 font-semibold">
+            <ShieldAlert className="w-5 h-5 text-destructive" />
+            Campaign not found
+          </div>
+          <Button variant="outline" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to dashboard
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!myCharacter && noCharacter) {
+    return (
+      <div className="min-h-screen bg-background text-foreground px-6 py-8">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-primary" />
+                <h1 className="text-2xl font-semibold">Create Your Character</h1>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Campaign: <strong>{campaign.name}</strong>. Build something real, not another vague “property/value” abomination.
+              </div>
+            </div>
+
+            <Button variant="outline" onClick={() => navigate("/dashboard")}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Dashboard
+            </Button>
+          </div>
+
+          {createError && (
+            <Card className="p-4 border-red-500/30 bg-red-500/5 text-sm text-red-300">
+              {createError}
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="xl:col-span-1 space-y-6">
+              <Card className="p-5 space-y-4">
+                <div className="font-semibold">Core Identity</div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm text-muted-foreground">Name</label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Hennet Uthellien"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">Race</label>
+                    <Input
+                      value={race}
+                      onChange={(e) => setRace(e.target.value)}
+                      placeholder="Wood Elf"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">Class</label>
+                    <Input
+                      value={charClass}
+                      onChange={(e) => setCharClass(e.target.value)}
+                      placeholder="Rogue"
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-5 space-y-4">
+                <div className="font-semibold">Vitals</div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm text-muted-foreground">Level</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={level}
+                      onChange={(e) => setLevel(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">Speed</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={speed}
+                      onChange={(e) => setSpeed(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">HP</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={hp}
+                      onChange={(e) => setHp(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">Max HP</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={maxHp}
+                      onChange={(e) => setMaxHp(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="text-sm text-muted-foreground">Attacks Per Round</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={attacksPerRound}
+                      onChange={(e) =>
+                        setAttacksPerRound(Math.max(1, Number(e.target.value) || 1))
+                      }
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-5 space-y-4">
+                <div className="font-semibold">Personality & History</div>
+
+                <div>
+                  <label className="text-sm text-muted-foreground">Traits</label>
+                  <Textarea
+                    value={traits}
+                    onChange={(e) => setTraits(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm text-muted-foreground">Backstory</label>
+                  <Textarea
+                    value={backstory}
+                    onChange={(e) => setBackstory(e.target.value)}
+                    rows={6}
+                  />
+                </div>
+
+                <Button
+                  className="w-full"
+                  disabled={
+                    createCharacterMutation.isPending ||
+                    !name.trim() ||
+                    !race.trim() ||
+                    !charClass.trim()
+                  }
+                  onClick={() => createCharacterMutation.mutate()}
+                >
+                  {createCharacterMutation.isPending ? "Creating..." : "Enter the World"}
+                </Button>
+              </Card>
+            </div>
+
+            <div className="xl:col-span-2">
+              <CharacterSheetView value={characterData} onChange={setCharacterData} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!myCharacter) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
         <Card className="max-w-lg w-full p-6 space-y-4">
@@ -574,7 +818,12 @@ export default function CampaignPage() {
                       value={actionInput}
                       onChange={(e) => setActionInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey && actionInput.trim() && !actionMutation.isPending) {
+                        if (
+                          e.key === "Enter" &&
+                          !e.shiftKey &&
+                          actionInput.trim() &&
+                          !actionMutation.isPending
+                        ) {
                           e.preventDefault();
                           actionMutation.mutate(actionInput.trim());
                         }
