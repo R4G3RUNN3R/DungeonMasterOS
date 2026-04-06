@@ -159,7 +159,10 @@ export default function SidebarCharacterSheet({
   campaignCurrencies,
   connected = true,
 }: Props) {
-  const hpPercent = character.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((character.hp / character.maxHp) * 100))) : 0;
+  const hpPercent =
+    character.maxHp > 0
+      ? Math.max(0, Math.min(100, Math.round((character.hp / character.maxHp) * 100)))
+      : 0;
 
   const parsedCharacterData = useMemo(
     () => safeParseCharacterData(character.characterData),
@@ -221,7 +224,6 @@ export default function SidebarCharacterSheet({
 
       <ScrollArea className="flex-1">
         <div className="p-5 space-y-5">
-          {/* Core vitals */}
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-2 font-medium">
               <Heart className="w-4 h-4 text-rose-500" />
@@ -262,7 +264,6 @@ export default function SidebarCharacterSheet({
             </div>
           </Card>
 
-          {/* Currency */}
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-2 font-medium">
               <Coins className="w-4 h-4 text-amber-500" />
@@ -297,7 +298,6 @@ export default function SidebarCharacterSheet({
             )}
           </Card>
 
-          {/* Inventory */}
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-2 font-medium">
               <Backpack className="w-4 h-4 text-primary" />
@@ -306,7 +306,7 @@ export default function SidebarCharacterSheet({
 
             {groupedItems.length === 0 ? (
               <div className="text-sm text-muted-foreground">
-                Nothing tracked yet. Once the DM actually awards or you buy something, it should appear here instead of vanishing into narrative fog.
+                Nothing tracked yet. Once the DM actually awards or you buy something, it should appear here instead of evaporating into decorative prose.
               </div>
             ) : (
               <div className="space-y-4">
@@ -354,7 +354,6 @@ export default function SidebarCharacterSheet({
             )}
           </Card>
 
-          {/* Granted abilities / extracted abilities */}
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-2 font-medium">
               <Sparkles className="w-4 h-4 text-violet-500" />
@@ -386,7 +385,6 @@ export default function SidebarCharacterSheet({
             )}
           </Card>
 
-          {/* Traits */}
           <Card className="p-4 space-y-3">
             <div className="font-medium">Traits</div>
             <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
@@ -394,7 +392,6 @@ export default function SidebarCharacterSheet({
             </div>
           </Card>
 
-          {/* Backstory */}
           <Card className="p-4 space-y-3">
             <div className="font-medium">Backstory</div>
             <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
@@ -402,7 +399,6 @@ export default function SidebarCharacterSheet({
             </div>
           </Card>
 
-          {/* Additional parsed sections */}
           {parsedCharacterData.sections
             .filter((section) => {
               const label = String(section.label || "").toLowerCase();
