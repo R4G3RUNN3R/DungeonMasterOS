@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { createServer, type Server } from "http";
+import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { generateDMResponse, generateOpeningScene, extractWorldState } from "./dm-engine";
@@ -18,13 +18,12 @@ import {
   attachUser,
   requireAuth,
   requireCanPlay,
-  allowReadOnlyForExpired,
   checkCampaignLimit,
   checkTurnLimit,
   incrementTurnCount,
   toPublicUser,
 } from "./auth";
-import { randomBytes, randomUUID } from "crypto";
+import { randomBytes } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import Stripe from "stripe";
 import { TIERS, TURN_PACKS, TRIAL_DAYS, type TierName } from "../shared/tiers";
@@ -63,7 +62,37 @@ function broadcastToUser(userId: number, campaignId: number, data: any) {
 
 function getVisitorId(req: Request): string {
   if (req.user?.id) return `user-${req.user.id}`;
-  return req.headers["x-visitor-id"] as string || `anon-${randomBytes(8).toString("hex")}`;
+  return (req.headers["x-visitor-id"] as string) || `anon-${randomBytes(8).toString("hex")}`;
+}
+
+function getActionContent(body: any): string {
+  if (!body || typeof body !== "object") return "";
+  const candidates = [body.content, body.action, body.message, body.text];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function buildFallbackOpeningScene(campaignName: string, characters: Array<{ name: string }>) {
+  const names = characters.map((c) => c.name).join(", ");
+  return `A strange stillness settles over **${campaignName}** as the world gathers itself around ${names || "the party"}.
+
+The air is heavy with possibility. Somewhere nearby, something creaks, shifts, or waits. The place feels real enough to touch, but not yet fully awake, as if the story itself had to claw its way into motion.
+
+You have a moment to take stock, study your surroundings, and choose how you want to begin.
+
+**What do you do?**`;
+}
+
+function buildFallbackActionResponse(characterName: string, content: string) {
+  return `The world hesitates for a heartbeat as **${characterName}** acts: "${content}"
+
+Something in the scene responds, even if imperfectly. You sense movement nearby, the environment tightening around your choice, as if events are beginning to align with your intent.
+
+Whatever happens next, your action has pushed the moment forward.
+
+**What do you do now?**`;
 }
 
 // ── AI extractors ───────────────────────────────────────────────────────────
@@ -195,7 +224,6 @@ function getStripePriceId(tier: TierName, interval: "monthly" | "weekly" | "year
 }
 
 function getTopUpPriceId(packId: string, tier: TierName): string | null {
-  // STRIPE_PRICE_TOPUP_50_ADVENTURER, etc.
   const turns = packId.replace("pack_", "");
   const envKey = `STRIPE_PRICE_TOPUP_${turns}_${tier.toUpperCase()}`;
   return process.env[envKey] || null;
@@ -228,20 +256,18 @@ function tryUnlockAchievements(
       }
     }
   } catch {
-    // Achievement errors must never break gameplay
+      // Achievement errors must never break gameplay
   }
 }
 
 // ── Route registration ──────────────────────────────────────────────────────
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  // Apply auth middleware globally
   app.use(attachUser);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTH ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Register
   app.post("/api/auth/register", async (req, res) => {
     try {
       const parsed = registerSchema.safeParse(req.body);
@@ -290,7 +316,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Login
   app.post("/api/auth/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -308,24 +333,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(user) });
   });
 
-  // Logout
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", (_req, res) => {
     clearSessionCookie(res);
     return res.json({ ok: true });
   });
 
-  // Me
   app.get("/api/auth/me", requireAuth, (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
   });
 
-  // Complete onboarding
   app.post("/api/auth/complete-onboarding", requireAuth, (req, res) => {
     storage.updateUser(req.user!.id, { onboardingComplete: true } as any);
     return res.json({ ok: true });
   });
 
-  // Change password
   app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
@@ -345,23 +366,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
-  // Forgot password (generates a token — in production, email this link)
   app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required." });
 
     const user = storage.getUserByEmail(email);
-    // Always return 200 to avoid email enumeration
     if (!user) return res.json({ ok: true, message: "If that email exists, a reset link has been sent." });
 
     storage.deleteExpiredPasswordResetTokens();
 
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     storage.createPasswordResetToken(user.id, token, expiresAt);
 
-    // In production, send email with link: ${APP_URL}/#/reset-password?token=${token}
-    // For now, return the token in dev mode only
     const response: any = { ok: true, message: "If that email exists, a reset link has been sent." };
     if (process.env.NODE_ENV !== "production") {
       response.devToken = token;
@@ -369,7 +386,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(response);
   });
 
-  // Reset password
   app.post("/api/auth/reset-password", async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
@@ -394,7 +410,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STRIPE WEBHOOK (must come before express.json body parser for raw body)
+  // STRIPE WEBHOOK
   // ═══════════════════════════════════════════════════════════════════════════
 
   app.post("/api/stripe/webhook", async (req, res) => {
@@ -432,7 +448,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!userId) break;
 
           if (topUpTurns > 0) {
-            // Top-up purchase
             const user = storage.getUser(userId);
             if (user) {
               storage.updateUser(userId, {
@@ -440,7 +455,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               } as any);
             }
           } else if (tier && session.subscription) {
-            // Subscription checkout completed
             const sub = await stripe.subscriptions.retrieve(session.subscription as string);
             const periodEnd = new Date((sub as any).current_period_end * 1000);
 
@@ -470,15 +484,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           else if (sub.status === "unpaid") status = "expired";
           else if (sub.status === "active") status = "active";
 
-          // Determine tier from price ID
           let tier: TierName = user.tier as TierName;
           const priceId = sub.items.data[0]?.price?.id;
           if (priceId) {
             for (const [tierName, tierDef] of Object.entries(TIERS)) {
               if (
-                tierDef.stripePriceIdMonthly && process.env[tierDef.stripePriceIdMonthly] === priceId ||
-                tierDef.stripePriceIdWeekly && process.env[tierDef.stripePriceIdWeekly] === priceId ||
-                tierDef.stripePriceIdYearly && process.env[tierDef.stripePriceIdYearly] === priceId
+                (tierDef.stripePriceIdMonthly && process.env[tierDef.stripePriceIdMonthly] === priceId) ||
+                (tierDef.stripePriceIdWeekly && process.env[tierDef.stripePriceIdWeekly] === priceId) ||
+                (tierDef.stripePriceIdYearly && process.env[tierDef.stripePriceIdYearly] === priceId)
               ) {
                 tier = tierName as TierName;
                 break;
@@ -524,7 +537,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!invoice.subscription) break;
           const user = storage.getUserByStripeSubscriptionId(invoice.subscription as string);
           if (!user) break;
-          // Reset monthly turns on successful renewal
           const nextReset = new Date();
           nextReset.setMonth(nextReset.getMonth() + 1);
           nextReset.setDate(1);
@@ -551,7 +563,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // STRIPE BILLING ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Create checkout session for subscription
   app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
     if (!stripe) return res.status(503).json({ message: "Stripe is not configured on this server." });
 
@@ -570,7 +581,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const appUrl = process.env.APP_URL || "http://localhost:5000";
 
     try {
-      // Create or retrieve Stripe customer
       let customerId = user.stripeCustomerId;
       if (!customerId) {
         const customer = await stripe.customers.create({
@@ -611,7 +621,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Create billing portal session
   app.post("/api/stripe/portal", requireAuth, async (req, res) => {
     if (!stripe) return res.status(503).json({ message: "Stripe is not configured." });
 
@@ -634,7 +643,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Create checkout for turn top-up
   app.post("/api/stripe/topup", requireAuth, requireCanPlay, async (req, res) => {
     if (!stripe) return res.status(503).json({ message: "Stripe is not configured." });
 
@@ -691,7 +699,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Cancel subscription
   app.post("/api/stripe/cancel", requireAuth, async (req, res) => {
     if (!stripe) return res.status(503).json({ message: "Stripe is not configured." });
 
@@ -712,7 +719,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Get billing info
   app.get("/api/billing", requireAuth, async (req, res) => {
     const user = req.user!;
     const info: any = {
@@ -734,13 +740,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // USER / ACCOUNT ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Get achievements
   app.get("/api/achievements", requireAuth, (req, res) => {
     const achievements = storage.getUserAchievements(req.user!.id);
     return res.json(achievements);
   });
 
-  // Get my campaigns (for dashboard)
   app.get("/api/my-campaigns", requireAuth, (req, res) => {
     const campaigns = storage.getCampaignsByUser(req.user!.id);
     return res.json(campaigns);
@@ -750,7 +754,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // CAMPAIGN ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Create campaign
   app.post("/api/campaigns", requireAuth, requireCanPlay, checkCampaignLimit, (req, res) => {
     const visitorId = getVisitorId(req);
     const parsed = createCampaignFormSchema.safeParse(req.body);
@@ -773,7 +776,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }),
     });
 
-    // Unlock "architect" achievement
     const unlockedIds = storage.getUnlockedAchievementIds(req.user!.id);
     tryUnlockAchievements(req.user!.id, campaign.id, null, {
       type: "campaign_create",
@@ -791,21 +793,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.status(201).json(campaign);
   });
 
-  // Get campaign by invite code
   app.get("/api/campaigns/invite/:code", (req, res) => {
     const campaign = storage.getCampaignByInviteCode(req.params.code);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
     return res.json(campaign);
   });
 
-  // Get campaign by ID
   app.get("/api/campaigns/:id", (req, res) => {
     const campaign = storage.getCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
     return res.json(campaign);
   });
 
-  // Archive/unarchive campaign
   app.patch("/api/campaigns/:id/archive", requireAuth, (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -816,7 +815,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(storage.getCampaign(campaignId));
   });
 
-  // Update campaign settings (mid-campaign)
   app.patch("/api/campaigns/:id", (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
@@ -832,7 +830,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     ];
     const updates: any = {};
     for (const key of allowed) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
+      if ((req.body as any)[key] !== undefined) updates[key] = (req.body as any)[key];
     }
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
@@ -841,7 +839,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updated = storage.getCampaign(campaignId);
     broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
 
-    // Check settings achievements
     if (req.user) {
       const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
       tryUnlockAchievements(req.user.id, campaignId, null, {
@@ -861,11 +858,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
+  // Frontend currently expects these endpoints.
+  // Return safe empty data instead of pointless 404 spam.
+  app.get("/api/campaigns/:id/currencies", (_req, res) => {
+    return res.json([]);
+  });
+
+  app.get("/api/campaigns/:id/shop", (_req, res) => {
+    return res.json({ shop: null, items: [] });
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // CHARACTER ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Create character
   app.post("/api/campaigns/:id/characters", (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
@@ -914,7 +920,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.status(201).json(character);
   });
 
-  // Parse character from freeform text
   app.post("/api/parse-character", async (req, res) => {
     const { text } = req.body;
     if (!text || typeof text !== "string" || text.trim().length < 5) {
@@ -1044,12 +1049,10 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     }
   });
 
-  // Get characters for campaign
   app.get("/api/campaigns/:id/characters", (req, res) => {
     return res.json(storage.getCharactersByCampaign(Number(req.params.id)));
   });
 
-  // Get my character in campaign
   app.get("/api/campaigns/:id/my-character", (req, res) => {
     const visitorId = getVisitorId(req);
     const char = storage.getCharacterByVisitor(Number(req.params.id), visitorId);
@@ -1057,7 +1060,6 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json(char);
   });
 
-  // Update character spell/ability data
   app.patch("/api/characters/:id/spell-data", (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.id);
@@ -1071,7 +1073,6 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json({ ok: true });
   });
 
-  // Update character HP
   app.patch("/api/characters/:id/hp", (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.id);
@@ -1084,6 +1085,10 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     storage.updateCharacter(characterId, { hp: clamped });
     broadcastToCampaign(character.campaignId, { type: "character_updated", characterId });
     return res.json({ hp: clamped });
+  });
+
+  app.get("/api/characters/:characterId/currencies", (_req, res) => {
+    return res.json([]);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1142,7 +1147,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     ];
     const updates: any = {};
     for (const key of allowed) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
+      if ((req.body as any)[key] !== undefined) updates[key] = (req.body as any)[key];
     }
 
     storage.updateItem(itemId, updates);
@@ -1192,7 +1197,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
 
       if (worldState) {
         try {
-          const current = JSON.parse(campaign.worldState);
+          const current = JSON.parse(campaign.worldState || "{}");
           storage.updateWorldState(item.campaignId, JSON.stringify({ ...current, ...worldState }));
         } catch {}
       }
@@ -1220,6 +1225,15 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     } catch (err) {
       broadcastToCampaign(item.campaignId, { type: "dm_thinking", thinking: false });
       console.error("DM item-use error:", err);
+
+      const fallback = storage.createMessage({
+        campaignId: item.campaignId,
+        sender: "Dungeon Master",
+        senderType: "dm",
+        content: buildFallbackActionResponse(character.name, useAction),
+        messageType: "narration",
+      });
+      broadcastToCampaign(item.campaignId, { type: "message", message: fallback });
     }
 
     return res.json({ used: displayName, remaining });
@@ -1335,7 +1349,6 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json(storage.getMessagesByCampaign(Number(req.params.id)));
   });
 
-  // Player action → DM response
   app.post("/api/campaigns/:id/action", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
@@ -1345,16 +1358,25 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     const character = storage.getCharacterByVisitor(campaignId, visitorId);
     if (!character) return res.status(403).json({ message: "You don't have a character in this campaign" });
 
-    const parsed = playerActionSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.issues[0].message });
+    // Accept several possible payload shapes so the frontend cannot fail over something this stupid.
+    const rawContent = getActionContent(req.body);
+    if (!rawContent) {
+      const parsed = playerActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0].message });
+      }
+    }
+
+    const content = rawContent || (req.body?.content ?? "").trim();
+    if (!content) {
+      return res.status(400).json({ message: "Action content is required" });
     }
 
     const playerMsg = storage.createMessage({
       campaignId,
       sender: character.name,
       senderType: "player",
-      content: parsed.data.content,
+      content,
       messageType: "action",
     });
     broadcastToCampaign(campaignId, { type: "message", message: playerMsg });
@@ -1366,13 +1388,18 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: true });
 
       const rawResponse = await generateDMResponse(
-        campaign, chars, history, parsed.data.content, character.name,
+        campaign,
+        chars,
+        history,
+        content,
+        character.name,
       );
+
       const { cleanContent, worldState } = extractWorldState(rawResponse);
 
       if (worldState) {
         try {
-          const current = JSON.parse(campaign.worldState);
+          const current = JSON.parse(campaign.worldState || "{}");
           const merged = {
             locations: [...new Set([...(current.locations || []), ...(worldState.locations || [])])],
             npcs: [...(current.npcs || []), ...(worldState.npcs || [])].reduce((acc: any[], npc: any) => {
@@ -1387,32 +1414,33 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         } catch {}
       }
 
+      const finalContent = cleanContent?.trim() || buildFallbackActionResponse(character.name, content);
+
       const dmMsg = storage.createMessage({
         campaignId,
         sender: "Dungeon Master",
         senderType: "dm",
-        content: cleanContent,
+        content: finalContent,
         messageType: "narration",
       });
+
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
 
-      // Increment turn count
       incrementTurnCount(req.user!.id);
 
-      // Fire-and-forget: items, abilities, effects, achievements
       Promise.all([
-        extractItemsFromNarration(cleanContent, campaignId, character.id),
-        extractAbilitiesFromNarration(cleanContent, campaignId, character.id),
+        extractItemsFromNarration(finalContent, campaignId, character.id),
+        extractAbilitiesFromNarration(finalContent, campaignId, character.id),
       ]).then(([newItems, newAbilities]) => {
-        // Items
         for (const newItem of newItems) {
           const created = storage.createItem(newItem);
           broadcastToCampaign(campaignId, { type: "item_granted", item: created });
         }
-        if (newItems.length) broadcastToCampaign(campaignId, { type: "items_updated", characterId: character.id });
+        if (newItems.length) {
+          broadcastToCampaign(campaignId, { type: "items_updated", characterId: character.id });
+        }
 
-        // Abilities
         if (newAbilities.length > 0) {
           const freshChar = storage.getCharacter(character.id);
           if (freshChar) {
@@ -1420,17 +1448,23 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
               const cd = JSON.parse((freshChar as any).characterData || "{}");
               if (!cd.sections) cd.sections = [];
               let abSec = cd.sections.find((s: any) => s.label === "Granted Abilities");
-              if (!abSec) { abSec = { label: "Granted Abilities", entries: [] }; cd.sections.push(abSec); }
+              if (!abSec) {
+                abSec = { label: "Granted Abilities", entries: [] };
+                cd.sections.push(abSec);
+              }
               for (const ab of newAbilities) {
                 if (!abSec.entries.find((e: any) => e.key === ab.name)) {
                   abSec.entries.push({ key: ab.name, value: `[${ab.category}] ${ab.description}` });
                 }
               }
               storage.updateCharacter(character.id, { characterData: JSON.stringify(cd) } as any);
-              broadcastToCampaign(campaignId, { type: "abilities_granted", characterId: character.id, abilities: newAbilities });
+              broadcastToCampaign(campaignId, {
+                type: "abilities_granted",
+                characterId: character.id,
+                abilities: newAbilities,
+              });
               broadcastToCampaign(campaignId, { type: "character_updated", characterId: character.id });
 
-              // Achievement: gifted_power
               if (req.user) {
                 const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
                 tryUnlockAchievements(req.user.id, campaignId, character.id, {
@@ -1442,7 +1476,6 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
           }
         }
 
-        // Tick active effects
         const expired = storage.tickEffects(character.id);
         if (expired.length > 0) {
           broadcastToCampaign(campaignId, {
@@ -1462,11 +1495,10 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
           }
         }
 
-        // DM response achievements
         if (req.user) {
           const freshChar2 = storage.getCharacter(character.id);
           const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
-          const dmFlags = scanDMResponseForAchievements(cleanContent, {
+          const dmFlags = scanDMResponseForAchievements(finalContent, {
             hp: freshChar2?.hp ?? character.hp,
             maxHp: freshChar2?.maxHp ?? character.maxHp,
           });
@@ -1490,11 +1522,27 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     } catch (error: any) {
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("DM Engine error:", error);
-      return res.status(422).json({ message: "The Dungeon Master encountered an error. Try again." });
+
+      // Never leave the player hanging with nothing.
+      const fallbackContent = buildFallbackActionResponse(character.name, content);
+      const dmMsg = storage.createMessage({
+        campaignId,
+        sender: "Dungeon Master",
+        senderType: "dm",
+        content: fallbackContent,
+        messageType: "narration",
+      });
+
+      broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
+
+      return res.json({
+        playerMessage: playerMsg,
+        dmMessage: dmMsg,
+        fallback: true,
+      });
     }
   });
 
-  // Start campaign (opening scene)
   app.post("/api/campaigns/:id/start", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -1513,11 +1561,13 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         storage.updateWorldState(campaignId, JSON.stringify(worldState));
       }
 
+      const finalContent = cleanContent?.trim() || buildFallbackOpeningScene(campaign.name, chars);
+
       const dmMsg = storage.createMessage({
         campaignId,
         sender: "Dungeon Master",
         senderType: "dm",
-        content: cleanContent,
+        content: finalContent,
         messageType: "narration",
       });
 
@@ -1531,7 +1581,20 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     } catch (error: any) {
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("Opening scene error:", error);
-      return res.status(422).json({ message: "Failed to generate opening scene" });
+
+      const fallbackContent = buildFallbackOpeningScene(campaign.name, chars);
+      const dmMsg = storage.createMessage({
+        campaignId,
+        sender: "Dungeon Master",
+        senderType: "dm",
+        content: fallbackContent,
+        messageType: "narration",
+      });
+
+      broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
+      broadcastToCampaign(campaignId, { type: "campaign_started" });
+
+      return res.json({ message: dmMsg, fallback: true });
     }
   });
 
@@ -1561,10 +1624,10 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
             campaignClients.get(subscribedCampaignId)?.delete(ws);
           }
           subscribedCampaignId = data.campaignId;
-          if (!campaignClients.has(subscribedCampaignId!)) {
-            campaignClients.set(subscribedCampaignId!, new Set());
+          if (!campaignClients.has(subscribedCampaignId)) {
+            campaignClients.set(subscribedCampaignId, new Set());
           }
-          campaignClients.get(subscribedCampaignId!)!.add(ws);
+          campaignClients.get(subscribedCampaignId)!.add(ws);
           if (data.userId) (ws as any)._userId = data.userId;
           ws.send(JSON.stringify({ type: "subscribed", campaignId: subscribedCampaignId }));
         }
