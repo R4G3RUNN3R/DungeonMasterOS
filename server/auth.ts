@@ -25,6 +25,13 @@ import type { User, PublicUser } from "../shared/schema";
 const JWT_SECRET = process.env.JWT_SECRET || "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
 
+function useSecureCookies(): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return process.env.NODE_ENV === "production";
+}
+
 // ── Password utils ─────────────────────────────────────────────────────────
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -60,11 +67,11 @@ export function verifyToken(token: string): { sub: number } | null {
 // ── Cookie helpers ─────────────────────────────────────────────────────────
 export function setSessionCookie(res: Response, userId: number) {
   const token = signToken(userId);
-  const isProduction = process.env.NODE_ENV === "production";
+  const secureCookies = useSecureCookies();
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "strict" : "lax",
+    secure: secureCookies,
+    sameSite: secureCookies ? "strict" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: "/",
     domain: process.env.COOKIE_DOMAIN || undefined,
