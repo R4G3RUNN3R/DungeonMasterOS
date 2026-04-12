@@ -9,6 +9,8 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM PROMPT BUILDER
 // This is the "brain contract" that forces the DM to behave properly
@@ -103,7 +105,7 @@ export async function generateOpeningScene(
   const system = buildSystemPrompt(campaign, characters, currencies);
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-5",
+    model: ANTHROPIC_MODEL,
     max_tokens: 1500,
     system,
     messages: [
@@ -142,7 +144,7 @@ export async function generateDMResponse(
   });
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-5",
+    model: ANTHROPIC_MODEL,
     max_tokens: 1500,
     system,
     messages,

@@ -31,6 +31,7 @@ import { ACHIEVEMENT_MAP, checkAchievements, scanDMResponseForAchievements } fro
 
 // ── Clients ────────────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
@@ -107,7 +108,7 @@ async function extractAbilitiesFromNarration(
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
+      model: ANTHROPIC_MODEL,
       max_tokens: 512,
       system: `You are an ability extractor for a narrative RPG. Given DM narration, identify any abilities, powers, spells, techniques, or capabilities that were NEWLY GRANTED to the player character RIGHT NOW.
 
@@ -150,7 +151,7 @@ async function extractItemsFromNarration(
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
+      model: ANTHROPIC_MODEL,
       max_tokens: 512,
       system: `You are an item extractor for a tabletop RPG. Given DM narration, identify any items that were NEWLY GRANTED to the player character in this scene.
 
@@ -969,8 +970,8 @@ NEVER refuse. Always extract everything. Keep all values as short plain-text str
 Return ONLY the JSON object. No explanation. No markdown fences. No raw source text in the output.`.trim();
 
     try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-5",
+    const response = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: text.trim() }],
