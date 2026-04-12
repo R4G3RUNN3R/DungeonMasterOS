@@ -66,6 +66,8 @@ export function runMigrations() {
       ai_turns_used_this_month INTEGER NOT NULL DEFAULT 0,
       usage_reset_at TEXT,
       onboarding_complete INTEGER NOT NULL DEFAULT 0,
+      unlimited_turns INTEGER NOT NULL DEFAULT 0,
+      is_admin INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -100,6 +102,8 @@ export function runMigrations() {
       world_state TEXT NOT NULL DEFAULT '{}',
       total_messages INTEGER NOT NULL DEFAULT 0,
       last_played_at TEXT,
+      latest_snapshot_id INTEGER,
+      active_shop_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -129,6 +133,7 @@ export function runMigrations() {
       sender_type TEXT NOT NULL,
       content TEXT NOT NULL,
       message_type TEXT NOT NULL DEFAULT 'narration',
+      metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -150,7 +155,8 @@ export function runMigrations() {
       location_note TEXT NOT NULL DEFAULT '',
       source TEXT NOT NULL DEFAULT 'manual',
       stat_mods TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS active_effects (
@@ -179,12 +185,77 @@ export function runMigrations() {
       character_id INTEGER,
       unlocked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS campaign_currencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      symbol TEXT NOT NULL DEFAULT '',
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      exchange_rate INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(campaign_id, code)
+    );
+
+    CREATE TABLE IF NOT EXISTS character_currencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      character_id INTEGER NOT NULL,
+      currency_code TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(character_id, currency_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      label TEXT NOT NULL DEFAULT 'Save Point',
+      reason TEXT NOT NULL DEFAULT 'manual',
+      trigger_message_id INTEGER,
+      snapshot_data TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS active_shops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      merchant_name TEXT NOT NULL,
+      merchant_description TEXT NOT NULL DEFAULT '',
+      currency_code TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT 'Merchant Stock',
+      is_open INTEGER NOT NULL DEFAULT 1,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS shop_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL,
+      campaign_id INTEGER NOT NULL,
+      item_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      item_type TEXT NOT NULL DEFAULT 'gear',
+      quantity_per_purchase INTEGER NOT NULL DEFAULT 1,
+      stock INTEGER NOT NULL DEFAULT 1,
+      price_amount INTEGER NOT NULL DEFAULT 0,
+      price_currency_code TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Bring older databases forward safely. Railway volumes love keeping old schemas around like bad decisions.
   addColumnIfMissing("users", "stripe_billing_interval", "TEXT");
   addColumnIfMissing("users", "bonus_turns", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "onboarding_complete", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("users", "unlimited_turns", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
 
   addColumnIfMissing("campaigns", "is_archived", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "combat_style", "TEXT NOT NULL DEFAULT 'cinematic'");
@@ -197,13 +268,17 @@ export function runMigrations() {
   addColumnIfMissing("campaigns", "anime_world_mode", "TEXT NOT NULL DEFAULT 'inspired'");
   addColumnIfMissing("campaigns", "total_messages", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "last_played_at", "TEXT");
+  addColumnIfMissing("campaigns", "latest_snapshot_id", "INTEGER");
+  addColumnIfMissing("campaigns", "active_shop_id", "INTEGER");
 
   addColumnIfMissing("characters", "user_id", "INTEGER");
   addColumnIfMissing("characters", "temp_hp", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("characters", "speed", "INTEGER NOT NULL DEFAULT 30");
   addColumnIfMissing("characters", "attacks_per_round", "INTEGER NOT NULL DEFAULT 1");
 
+  addColumnIfMissing("messages", "metadata", "TEXT NOT NULL DEFAULT '{}'");
   addColumnIfMissing("items", "stat_mods", "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfMissing("items", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
 }
 
 // ── Storage interface ──────────────────────────────────────────────────────

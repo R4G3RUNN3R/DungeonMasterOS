@@ -34,7 +34,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-03-31.basil" });
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
 // ── WebSocket campaign registry ─────────────────────────────────────────────
@@ -1623,11 +1623,15 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
           if (subscribedCampaignId !== null) {
             campaignClients.get(subscribedCampaignId)?.delete(ws);
           }
-          subscribedCampaignId = data.campaignId;
-          if (!campaignClients.has(subscribedCampaignId)) {
-            campaignClients.set(subscribedCampaignId, new Set());
+          const nextCampaignId = Number(data.campaignId);
+          if (!Number.isInteger(nextCampaignId)) {
+            return;
           }
-          campaignClients.get(subscribedCampaignId)!.add(ws);
+          subscribedCampaignId = nextCampaignId;
+          if (!campaignClients.has(nextCampaignId)) {
+            campaignClients.set(nextCampaignId, new Set());
+          }
+          campaignClients.get(nextCampaignId)!.add(ws);
           if (data.userId) (ws as any)._userId = data.userId;
           ws.send(JSON.stringify({ type: "subscribed", campaignId: subscribedCampaignId }));
         }

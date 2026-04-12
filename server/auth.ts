@@ -41,7 +41,17 @@ export function signToken(userId: number): string {
 
 export function verifyToken(token: string): { sub: number } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { sub: number };
+    const payload = jwt.verify(token, JWT_SECRET);
+    const sub =
+      typeof payload === "string"
+        ? Number(payload)
+        : Number(payload?.sub);
+
+    if (!Number.isInteger(sub)) {
+      return null;
+    }
+
+    return { sub };
   } catch {
     return null;
   }

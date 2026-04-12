@@ -98,7 +98,7 @@ Now continue the story.
 export async function generateOpeningScene(
   campaign: Campaign,
   characters: Character[],
-  currencies: CampaignCurrency[],
+  currencies: CampaignCurrency[] = [],
 ): Promise<string> {
   const system = buildSystemPrompt(campaign, characters, currencies);
 
@@ -127,11 +127,11 @@ export async function generateDMResponse(
   history: Message[],
   playerAction: string,
   playerName: string,
-  currencies: CampaignCurrency[],
+  currencies: CampaignCurrency[] = [],
 ): Promise<string> {
   const system = buildSystemPrompt(campaign, characters, currencies);
 
-  const messages = history.map((m) => ({
+  const messages: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.senderType === "player" ? "user" : "assistant",
     content: `${m.sender}: ${m.content}`,
   }));

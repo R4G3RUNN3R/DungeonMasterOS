@@ -282,8 +282,8 @@ export const items = sqliteTable("items", {
 
   quantity: integer("quantity").notNull().default(1),
 
-  charges: integer("charges").default(null),
-  maxCharges: integer("max_charges").default(null),
+  charges: integer("charges"),
+  maxCharges: integer("max_charges"),
 
   identified: integer("identified", { mode: "boolean" }).notNull().default(true),
   consumable: integer("consumable", { mode: "boolean" }).notNull().default(false),
@@ -323,8 +323,8 @@ export const activeEffects = sqliteTable("active_effects", {
   isDebuff: integer("is_debuff", { mode: "boolean" }).notNull().default(false),
 
   durationType: text("duration_type").notNull().default("rounds"),
-  totalDuration: integer("total_duration").default(null),
-  roundsRemaining: integer("rounds_remaining").default(null),
+  totalDuration: integer("total_duration"),
+  roundsRemaining: integer("rounds_remaining"),
 
   concentration: integer("concentration", { mode: "boolean" }).notNull().default(false),
   statMods: text("stat_mods").notNull().default("[]"),
