@@ -9,6 +9,7 @@ import {
   playerActionSchema,
   registerSchema,
   loginSchema,
+  dungeonMasterTargetSchema,
 } from "@shared/schema";
 import {
   hashPassword,
@@ -17,10 +18,13 @@ import {
   clearSessionCookie,
   attachUser,
   requireAuth,
+  requireDungeonMaster,
   requireCanPlay,
   checkCampaignLimit,
   checkTurnLimit,
   incrementTurnCount,
+  grantDungeonMasterAccess,
+  revokeDungeonMasterAccess,
   toPublicUser,
 } from "./auth";
 import { randomBytes } from "crypto";
@@ -341,6 +345,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/auth/me", requireAuth, (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
+  });
+
+  app.get("/api/admin/me", requireDungeonMaster, (req, res) => {
+    return res.json({ user: toPublicUser(req.user!) });
+  });
+
+  app.post("/api/admin/grant-dungeon-master", requireDungeonMaster, (req, res) => {
+    const parsed = dungeonMasterTargetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    const target =
+      parsed.data.email
+        ? storage.getUserByEmail(parsed.data.email)
+        : storage.getUserByUsername(parsed.data.username!);
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const updated = grantDungeonMasterAccess(target.id);
+    if (!updated) {
+      return res.status(500).json({ message: "Failed to grant DungeonMaster access." });
+    }
+
+    return res.json({ user: toPublicUser(updated) });
+  });
+
+  app.post("/api/admin/revoke-dungeon-master", requireDungeonMaster, (req, res) => {
+    const parsed = dungeonMasterTargetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    const target =
+      parsed.data.email
+        ? storage.getUserByEmail(parsed.data.email)
+        : storage.getUserByUsername(parsed.data.username!);
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (target.id === req.user!.id) {
+      return res.status(400).json({ message: "You cannot revoke your own DungeonMaster access." });
+    }
+
+    const updated = revokeDungeonMasterAccess(target.id);
+    if (!updated) {
+      return res.status(500).json({ message: "Failed to revoke DungeonMaster access." });
+    }
+
+    return res.json({ user: toPublicUser(updated) });
   });
 
   app.post("/api/auth/complete-onboarding", requireAuth, (req, res) => {

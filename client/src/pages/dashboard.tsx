@@ -287,6 +287,11 @@ export default function Dashboard() {
                 </div>
                 <span className="text-xs font-medium text-foreground">{user.username}</span>
                 <Badge variant="secondary" className="text-xs capitalize">{billingData?.tier || user.tier}</Badge>
+                {(user.role === "dungeon_master" || user.isAdmin) && (
+                  <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400">
+                    DungeonMaster
+                  </Badge>
+                )}
               </div>
             )}
             <Link href="/billing">

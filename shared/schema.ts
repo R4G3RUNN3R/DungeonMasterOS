@@ -2,6 +2,9 @@ import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const userRoleSchema = z.enum(["player", "dungeon_master"]);
+export type UserRole = z.infer<typeof userRoleSchema>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11,6 +14,10 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+
+  // Account role
+  role: text("role").notNull().default("player"),
+  // player | dungeon_master
 
   // Subscription
   tier: text("tier").notNull().default("free"),
@@ -578,6 +585,15 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const dungeonMasterTargetSchema = z
+  .object({
+    email: z.string().email("Invalid email address").optional(),
+    username: z.string().min(1, "Username is required").max(30).optional(),
+  })
+  .refine((value) => !!value.email || !!value.username, {
+    message: "Email or username is required.",
+  });
+
 export const createShopItemSchema = z.object({
   itemKey: z.string().min(1).max(100),
   name: z.string().min(1).max(100),
@@ -623,3 +639,4 @@ export type CurrencyDefinitionInput = z.infer<typeof currencyDefinitionSchema>;
 export type CreateShopItemInput = z.infer<typeof createShopItemSchema>;
 export type BuyShopItemInput = z.infer<typeof buyShopItemSchema>;
 export type AdjustCurrencyInput = z.infer<typeof adjustCurrencySchema>;
+export type DungeonMasterTargetInput = z.infer<typeof dungeonMasterTargetSchema>;

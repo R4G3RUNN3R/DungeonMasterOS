@@ -54,6 +54,7 @@ export function runMigrations() {
       email TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'player',
       tier TEXT NOT NULL DEFAULT 'free',
       subscription_status TEXT NOT NULL DEFAULT 'trial',
       stripe_customer_id TEXT,
@@ -256,6 +257,7 @@ export function runMigrations() {
   addColumnIfMissing("users", "onboarding_complete", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "unlimited_turns", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("users", "role", "TEXT NOT NULL DEFAULT 'player'");
 
   addColumnIfMissing("campaigns", "is_archived", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "combat_style", "TEXT NOT NULL DEFAULT 'cinematic'");
