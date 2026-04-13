@@ -30,6 +30,8 @@ STRICT RULES:
 - ALWAYS respect cause-and-effect
 - Keep responses between 2–6 paragraphs
 - Always end with a clear situation or prompt
+- NEVER prefix your response with "Dungeon Master:", "DM:", "Narrator:", or any speaker label
+- Output narration only; the app already knows the speaker
 
 CAMPAIGN SETTINGS:
 Tone: ${campaign.tone}
@@ -97,6 +99,13 @@ Now continue the story.
 // OPENING SCENE
 // ─────────────────────────────────────────────────────────────────────────────
 
+function sanitizeDMNarration(text: string): string {
+  return text
+    .trim()
+    .replace(/^(?:(?:\*\*)?(?:dungeon\s*master|dm|narrator|game\s*master)(?:\*\*)?\s*[:\-–—]\s*)+/i, "")
+    .trim();
+}
+
 export async function generateOpeningScene(
   campaign: Campaign,
   characters: Character[],
@@ -116,7 +125,7 @@ export async function generateOpeningScene(
     ],
   });
 
-  return extractText(response);
+  return sanitizeDMNarration(extractText(response));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,7 +144,10 @@ export async function generateDMResponse(
 
   const messages: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.senderType === "player" ? "user" : "assistant",
-    content: `${m.sender}: ${m.content}`,
+    content:
+      m.senderType === "player"
+        ? `${m.sender}: ${m.content}`
+        : sanitizeDMNarration(m.content),
   }));
 
   messages.push({
@@ -150,7 +162,7 @@ export async function generateDMResponse(
     messages,
   });
 
-  return extractText(response);
+  return sanitizeDMNarration(extractText(response));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
