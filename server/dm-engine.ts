@@ -9,7 +9,102 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
+const DEFAULT_ANTHROPIC_FALLBACK_MODELS = [
+  "claude-sonnet-4-5-20250929",
+  "claude-haiku-4-5-20251001",
+];
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+const ANTHROPIC_FALLBACK_MODELS = (
+  process.env.ANTHROPIC_FALLBACK_MODELS || DEFAULT_ANTHROPIC_FALLBACK_MODELS.join(",")
+)
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
+const ANTHROPIC_RETRY_ATTEMPTS = Number(process.env.ANTHROPIC_RETRY_ATTEMPTS || 3);
+const ANTHROPIC_RETRY_BASE_MS = Number(process.env.ANTHROPIC_RETRY_BASE_MS || 750);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getHeaderValue(headers: unknown, name: string): string | undefined {
+  if (!headers) return undefined;
+  if (typeof (headers as any).get === "function") {
+    return (headers as any).get(name) ?? undefined;
+  }
+  if (typeof headers === "object") {
+    const exact = (headers as Record<string, unknown>)[name];
+    if (typeof exact === "string") return exact;
+    const lower = (headers as Record<string, unknown>)[name.toLowerCase()];
+    if (typeof lower === "string") return lower;
+  }
+  return undefined;
+}
+
+function isRetryableAnthropicError(error: unknown): boolean {
+  const status = Number((error as any)?.status);
+  const shouldRetry = getHeaderValue((error as any)?.headers, "x-should-retry");
+  const message = String((error as any)?.message || "");
+
+  return (
+    shouldRetry === "true" ||
+    [408, 409, 429, 500, 502, 503, 504, 529].includes(status) ||
+    /overloaded|temporar|timeout|timed out|rate limit|econnreset|socket hang up/i.test(message)
+  );
+}
+
+async function createAnthropicMessageWithRetry(
+  params: Parameters<typeof anthropic.messages.create>[0],
+  purpose: string,
+) {
+  let lastError: unknown;
+  const requestedModel = String((params as any).model || ANTHROPIC_MODEL);
+  const modelCandidates = [requestedModel, ...ANTHROPIC_FALLBACK_MODELS.filter((model) => model !== requestedModel)];
+
+  for (let modelIndex = 0; modelIndex < modelCandidates.length; modelIndex += 1) {
+    const model = modelCandidates[modelIndex];
+
+    for (let attempt = 1; attempt <= ANTHROPIC_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        return await anthropic.messages.create({
+          ...params,
+          model,
+        });
+      } catch (error) {
+        lastError = error;
+
+        if (!isRetryableAnthropicError(error)) {
+          throw error;
+        }
+
+        if (attempt < ANTHROPIC_RETRY_ATTEMPTS) {
+          const delayMs =
+            ANTHROPIC_RETRY_BASE_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 250);
+          console.warn(
+            `Anthropic ${purpose} retry ${attempt}/${ANTHROPIC_RETRY_ATTEMPTS} on ${model} after ${delayMs}ms`,
+            error,
+          );
+          await sleep(delayMs);
+          continue;
+        }
+
+        const nextModel = modelCandidates[modelIndex + 1];
+        if (nextModel) {
+          console.warn(
+            `Anthropic ${purpose} exhausted retries on ${model}; failing over to ${nextModel}`,
+            error,
+          );
+          break;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM PROMPT BUILDER
@@ -113,7 +208,7 @@ export async function generateOpeningScene(
 ): Promise<string> {
   const system = buildSystemPrompt(campaign, characters, currencies);
 
-  const response = await anthropic.messages.create({
+  const response = await createAnthropicMessageWithRetry({
     model: ANTHROPIC_MODEL,
     max_tokens: 1500,
     system,
@@ -123,7 +218,7 @@ export async function generateOpeningScene(
         content: "Begin the adventure. Introduce the setting and situation.",
       },
     ],
-  });
+  }, "opening scene");
 
   return sanitizeDMNarration(extractText(response));
 }
@@ -155,12 +250,12 @@ export async function generateDMResponse(
     content: `${playerName}: ${playerAction}`,
   });
 
-  const response = await anthropic.messages.create({
+  const response = await createAnthropicMessageWithRetry({
     model: ANTHROPIC_MODEL,
     max_tokens: 1500,
     system,
     messages,
-  });
+  }, "response generation");
 
   return sanitizeDMNarration(extractText(response));
 }
