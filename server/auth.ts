@@ -22,8 +22,21 @@ import {
 } from "../shared/tiers";
 import type { User, PublicUser, UserRole } from "../shared/schema";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dmos-dev-secret-change-in-production";
+const DEV_JWT_SECRET = "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be set in production");
+  }
+
+  return DEV_JWT_SECRET;
+}
 
 function isDungeonMasterRole(role: string | null | undefined): role is UserRole {
   return role === "dungeon_master";
@@ -104,12 +117,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 
 // ── JWT utils ──────────────────────────────────────────────────────────────
 export function signToken(userId: number): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ sub: userId }, getJwtSecret(), { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): { sub: number } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, getJwtSecret());
     const sub =
       typeof payload === "string"
         ? Number(payload)
