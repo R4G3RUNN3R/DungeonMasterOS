@@ -5,6 +5,9 @@ import {
   type Campaign,
   type InsertCampaign,
   campaigns,
+  type CampaignCurrency,
+  type InsertCampaignCurrency,
+  campaignCurrencies,
   type Character,
   type InsertCharacter,
   characters,
@@ -17,6 +20,10 @@ import {
   type ActiveEffect,
   type InsertActiveEffect,
   activeEffects,
+  type ActiveShop,
+  activeShops,
+  type ShopItem,
+  shopItems,
   type UserAchievement,
   type InsertUserAchievement,
   userAchievements,
@@ -25,7 +32,7 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import path from "path";
 
 const dbPath = process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db");
@@ -121,6 +128,9 @@ export function runMigrations() {
       level INTEGER NOT NULL DEFAULT 1,
       hp INTEGER NOT NULL DEFAULT 20,
       max_hp INTEGER NOT NULL DEFAULT 20,
+      temp_hp INTEGER NOT NULL DEFAULT 0,
+      speed INTEGER NOT NULL DEFAULT 30,
+      attacks_per_round INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'alive',
       inventory TEXT NOT NULL DEFAULT '[]',
       character_data TEXT NOT NULL DEFAULT '{}',
@@ -308,6 +318,10 @@ export interface IStorage {
   updateWorldState(campaignId: number, worldState: string): void;
   updateCampaign(campaignId: number, updates: Partial<Campaign>): void;
   incrementCampaignMessages(campaignId: number): void;
+  getCampaignCurrencies(campaignId: number): CampaignCurrency[];
+  createCampaignCurrency(currency: InsertCampaignCurrency): CampaignCurrency;
+  getActiveShopByCampaign(campaignId: number): ActiveShop | undefined;
+  getShopItemsByShop(shopId: number): ShopItem[];
 
   // Characters
   getCharacter(id: number): Character | undefined;
@@ -426,6 +440,33 @@ export class DatabaseStorage implements IStorage {
     sqlite
       .prepare("UPDATE campaigns SET total_messages = total_messages + 1, last_played_at = ? WHERE id = ?")
       .run(new Date().toISOString(), campaignId);
+  }
+  getCampaignCurrencies(campaignId: number): CampaignCurrency[] {
+    return db
+      .select()
+      .from(campaignCurrencies)
+      .where(eq(campaignCurrencies.campaignId, campaignId))
+      .orderBy(desc(campaignCurrencies.isPrimary), campaignCurrencies.id)
+      .all();
+  }
+  createCampaignCurrency(currency: InsertCampaignCurrency): CampaignCurrency {
+    return db.insert(campaignCurrencies).values(currency).returning().get();
+  }
+  getActiveShopByCampaign(campaignId: number): ActiveShop | undefined {
+    return db
+      .select()
+      .from(activeShops)
+      .where(and(eq(activeShops.campaignId, campaignId), eq(activeShops.isOpen, true)))
+      .orderBy(desc(activeShops.updatedAt), desc(activeShops.id))
+      .get();
+  }
+  getShopItemsByShop(shopId: number): ShopItem[] {
+    return db
+      .select()
+      .from(shopItems)
+      .where(eq(shopItems.shopId, shopId))
+      .orderBy(shopItems.name)
+      .all();
   }
 
   // Characters
