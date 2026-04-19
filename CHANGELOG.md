@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-04-18
+- Routes: applied the uploaded `server/routes.ts` visitor identity patch shape directly to `main` while preserving the rest of the newer route file.
+- Behavior: logged-in players resolve to `user-{id}` before any `x-visitor-id` or anonymous fallback is used.
+- Expected impact: stable character ownership and campaign identity for signed-in users, which supports Enter the World and character import flows.
+- Risk: low. Narrow route-level change only.
 - Deployment: added a fresh commit to force Railway to redeploy current `main`.
 - Auth/routes: confirmed `server/routes.ts` already uses stable logged-in visitor identity (`user-{id}`) before falling back to `x-visitor-id` or anonymous IDs.
 - Expected impact: logged-in users keep a stable character/campaign identity, which unblocks Enter the World and character import flows after redeploy.
