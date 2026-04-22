@@ -102,6 +102,67 @@ Whatever happens next, your action has pushed the moment forward.
 **What do you do now?**`;
 }
 
+function getAIServiceIssue(error: unknown): { title: string; detail: string } | null {
+  const status = Number((error as any)?.status);
+  const message = String((error as any)?.message || "");
+
+  if (/credit balance is too low|purchase credits|plans & billing/i.test(message)) {
+    return {
+      title: "Anthropic credits exhausted",
+      detail:
+        "The live server reached Anthropic, but the configured Anthropic account has no remaining API credits.",
+    };
+  }
+
+  if (status === 401 || status === 403 || /invalid x-api-key|authentication|unauthorized|forbidden/i.test(message)) {
+    return {
+      title: "Anthropic authentication failed",
+      detail:
+        "The live server could not authenticate with Anthropic using the configured API credentials.",
+    };
+  }
+
+  if (/model: .*not_found|invalid_request_error/i.test(message) && /model/i.test(message)) {
+    return {
+      title: "Anthropic model configuration failed",
+      detail:
+        "The live server is configured to use an Anthropic model that is unavailable to this account or no longer valid.",
+    };
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return {
+      title: "Anthropic API key missing",
+      detail: "The live server does not currently have an Anthropic API key configured.",
+    };
+  }
+
+  return null;
+}
+
+function buildAIUnavailableSystemMessage(
+  context: "start" | "action" | "item",
+  issue?: { title: string; detail: string } | null,
+): string {
+  const contextLine =
+    context === "start"
+      ? "The opening scene could not be generated."
+      : context === "item"
+        ? "The item interaction could not be narrated."
+        : "Your action was saved, but no new narration was generated.";
+
+  const issueTitle = issue?.title || "Dungeon Master AI unavailable";
+  const issueDetail =
+    issue?.detail ||
+    "The live server cannot reach the Anthropic-powered Dungeon Master right now.";
+
+  return `${issueTitle}: ${contextLine}
+
+${issueDetail}
+
+Top up the Anthropic account credits or replace the Anthropic API key, then try again. This is a real service-status message, not part of the story.`;
+}
+
 // ── AI extractors ───────────────────────────────────────────────────────────
 async function extractAbilitiesFromNarration(
   narration: string,
@@ -1287,14 +1348,15 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(item.campaignId, { type: "dm_thinking", thinking: false });
       console.error("DM item-use error:", err);
 
-      const fallback = storage.createMessage({
+      const aiIssue = getAIServiceIssue(err);
+      const message = storage.createMessage({
         campaignId: item.campaignId,
-        sender: "Dungeon Master",
-        senderType: "dm",
-        content: buildFallbackActionResponse(character.name, useAction),
-        messageType: "narration",
+        sender: aiIssue ? "System" : "Dungeon Master",
+        senderType: aiIssue ? "system" : "dm",
+        content: aiIssue ? buildAIUnavailableSystemMessage("item", aiIssue) : buildFallbackActionResponse(character.name, useAction),
+        messageType: aiIssue ? "system" : "narration",
       });
-      broadcastToCampaign(item.campaignId, { type: "message", message: fallback });
+      broadcastToCampaign(item.campaignId, { type: "message", message });
     }
 
     return res.json({ used: displayName, remaining });
@@ -1584,14 +1646,13 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("DM Engine error:", error);
 
-      // Never leave the player hanging with nothing.
-      const fallbackContent = buildFallbackActionResponse(character.name, content);
+      const aiIssue = getAIServiceIssue(error);
       const dmMsg = storage.createMessage({
         campaignId,
-        sender: "Dungeon Master",
-        senderType: "dm",
-        content: fallbackContent,
-        messageType: "narration",
+        sender: aiIssue ? "System" : "Dungeon Master",
+        senderType: aiIssue ? "system" : "dm",
+        content: aiIssue ? buildAIUnavailableSystemMessage("action", aiIssue) : buildFallbackActionResponse(character.name, content),
+        messageType: aiIssue ? "system" : "narration",
       });
 
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
@@ -1599,7 +1660,8 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       return res.json({
         playerMessage: playerMsg,
         dmMessage: dmMsg,
-        fallback: true,
+        fallback: !aiIssue,
+        aiUnavailable: !!aiIssue,
       });
     }
   });
@@ -1643,19 +1705,21 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("Opening scene error:", error);
 
-      const fallbackContent = buildFallbackOpeningScene(campaign.name, chars);
+      const aiIssue = getAIServiceIssue(error);
       const dmMsg = storage.createMessage({
         campaignId,
-        sender: "Dungeon Master",
-        senderType: "dm",
-        content: fallbackContent,
-        messageType: "narration",
+        sender: aiIssue ? "System" : "Dungeon Master",
+        senderType: aiIssue ? "system" : "dm",
+        content: aiIssue ? buildAIUnavailableSystemMessage("start", aiIssue) : buildFallbackOpeningScene(campaign.name, chars),
+        messageType: aiIssue ? "system" : "narration",
       });
 
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
-      broadcastToCampaign(campaignId, { type: "campaign_started" });
+      if (!aiIssue) {
+        broadcastToCampaign(campaignId, { type: "campaign_started" });
+      }
 
-      return res.json({ message: dmMsg, fallback: true });
+      return res.json({ message: dmMsg, fallback: !aiIssue, aiUnavailable: !!aiIssue });
     }
   });
 
