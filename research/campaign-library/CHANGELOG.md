@@ -1,5 +1,32 @@
 # Campaign Research Library Changelog
 
+## 2026-08-17 - Loot discovery gate and map-popup prototype
+
+### Loot/reward policy
+- Added central `loot-policy-v1.md`: every built-in campaign must contain meaningful tangible discovery rewards in addition to story, monsters and traps.
+- Added machine-readable `loot-profile.json` schema with campaign-scale reward-density minimums, source-loot preservation, supplemental-loot provenance, rules-adapter requirements and anti-farm persistence rules.
+- Added CI enforcement: every v2 campaign at `qa` or `approved` requires a loot profile; approved campaigns must have a verified passing loot gate with no blockers.
+- Added retroactive loot profiles for all four currently approved campaigns and the three Basic Fantasy release-gated campaigns.
+- The approved and Basic Fantasy QA campaigns all pass without generic extra drops because their sources already contain sufficient treasure/items.
+- `The Old Blood` may use source-authorized/native Shadowdark ordinary treasure procedures in Ruins/Sewers/crypts.
+- `Merilla's Magic Tower` may resolve the source-authorized unspecified minor-magic rescue reward through a compatible native adapter/compendium definition; older Release 3 random-container magic remains forbidden.
+- `Leviathan` now has an explicit loot blocker until its authoritative two-page PDF is extracted; no station salvage is invented as source canon.
+- Added `_index/loot-coverage-dashboard.md` for at-a-glance reward coverage.
+
+### Master item compendium coordination
+- Confirmed draft PR `feature/master-item-compendium` provides `definitionKey`, ruleset/edition, rarity/category, mechanics/effects and provenance fields plus a large first-party catalogue.
+- Loot policy explicitly forbids treating the current 5e-heavy compendium as a universal cross-system random table.
+- Source/native definitions and approved rules adapters take priority before generic compendium selection.
+
+### Map popup prototype
+- Added `_templates/map-popup-prototype.md`.
+- Existing Radix Dialog UI and campaign-header controls make an optional popup map a good technical fit without permanently shrinking narration.
+- Player maps must be spoiler-safe and rights-safe: no raw GM keys, secret doors, hidden treasure or unverified source artwork.
+- First public prototype should use a DMOS schematic/redraw with discovery-based reveal rather than blindly redistributing a printed source map.
+
+### Integration impact
+Research-only branch. No production runtime, Claude VPS inventory work, master-compendium PR or `main` code was overwritten by this change.
+
 ## 2026-08-17 - Central approval ledger reconciliation
 
 ### Approval state
