@@ -16,6 +16,7 @@ The current story graph and import template use Release 21 rather than the older
 - Current Level 2 Platemail of Life Protection +3 with 6 charges: PASS.
 - Current Level 4 two Pipe Beasts, not Release 3 Blast Spores: PASS.
 - Current Sword of Smiting / Life Protection / Ring of Wonder mechanics separated into `release21-mechanics.md`: PASS.
+- `dmos-template.json` v2 machine/schema validation through Campaign Library CI: PASS.
 
 ## Rights/release checks
 - AA1 Release 21 OGL v1.0a/Open Game Content designation recorded: PASS at research level.
@@ -76,8 +77,7 @@ PASS. The source does not say. DMOS must answer that the characters do not yet k
 - Cross-system Star Wars conversion report supports separating story graph from mechanical conversion: recorded, not treated as official rules support.
 
 ## Remaining blockers before `APPROVED`
-1. **Machine schema validation** of `dmos-template.json` when code execution recovers.
-2. **Direct authoritative visual-map inspection** or an explicit release decision resolving/annotating the reported staircase text/map discrepancy.
-3. **Production OGL package validation** with complete applicable licence/Copyright Notice payload.
+1. **Direct authoritative visual-map inspection** or an explicit release decision resolving/annotating the reported staircase text/map discrepancy.
+2. **Production OGL package validation** with complete applicable licence/Copyright Notice payload.
 
-Until all three are cleared, status remains `qa` even though story/canon/adversarial QA is complete.
+Machine validation is complete. Status remains `qa` until the two source/release gates above are cleared.
