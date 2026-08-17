@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "loot-policy-v1",
+  "campaignId": "merillas-magic-tower",
+  "campaignScale": "short",
+  "nativeRuleset": "Basic Fantasy Role-Playing Game",
+  "status": "verified",
+  "coverage": {
+    "sourceLootPresent": true,
+    "sourceLootPreserved": true,
+    "tangibleRewardBeats": 4,
+    "usefulRewardBeats": 4,
+    "signatureRewardBeats": 3,
+    "sourceEvidence": ["items-rewards.md", "release21-mechanics.md", "dmos-template.json"],
+    "examples": ["Ring of Wonder inside Bronze Golem", "Level 2 treasury and Platemail of Life Protection +3", "Level 5 Sword of Smiting +1 and personal valuables", "rescue reward includes one GM-selected minor magic item"]
+  },
+  "supplemental": {
+    "enabled": true,
+    "mode": "source-authorized-random",
+    "provenance": "mixed",
+    "rulesAdapterRequired": true,
+    "compendiumUse": "only-after-native-adapter",
+    "antiFarmPersistent": true,
+    "rerollOnReload": false,
+    "artifactsRandomlyAllowed": false,
+    "notes": ["Supplemental selection is limited to the source-authorized rescue reward whose exact minor magic item is left to the GM.", "Do not repopulate ground-floor containers using superseded Release 3 random magic percentages."]
+  },
+  "placementPolicy": {
+    "intelligentEnemiesMayCarryLoot": true,
+    "ordinaryBeastsHavePocketLoot": false,
+    "undeadMayRetainPossessions": true,
+    "constructsMayYieldSalvage": true,
+    "hiddenCachesAllowed": true,
+    "namedEnemiesPreferDistinctivePossession": true
+  },
+  "approval": {"passesLootGate": true, "blockers": []}
+}
