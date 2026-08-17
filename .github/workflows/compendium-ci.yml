@@ -1,6 +1,8 @@
 name: Compendium CI
 
 on:
+  push:
+    branches: [feature/master-item-compendium]
   pull_request:
     branches: [main]
   workflow_dispatch:
