@@ -15,6 +15,8 @@ import Pricing from "@/pages/pricing";
 import HowItWorks from "@/pages/how-it-works";
 import Billing from "@/pages/billing";
 import Account from "@/pages/account";
+import CompendiumPage from "@/pages/compendium";
+import CompendiumItemPage from "@/pages/compendium-item";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -30,6 +32,8 @@ function AppRouter() {
       <Route path="/" component={Landing} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/compendium/items/:definitionKey" component={CompendiumItemPage} />
+      <Route path="/compendium" component={CompendiumPage} />
 
       {/* Auth */}
       <Route path="/login">{() => <AuthPage defaultTab="login" />}</Route>
