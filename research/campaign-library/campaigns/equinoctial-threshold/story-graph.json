@@ -1,0 +1,115 @@
+{
+  "id": "equinoctial-threshold",
+  "title": "The Equinoctial Threshold",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "Cairn 2E",
+  "dmosDndConversion": { "status": "pending" },
+  "campaignForm": "nonlinear-site-with-competing-objectives",
+  "hardCanon": [
+    "The Threshold is one of eight Fae portals and is hidden under a forest hill.",
+    "Boggart magic opens the entrance briefly at night and seals visitors inside during the day.",
+    "Laidre the Duskkiller cannot leave the Threshold because of a curse following Ste. Brumaire's death.",
+    "The goblin Night Market does not trade in ordinary coin and can charge currencies such as luck, faces, time and talents.",
+    "The party's selected motive does not erase the other factions, objects or possible goals."
+  ],
+  "timeState": {
+    "phase": "pending-source-start-time",
+    "entranceOpen": "derived-from-source-night-window",
+    "daylightEscapeAllowed": false
+  },
+  "objectiveOptions": [
+    {
+      "id": "market-purchase",
+      "label": "Acquire a peculiar item from the Night Market",
+      "sourceSupported": true,
+      "completionRules": "pending-pdf"
+    },
+    {
+      "id": "gloomblade-heist",
+      "label": "Plunder Laidre's vault for the rumoured Gloomblade",
+      "sourceSupported": true,
+      "rumourDependent": true,
+      "completionRules": "pending-pdf"
+    },
+    {
+      "id": "avenge-brumaire",
+      "label": "Avenge Ste. Brumaire on behalf of the Church",
+      "sourceSupported": true,
+      "completionRules": "pending-pdf"
+    },
+    {
+      "id": "fae-passage",
+      "label": "Find passage from the mortal world to the Fae",
+      "sourceSupported": true,
+      "completionRules": "pending-pdf"
+    },
+    {
+      "id": "destroy-boundary-stone",
+      "label": "Destroy the Boundary Stone and send away the Threshold/Night Market",
+      "sourceSupported": true,
+      "completionRules": "pending-pdf"
+    }
+  ],
+  "selectedPartyObjectives": [],
+  "factionState": {
+    "laidre": { "disposition": "pending", "curseActive": true, "location": "holdfast-heart-pending" },
+    "satyrBullies": { "disposition": "pending", "employment": "night-market-related" },
+    "nightMarket": { "disposition": "transactional-pending-details" },
+    "church": { "disposition": "pending" },
+    "boggarts": { "disposition": "pending", "entranceMagicActive": true }
+  },
+  "strangeCurrencyLedger": {
+    "luck": [],
+    "faces": [],
+    "time": [],
+    "talents": [],
+    "otherSourceCurrencies": []
+  },
+  "rumours": [
+    {
+      "id": "gloomblade-in-vault",
+      "claim": "The legendary Gloomblade is in Laidre's vault.",
+      "truth": "pending-pdf",
+      "aiRule": "Present as rumour until source evidence confirms or disproves it."
+    }
+  ],
+  "scenes": [
+    {
+      "id": "discover-threshold-door",
+      "title": "The Door Beneath the Ancient Tree",
+      "location": "forest-hill-entrance",
+      "status": "source-supported-scaffold",
+      "requiredFacts": [
+        "The entrance is a stone door among ancient roots in a forest hill.",
+        "It opens only during a brief nightly window through Boggart magic.",
+        "Entering may leave the party sealed inside during daylight."
+      ],
+      "suggestedChoices": [
+        { "id": "wait-night", "label": "Wait for the nightly opening window", "classification": "source-supported" },
+        { "id": "inspect-door", "label": "Inspect the stone door and surrounding roots", "classification": "free-text-compatible investigation" },
+        { "id": "prepare-entry", "label": "Prepare supplies and a plan before entering", "classification": "free-text-compatible preparation" },
+        { "id": "abandon", "label": "Leave and return another night", "classification": "plausible source-compatible choice" }
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayHandwaveDoorOpenOutsideSourceWindow": false,
+        "mayInventPermanentSideEntrance": false,
+        "adjudicationRule": "Creative interaction with the door is allowed, but source-defined Boggart access rules cannot be erased merely for convenience."
+      }
+    }
+  ],
+  "blockingUnknowns": [
+    "v1.3 keyed map and puzzles",
+    "exact entrance timing and time progression",
+    "Night Market merchants/inventory/prices",
+    "strange-currency mechanical consequences",
+    "Laidre/Satyr current states and resolutions",
+    "Gloomblade truth and mechanics",
+    "Boundary Stone mechanics",
+    "Fae passage rules",
+    "source endings",
+    "D&D 5e level conversion"
+  ],
+  "endings": []
+}
