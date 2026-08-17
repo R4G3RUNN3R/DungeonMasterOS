@@ -1,0 +1,95 @@
+{
+  "id": "castle-inspection",
+  "title": "Castle Inspection",
+  "researchStatus": "partial-source-extraction",
+  "sourceVersion": "1.2",
+  "sourceRuleset": "system-neutral",
+  "dmosLevelConversion": {
+    "status": "pending",
+    "reason": "The source specifies no level. Full crisis extraction and D&D conversion QA are required before a recommended level is published."
+  },
+  "globalState": {
+    "inspectionStarted": false,
+    "inspectorAwareness": "unknown-unmodelled",
+    "castleCrisisState": "active",
+    "resolvedCrisisIds": [],
+    "failedCrisisIds": []
+  },
+  "hardCanon": [
+    "The player characters are undead heroes summoned by the lich Radagast.",
+    "Imperial Insurance Inspector Ignatius the Intransigent arrives for an unannounced inspection.",
+    "Ignatius searches for insurance violations that can increase Radagast's policy cost.",
+    "Multiple castle crises are already active when the adventure begins.",
+    "The AI DM must not invent permanent castle geography until the source map is fully extracted."
+  ],
+  "knownCrisisNodes": [
+    {
+      "id": "crisis-fire",
+      "label": "Castle fire",
+      "confirmedFacts": ["The castle is already on fire.", "A source section named 'I am on Fire' exists.", "A flame elemental can become a phoenix roaming the castle."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-library",
+      "label": "Haunted library / grave-related crisis",
+      "confirmedFacts": ["A haunted library exists.", "Librarians are referenced in a section beginning 'A matter of grave...'."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-cellar",
+      "label": "Crying monster babies",
+      "confirmedFacts": ["Crying monster babies are in the cellar."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-goats",
+      "label": "Free-roaming goats",
+      "confirmedFacts": ["Free-roaming goats are present.", "A dedicated source section beginning 'The Goats...' exists."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-rituals",
+      "label": "Unraveling rituals",
+      "confirmedFacts": ["The creator page states that rituals are unraveling."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-earthquake",
+      "label": "But I don't want...",
+      "confirmedFacts": ["The source section references earthquakes and debris."],
+      "sourceResolution": "pending-full-pdf"
+    },
+    {
+      "id": "crisis-hounds",
+      "label": "The Hounds of Equality",
+      "confirmedFacts": ["The source section references werewolves."],
+      "sourceResolution": "pending-full-pdf"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "opening-radagast-study",
+      "title": "Radagast's Emergency Briefing",
+      "location": "radagast-study",
+      "status": "source-supported",
+      "requiredFacts": ["Radagast is overwhelmed by paperwork.", "Ignatius has arrived unexpectedly.", "The previous inspection was financially disastrous.", "Butler Bones has been assigned to help.", "Multiple crises are active throughout the castle."],
+      "suggestedChoices": [
+        {"id": "choice-fire", "label": "Head toward the fire", "classification": "DMOS navigation suggestion based on a confirmed source crisis", "outcome": "Enter crisis-fire once its source scene is fully extracted."},
+        {"id": "choice-cellar", "label": "Check the cellar and the crying creatures", "classification": "DMOS navigation suggestion based on a confirmed source crisis", "outcome": "Enter crisis-cellar once its source scene is fully extracted."},
+        {"id": "choice-library", "label": "Investigate the haunted library", "classification": "DMOS navigation suggestion based on a confirmed source crisis", "outcome": "Enter crisis-library once its source scene is fully extracted."},
+        {"id": "choice-goats", "label": "Deal with the loose goats", "classification": "DMOS navigation suggestion based on a confirmed source crisis", "outcome": "Enter crisis-goats once its source scene is fully extracted."},
+        {"id": "choice-inspector", "label": "Intercept or delay Ignatius", "classification": "DMOS free-form/sensible-action suggestion; exact source handling pending", "outcome": "Adjudicate only as temporary delay/deception without inventing permanent inspector mechanics."}
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayCreateMinorDescriptiveDetails": true,
+        "mayCreatePermanentLocations": false,
+        "mayCreateMajorNPCs": false,
+        "adjudicationRule": "Resolve plausible player actions within the confirmed premise. Do not resolve a crisis with invented source mechanics, reveal unextracted secrets, or assert permanent map facts."
+      }
+    }
+  ],
+  "endings": [],
+  "blockingUnknowns": ["Complete v1.2 map and keyed content", "Full crisis escalation rules", "Inspector route/detection/violation mechanics", "All source-defined solutions and outcomes", "Success/failure/end-state rules", "D&D conversion level and party-size recommendation"]
+}
