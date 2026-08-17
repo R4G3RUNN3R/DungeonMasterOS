@@ -1,0 +1,58 @@
+{
+  "id": "under-the-rusted-sun",
+  "title": "Under the Rusted Sun",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "system-agnostic OSR",
+  "dmosDndConversion": { "status": "pending" },
+  "hardCanon": [
+    "The Temple of Karsh has long been abandoned.",
+    "Metal weapons and armour are disappearing from a nearby village.",
+    "Villagers hear chanting from the temple at night.",
+    "A source prayer asks Karsh to turn iron to rust and invokes stone against those who keep weapons shining.",
+    "The AI DM may not invent the identity of the chanters, thief, Karsh or Old Veemor before source extraction."
+  ],
+  "scenes": [
+    {
+      "id": "village-hook",
+      "title": "Missing Metal and Night Chanting",
+      "location": "nearby-village",
+      "status": "public-hook-only",
+      "requiredFacts": [
+        "Metal weapons and armour have disappeared.",
+        "The old Temple of Karsh is nearby.",
+        "Villagers report chanting there at night."
+      ],
+      "suggestedChoices": [
+        { "id": "question-villagers", "label": "Question villagers about the disappearances and chanting" },
+        { "id": "inspect-thefts", "label": "Inspect where the missing weapons and armour were taken from" },
+        { "id": "observe-temple", "label": "Watch the temple from a distance after dark" },
+        { "id": "approach-temple", "label": "Approach the abandoned Temple of Karsh" }
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayInventVillagerRumours": true,
+        "rumoursMustRemainUnverified": true,
+        "mayIdentifyCulprit": false,
+        "mayDefineKarsh": false,
+        "adjudicationRule": "Allow investigation and preparation. Do not invent source clues, culprit identity, permanent temple geography, supernatural rules or final explanations."
+      }
+    }
+  ],
+  "locations": [
+    { "id": "nearby-village", "status": "name-and-map-pending" },
+    { "id": "temple-of-karsh", "status": "confirmed-name-map-pending" }
+  ],
+  "blockingUnknowns": [
+    "Full PDF",
+    "Village details and NPCs",
+    "Temple map/key",
+    "Chanters/cultists",
+    "Missing-equipment explanation",
+    "Karsh/Veemor lore",
+    "Hazards and encounters",
+    "Source endings/rewards",
+    "D&D level/party conversion"
+  ],
+  "endings": []
+}
