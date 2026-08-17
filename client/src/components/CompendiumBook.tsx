@@ -141,7 +141,6 @@ export default function CompendiumBook({
             <span className="compendium-page-number">{rightPageNumber}</span>
           </section>
           {turning && <div className={`compendium-turn-sheet ${turning}`} aria-hidden="true" />}
-          {children}
         </div>
 
         <button
@@ -164,6 +163,8 @@ export default function CompendiumBook({
           <ChevronRight size={20} />
         </button>
       </div>
+
+      {children}
     </div>
   );
 }
