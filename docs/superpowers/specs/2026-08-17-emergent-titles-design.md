@@ -24,6 +24,7 @@ The system must remain deliberately opaque to players. Players should discover t
 10. Titles remain attached to a specific character, even when the player owns many characters across campaigns.
 11. Character and account achievements may count validated titles, but the titles themselves are not achievements.
 12. Self-proclaimed names, jokes, or repeatedly spammed aliases must not count toward title milestones unless independently adopted by the world.
+13. Title-count milestone criteria are hidden until earned. Do not expose how many established titles are required for a hidden character/account achievement.
 
 ## Example: Shadow
 
@@ -188,9 +189,9 @@ If DungeonMasterOS later implements offices, noble ranks, faction positions, lic
 
 ## Character Title Milestones
 
-Validated earned titles may feed deterministic achievements.
+Validated earned titles may feed deterministic hidden achievements.
 
-Example milestone policy:
+Initial internal milestone policy:
 
 - 10 earned titles on one character -> character-level title achievement
 - larger future thresholds may exist, but should be configured centrally rather than scattered through UI code
@@ -201,11 +202,13 @@ Self-declared-only, joke, duplicate, administrative, test, or unvalidated titles
 
 The achievement is separate from the titles. Earning a specific title does not automatically grant an achievement.
 
+The 10-title threshold is an internal product rule. Do not expose it before unlock through achievement descriptions, progress meters, APIs, update notes, tooltips, or hints. Once unlocked, the achievement may describe that the character became known by many names without revealing hidden title-adoption mechanics.
+
 ## Account Title Milestones
 
 Player-account achievements may aggregate earned titles across all characters owned by that account.
 
-Example:
+Initial internal milestone policy:
 
 - 100 validated earned titles across the account -> account title achievement/reward
 
@@ -214,6 +217,8 @@ Account milestone rewards should be cosmetic, profile/prestige, or presentation-
 Possible future rewards include profile badges, frames, title showcase capacity, cosmetic themes, chronicle presentation, or other non-mechanical account recognition.
 
 The exact reward should remain configurable.
+
+The 100-title threshold is likewise hidden until unlocked. Do not show account progress such as "73/100 titles" in player-facing UI.
 
 ## Deduplication and Farming Protection
 
@@ -244,6 +249,9 @@ Do not expose:
 - faction-spread threshold
 - number of uses remaining until a title is earned
 - exact algorithm
+- hidden title-count achievement thresholds
+- character title-count milestone progress
+- account title-count milestone progress
 
 Do not display messages such as:
 
@@ -252,6 +260,10 @@ Do not display messages such as:
 or:
 
 "One more NPC must call you Shadow."
+
+or:
+
+"Titles earned: 7/10 toward achievement."
 
 The player should discover the system through fiction.
 
@@ -263,10 +275,11 @@ Possible natural discovery:
 - a wanted notice uses it
 - an ally jokes about how widespread it has become
 - it later appears in the character chronicle/history
+- a hidden title milestone achievement unexpectedly unlocks after sufficient genuine history has accumulated
 
 A quiet title-history/profile entry is acceptable after the title is truly established.
 
-Avoid intrusive gamified popups unless the broader product design later explicitly chooses them.
+Avoid intrusive gamified title-acquisition popups unless the broader product design later explicitly chooses them. Achievement unlock presentation may use the normal achievement UX, but must not reveal the hidden adoption algorithm.
 
 ## Release Notes / Update Notes
 
@@ -276,7 +289,7 @@ Recommended intentionally vague release-note language:
 
 "The world now pays closer attention to how your character becomes known over time. Names, reputations and stories may take on a life of their own as your campaign unfolds."
 
-Do not mention thresholds, independent-adoption counts, hidden stages, or account milestone formulas in public-facing update notes.
+Do not mention thresholds, independent-adoption counts, hidden stages, title-count milestones, or account milestone formulas in public-facing update notes.
 
 ## AI Responsibilities
 
@@ -307,7 +320,7 @@ DungeonMasterOS should:
 - enforce identity boundaries
 - determine when a title counts toward milestones
 - aggregate per-character and per-account title counts
-- award deterministic milestone achievements once
+- award deterministic hidden milestone achievements once
 - prevent duplicate account/character milestone rewards
 
 ## Character History
@@ -346,14 +359,14 @@ Achievements are deterministic recognition of accumulated validated history.
 
 Titles are not achievement definitions.
 
-Examples:
+Initial hidden milestones:
 
-- 10 established titles on one character -> achievement
+- 10 established titles on one character -> character achievement
 - 100 established titles across one player account -> account achievement/reward
 
-Achievement progress may be tracked internally, but public UI should avoid exposing title-recognition mechanics.
+These criteria and their progress remain hidden before unlock. Achievement definitions should support hidden/secret achievements so the UI does not advertise the thresholds.
 
-It is acceptable to show progress on the explicit milestone achievement after it exists if product design later chooses to, but that must never reveal how an individual title becomes established.
+After unlock, the achievement can celebrate that the character/account has accumulated many identities, names, or legends, but should still not explain how DungeonMasterOS decides whether any individual title has become real.
 
 ## Testing Requirements
 
@@ -366,9 +379,10 @@ Add tests for at least:
 - title is bound to the correct character/persona
 - secret identity mapping is not leaked to NPCs without knowledge
 - established title counts once toward character milestones
-- 10 counted titles can unlock the configured character milestone once
+- 10 counted titles can unlock the configured hidden character milestone once
 - account aggregation spans characters belonging to the same user
-- 100 counted titles can unlock the configured account milestone once
+- 100 counted titles can unlock the configured hidden account milestone once
+- hidden milestone thresholds/progress are not exposed to players before unlock
 - duplicate achievements/rewards cannot be granted
 - titles confer no direct stat or XP changes
 - hidden recognition state is not returned by player-facing APIs unless explicitly authorized for internal/admin tooling
@@ -399,7 +413,7 @@ The system succeeds when:
 4. Established titles persist with the character and are used only by NPCs who could plausibly know them.
 5. Players are never shown the hidden recognition threshold or algorithm.
 6. Titles remain mechanically neutral flavour.
-7. Validated titles feed deterministic character and account milestone achievements.
+7. Validated titles feed deterministic hidden character and account milestone achievements.
 8. Title farming through self-declaration or trivial repetition is resisted.
 9. Release notes preserve the mystery rather than documenting the mechanic.
 10. Long-running characters build a meaningful history of names the world actually gave them.
