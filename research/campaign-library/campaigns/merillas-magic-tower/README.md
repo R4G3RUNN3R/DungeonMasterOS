@@ -1,14 +1,14 @@
 # Merilla's Magic Tower
 
-Status: `researching`
+Status: `qa`
 
 ## Executive summary
 
-`Merilla's Magic Tower` is a compact five-level rescue/assault adventure by Rob Pinnell, originally written for the Basic Fantasy Role-Playing Game and released as part of Adventure Anthology One. The source is intended for **3-6 characters of levels 4-7**.
+`Merilla's Magic Tower` is a compact five-level rescue/assault adventure by Rob Pinnell, currently researched from **Adventure Anthology One, 1st Edition Release 21**. It is written for the Basic Fantasy Role-Playing Game and intended for **3-6 characters of levels 4-7**.
 
-Merilla is a retired, renowned lawful magic-user who spent her later years researching spells and crafting powerful protective items. Item creation periodically leaves her physically and magically exhausted. Her tower is protected by unusual constructs/creatures and magical traps. The party may be sent to investigate the silent tower or hired to assault it, but indiscriminate looting and killing can create lawful reprisals.
+Merilla is a renowned retired lawful magic-user who built a tower for magical research and item creation. Creating powerful items can leave her weak. The party may be sent to investigate the silent tower, hired to assault it, or given another GM-created hook. The tower is protected by unusual constructs, monsters and magical traps; wanton looting or killing can bring reprisals.
 
-The adventure's twist is that Merilla is still alive but semi-comatose after completing a powerful magic sword. Two assassins followed the party, used the adventurers' distraction of the tower guardians to scale the tower's only windows, and reach Merilla's private chamber. Reaching the top can therefore turn an apparent burglary/investigation into a rescue.
+At the top, Merilla is alive but exhausted and semi-comatose after creating a Sword of Smiting +1. Two assassins followed the party and used the adventurers' distraction of Merilla's guardians to scale the tower's only windows. Reaching the top can therefore transform an intrusion into a rescue.
 
 ## Player-facing metadata
 
@@ -17,32 +17,44 @@ The adventure's twist is that Merilla is still alive but semi-comatose after com
 - Native progression: **levels 4-7**
 - Recommended party: **3-6 characters**
 - Rules family: B/X-compatible / old-school d20 fantasy
-- Source format: short adventure / five-level tower
+- Source format: short adventure; anthology describes its adventures as generally playable in a session or two
 - Author: Rob Pinnell
-- Release researched: Release 3 (2007-2009)
+- Current authoritative research version: **Adventure Anthology One, 1st Edition Release 21**
+- Anthology copyright/version line: 2007-2017, 2020 Chris Gonnerman and Contributors
 - Licence: Open Game License v1.0a
-- OGC designation: source explicitly designates the **entire adventure text and included maps/floorplans** as Open Game Content; non-map artwork and product branding remain excluded/Product Identity
+- OGC designation: the anthology designates its entire text (except the licence itself) Open Game Content; product branding/art remains excluded Product Identity. Release packaging must preserve the full required OGL Copyright Notice.
+
+## Version audit
+
+An older standalone `Merilla's Magic Tower Release 3` was used during initial extraction. A later source pass found substantive changes in AA1 Release 21. The DMOS dossier has therefore been upgraded to Release 21.
+
+Authoritative Release 21 changes relevant to play include:
+
+- ground-floor containers no longer use the old random potion/search percentages; detect magic finds no magical aura on the component containers;
+- the Bronze Golem has updated current anthology statistics/special counter-damage;
+- Level 2 includes **Platemail of Life Protection +3 with 6 charges**;
+- Level 4 contains **two Pipe Beasts**, not the three Blast Spores present in the older standalone release;
+- Sword of Smiting / Life Protection mechanics were revised into linked energy-drain protection/charging mechanics;
+- assassin statistics/saves/HP were revised.
+
+Superseded Release 3 details are retained only as research history and must not be used for live play when the Release 21 template is selected.
 
 ## DMOS suitability
 
-High. The tower has a small, explicit vertical topology and strong state-dependent consequences:
+High. The scenario naturally tracks distinct states rather than one linear combat crawl:
 
-- the entry runes trigger only if someone actually attempts to read them;
-- the bronze golem attacks based on proximity to itself/worktable, not merely room entry;
-- multiple guardian creatures can be avoided, disabled, fought or looted around;
-- party greed can turn Merilla and lawful authorities against them later;
-- the Faerie Dragon is linked to Merilla and attempts to wake her rather than functioning as a simple kill-on-sight monster;
-- the assassins exploit the party's intrusion and reach Merilla independently;
-- Merilla can survive and reward the party even if they destroyed some of her guardians while reaching her.
+- reading the entry runes triggers the ward; merely seeing them does not;
+- the Bronze Golem has a defined protected radius;
+- Level 2 combines enormous tempting treasure, traps, a disguised creature and protective armour;
+- the Faerie Dragon is linked to Merilla and tries to wake her;
+- Pipe Beasts explicitly guard the route to Merilla and attack anyone but their creator;
+- the assassins are opportunistic external infiltrators, not tower residents;
+- rescue, guardian destruction, theft and lawful reprisals can all coexist as separate outcomes.
 
-The AI-DM must therefore distinguish `intruder`, `looter`, `rescuer`, `guardian destroyed`, `Merilla saved`, and `Merilla assassinated` states instead of deciding the entire tower is one combat encounter.
+## Remaining QA gates
 
-## Completion plan
-
-1. Record exact source/licence/OGL Copyright Notice.
-2. Lock five-level topology and guardian triggers.
-3. Record Merilla, Faerie Dragon and assassin goals/state.
-4. Record treasure and adventure-specific magic items.
-5. Build an executable DMOS v2 template with 3-5 suggestions plus free text.
-6. Adversarial QA: stealth, looting, avoiding guardians, destroying guardians, assassins killing Merilla, waking Merilla early, retreat, and alliance with guardians.
-7. Machine schema validation before `APPROVED`.
+1. Finish Release-21-specific story graph/template corrections.
+2. Record community review findings separately from canon, including the reported map/text staircase discrepancy and difficulty concern around the Bronze Golem.
+3. Run adversarial campaign QA.
+4. Run machine JSON-schema validation once container execution is available.
+5. Confirm production OGL packaging/complete Copyright Notice before release integration.
