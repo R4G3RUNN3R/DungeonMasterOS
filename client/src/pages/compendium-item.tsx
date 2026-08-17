@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import CompendiumBook from "@/components/CompendiumBook";
+import CompendiumSourceLink from "@/components/CompendiumSourceLink";
 import {
   type CompendiumItem,
   type CompendiumListResponse,
@@ -11,6 +12,7 @@ import {
   humanize,
   itemPath,
   rulesetLabel,
+  sourceHref,
   sourceKindLabel,
 } from "@/lib/compendium";
 
@@ -18,6 +20,18 @@ async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { credentials: "include" });
   if (!response.ok) throw new Error(`Request failed with ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return isMobile;
 }
 
 function readableValue(value: unknown): string {
@@ -104,6 +118,7 @@ function Properties({ item }: { item: CompendiumItem }) {
 export default function CompendiumItemPage() {
   const [, params] = useRoute("/compendium/items/:definitionKey");
   const definitionKey = params?.definitionKey ? decodeURIComponent(params.definitionKey) : "";
+  const isMobile = useIsMobile();
   const [spread, setSpread] = useState(0);
   const [mobileSide, setMobileSide] = useState<0 | 1>(0);
 
@@ -151,6 +166,7 @@ export default function CompendiumItemPage() {
   }
 
   const rows = mechanicRows(item);
+  const provenanceHref = sourceHref(item);
 
   const firstLeft = (
     <>
@@ -160,6 +176,7 @@ export default function CompendiumItemPage() {
       </Link>
       <span className="compendium-smallcaps">{categoryLabel(item.category)}</span>
       <h1 className="compendium-detail-title">{item.name}</h1>
+      <div className="compendium-detail-source-under-title"><CompendiumSourceLink item={item} /></div>
       <p className="compendium-detail-kicker">
         {item.subcategory ? `${humanize(item.subcategory)}, ` : ""}{item.rarity}{item.attunement ? " · requires attunement" : ""}
       </p>
@@ -214,9 +231,9 @@ export default function CompendiumItemPage() {
         {item.sourceLicense && <p><strong>License:</strong><br />{item.sourceLicense}</p>}
         {item.sourceRecordId && <p><strong>Source record:</strong><br />{item.sourceRecordId}</p>}
         {item.dataProvider && <p><strong>Data reference:</strong><br />{item.dataProvider}</p>}
-        {item.sourceUrl && (
+        {provenanceHref && (
           <p>
-            <a href={item.sourceUrl} target="_blank" rel="noreferrer">Open source reference <ExternalLink size={12} style={{ display: "inline", marginLeft: 4, verticalAlign: -1 }} /></a>
+            <a href={provenanceHref} target="_blank" rel="noreferrer">Open exact source reference <ExternalLink size={12} style={{ display: "inline", marginLeft: 4, verticalAlign: -1 }} /></a>
           </p>
         )}
       </div>
@@ -233,22 +250,24 @@ export default function CompendiumItemPage() {
       <p className="compendium-copy">Other entries from the same broad category, useful when browsing rather than searching for a single known name.</p>
       <div className="compendium-index-list" style={{ marginTop: 14 }}>
         {related.length ? related.map((entry) => (
-          <Link href={itemPath(entry.definitionKey)} key={entry.definitionKey} className="compendium-index-entry">
+          <article key={entry.definitionKey} className="compendium-index-entry">
             <span className="compendium-entry-glyph">{entry.name.charAt(0).toUpperCase()}</span>
-            <span>
-              <span className="compendium-entry-name">{entry.name}</span>
-              <span className="compendium-entry-meta">{categoryLabel(entry.category)} · {sourceKindLabel(entry.sourceKind)}</span>
+            <span style={{ minWidth: 0 }}>
+              <Link href={itemPath(entry.definitionKey)} className="compendium-entry-mainlink">
+                <span className="compendium-entry-name">{entry.name}</span>
+                <span className="compendium-entry-meta">{categoryLabel(entry.category)} · {sourceKindLabel(entry.sourceKind)}</span>
+              </Link>
+              <CompendiumSourceLink item={entry} compact />
             </span>
             <span className="compendium-rarity">{entry.rarity}</span>
-          </Link>
+          </article>
         )) : <div className="compendium-empty">No neighbouring entries are available yet.</div>}
       </div>
     </>
   );
 
   const turn = (direction: "next" | "prev") => {
-    const mobile = window.matchMedia("(max-width: 900px)").matches;
-    if (mobile) {
+    if (isMobile) {
       if (direction === "next") {
         if (mobileSide === 0) setMobileSide(1);
         else if (spread === 0) { setSpread(1); setMobileSide(0); }
@@ -258,12 +277,12 @@ export default function CompendiumItemPage() {
       else if (spread === 1) { setSpread(0); setMobileSide(1); }
       return;
     }
-    if (direction === "next") setSpread(1);
-    else setSpread(0);
+    if (direction === "next" && spread === 0) setSpread(1);
+    else if (direction === "prev" && spread === 1) setSpread(0);
   };
 
-  const canPrevious = spread > 0 || mobileSide === 1;
-  const canNext = spread === 0 && (mobileSide === 0 || mobileSide === 1);
+  const canPrevious = isMobile ? mobileSide === 1 || spread === 1 : spread === 1;
+  const canNext = isMobile ? mobileSide === 0 || (mobileSide === 1 && spread === 0) : spread === 0;
 
   return (
     <CompendiumBook
