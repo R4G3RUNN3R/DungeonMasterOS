@@ -5,8 +5,14 @@
 - Canon data: added first-run synchronization for D&D 5e SRD 5.1 (2014) equipment and magic items plus SRD 5.2.1 (2024 rules) equipment, magic items, and poisons, with CC BY 4.0 attribution metadata and 5e-bits data-provider references.
 - Homebrew: added a deterministic DungeonMasterOS/Voidsmith first-party seed catalogue producing more than 2,200 definitions across themed weapons, armor, wondrous items, consumables, maps/documents, and related interactions.
 - Inventory/shop integration: added nullable `definition_key` links to existing `items` and `shop_items` tables without invalidating legacy rows.
-- Expected impact: DungeonMasterOS gains a scalable authoritative item layer that can power AI item resolution, deterministic consumable/equipment behavior, merchant stock, and the future public item compendium.
-- Risk: medium. This is additive and isolated from the active Claude inventory work, but it introduces first-start network synchronization for canonical SRD data; failures are non-fatal and homebrew/local schema initialization still succeeds.
+- Public compendium API: added read-only catalogue, facet, search, filtering, sorting, pagination, and item-detail endpoints without coupling them to active campaign handlers.
+- Public compendium UI: added `/compendium` plus `/compendium/items/:definitionKey` as a responsive interactive fantasy rulebook with a closed DungeonMasterOS charcoal-and-amber cover, two-page desktop spreads, far-edge page turning, keyboard arrows, mobile single-page/swipe navigation, and reduced-motion support.
+- Item browsing: added filters for category, rarity, rules era, source class, interaction type, and sort order, with persistent quick filters available while the book is open.
+- Provenance UI: every catalogue, related-item, and detail entry now exposes a small source marker and direct link to the recorded source/reference; canonical public output suppresses publisher branding while retaining reusable SRD/license/source provenance in the database.
+- Item detail presentation: added rulebook-style title/lore, properties, mechanics, interaction notes, source/provenance, tags, and related-item pages using the same authoritative definition records as gameplay.
+- Verification: added a compendium-scoped TypeScript configuration and GitHub Actions workflow plus a full production build step; the existing repository-wide auth/typecheck errors are recorded separately from compendium verification.
+- Expected impact: DungeonMasterOS gains a scalable authoritative item layer that can power AI item resolution, deterministic consumable/equipment behavior, merchant stock, and a public website reference library from the same definitions.
+- Risk: medium. The work is additive and isolated from the active Claude inventory work, but it introduces first-start network synchronization for canonical SRD data; failures are non-fatal and homebrew/local schema initialization still succeeds.
 
 ## 2026-04-18
 - Routes: applied the uploaded `server/routes.ts` visitor identity patch shape directly to `main` while preserving the rest of the newer route file.
