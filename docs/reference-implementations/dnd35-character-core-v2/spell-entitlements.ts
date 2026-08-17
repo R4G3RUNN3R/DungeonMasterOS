@@ -40,7 +40,7 @@ export function spellEntitlementsForNewClassLevel(
         id: "wizard:spellbook:level-1-zero-level",
         classId,
         kind: "spellbook",
-        notes: "Add all legal 0-level wizard spells except any prohibited-school spells. This is automatic, not an AI choice.",
+        notes: "Add all legal 0-level wizard spells except prohibited-school spells. This is automatic, not an AI choice.",
       });
       entitlements.push({
         id: "wizard:spellbook:level-1-first-level",
@@ -86,23 +86,16 @@ export function spellEntitlementsForNewClassLevel(
         });
       }
     }
-    // Spell replacement at higher class levels is a player option, not an automatic rewrite.
-    if (newClassLevel >= 4 && classId === "sorcerer") {
+
+    const sorcererReplacementLevel = classId === "sorcerer" && newClassLevel >= 4 && newClassLevel % 2 === 0;
+    const bardReplacementLevel = classId === "bard" && newClassLevel >= 5 && (newClassLevel - 5) % 3 === 0;
+    if (sorcererReplacementLevel || bardReplacementLevel) {
       entitlements.push({
-        id: `sorcerer:optional-replacement:${newClassLevel}`,
+        id: `${classId}:optional-replacement:${newClassLevel}`,
         classId,
         kind: "known",
         count: 0,
-        notes: "Optional: player may replace one known sorcerer spell under the class rule when eligible. Do not replace anything automatically.",
-      });
-    }
-    if (newClassLevel >= 5 && classId === "bard") {
-      entitlements.push({
-        id: `bard:optional-replacement:${newClassLevel}`,
-        classId,
-        kind: "known",
-        count: 0,
-        notes: "Optional: player may replace one known bard spell under the class rule when eligible. Do not replace anything automatically.",
+        notes: "Optional: player may replace one known spell under the class rule at this level. Do not replace anything automatically.",
       });
     }
   }
@@ -113,7 +106,7 @@ export function spellEntitlementsForNewClassLevel(
       classId,
       kind: "domain",
       count: 2,
-      notes: "Player chooses legal domains from deity/campaign source policy. Domain spells/powers derive from these choices.",
+      notes: "Player chooses legal domains from deity/campaign source policy. Domain spells and granted powers derive from these choices.",
     });
   }
 
@@ -135,9 +128,7 @@ export function expectedPermanentSpellChoiceCounts(state: Dnd35CharacterState): 
   for (const [classId, level] of Object.entries(totals)) {
     if (classId !== "bard" && classId !== "sorcerer") continue;
     const known = spellsKnownEntitlement(classId, level) ?? {};
-    for (const [spellLevel, count] of Object.entries(known)) {
-      result[`${classId}:${spellLevel}`] = Number(count);
-    }
+    for (const [spellLevel, count] of Object.entries(known)) result[`${classId}:${spellLevel}`] = Number(count);
   }
   return result;
 }
