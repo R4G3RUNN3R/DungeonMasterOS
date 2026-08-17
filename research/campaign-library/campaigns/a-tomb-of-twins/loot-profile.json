@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "loot-policy-v1",
+  "campaignId": "a-tomb-of-twins",
+  "campaignScale": "short",
+  "nativeRuleset": "CRACK!/B/X-compatible, Cairn, Mork Borg",
+  "status": "verified",
+  "coverage": {
+    "sourceLootPresent": true,
+    "sourceLootPreserved": true,
+    "tangibleRewardBeats": 7,
+    "usefulRewardBeats": 5,
+    "signatureRewardBeats": 4,
+    "sourceEvidence": ["items-rewards.md", "dmos-template.json", "sources.md"],
+    "examples": ["Twin soul vials", "anti-magic ritual scroll", "Sun and Moon amulets", "disguise sets", "twin journals", "magic utility items", "Room 9 healing liquid and glowing orb"]
+  },
+  "supplemental": {
+    "enabled": false,
+    "mode": "none",
+    "provenance": "source",
+    "rulesAdapterRequired": false,
+    "compendiumUse": "disabled",
+    "antiFarmPersistent": true,
+    "rerollOnReload": false,
+    "artifactsRandomlyAllowed": false,
+    "notes": ["The source already contains abundant treasure and utility items across multiple rules presentations."]
+  },
+  "placementPolicy": {
+    "intelligentEnemiesMayCarryLoot": true,
+    "ordinaryBeastsHavePocketLoot": false,
+    "undeadMayRetainPossessions": true,
+    "constructsMayYieldSalvage": true,
+    "hiddenCachesAllowed": true,
+    "namedEnemiesPreferDistinctivePossession": true
+  },
+  "approval": {"passesLootGate": true, "blockers": []}
+}
