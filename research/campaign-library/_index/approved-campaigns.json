@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "updatedAt": "2026-08-17",
-  "approvedCount": 3,
+  "approvedCount": 4,
   "campaigns": [
     {
       "id": "midnight-in-bonetown",
@@ -30,6 +30,17 @@
       "templatePath": "research/campaign-library/campaigns/born-into-black-nights/dmos-template.json",
       "qaPath": "research/campaign-library/campaigns/born-into-black-nights/qa.md",
       "validatedHead": "f82e0bf16d4d9fefdbc7573fa4f3a5188757c1e5"
+    },
+    {
+      "id": "the-old-blood",
+      "title": "The Old Blood",
+      "nativeRulesets": ["Shadowdark RPG"],
+      "progression": "Levels 1-2",
+      "licence": "CC0 1.0 for original campaign writing/layout/design; rules mechanics separately licensed",
+      "templatePath": "research/campaign-library/campaigns/the-old-blood/dmos-template.json",
+      "qaPath": "research/campaign-library/campaigns/the-old-blood/qa.md",
+      "approvalManifestPath": "research/campaign-library/campaigns/the-old-blood/approval-manifest.json",
+      "validatedHead": "bb93877303b54895811d0791ef78dc675fa325ed"
     }
   ]
 }
