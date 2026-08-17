@@ -10,14 +10,14 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 |---|---|---|---|---|---|---|
 | Midnight in Bonetown | Weird fantasy / fungal horror / pointcrawl | Cairn | Cairn/system-specific, no invented D&D level | Cairn-compatible/OSR via conversion adapter | CC BY-SA 4.0 | APPROVED |
 | A Tomb of Twins | Ghost/necromancer dungeon / old-school fantasy | CRACK!/B/X-compatible, Cairn, Mörk Borg | B/X example levels 1-3; Cairn/Mörk Borg use native progression | Other OSR via conversion adapter | CC BY-SA 4.0 full text | APPROVED |
+| Born Into Black Nights | Gothic/ghost horror / town investigation / tomb | Cairn | Cairn native; source states no D&D-style level | Other fantasy systems through explicit conversion only | CC BY-SA 4.0 text | APPROVED |
 
 ## QA-complete architecture, source-detail or release blockers remain
 
 | Campaign | Genre | Native ruleset | Progression | Additional support | Licence | Remaining blocker |
 |---|---|---|---|---|---|---|
-| Born Into Black Nights | Gothic/ghost horror / town investigation / tomb | Cairn | Cairn native; no source D&D level | Other fantasy systems through explicit conversion | CC BY-SA 4.0 text | Machine validation of `dmos-template.json`; story/canon/adversarial QA complete |
-| Merilla's Magic Tower | Magical tower / rescue / assassination | Basic Fantasy Role-Playing Game | **3-6 characters, levels 4-7** | B/X-compatible conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Machine schema validation; direct visual-map check for reported stair discrepancy; production OGL/Copyright Notice package |
-| Gold in the Hills | Goblin mine / infiltration / dwarven machinery | Basic Fantasy Role-Playing Game | **2-4 characters, levels 1-3** | OSR conversions only after adapter QA | OGL v1.0a / AA1 Open Game Content | Machine schema validation; final visual-map check; production OGL/Copyright Notice package |
+| Merilla's Magic Tower | Magical tower / rescue / assassination | Basic Fantasy Role-Playing Game | **3-6 characters, levels 4-7** | B/X-compatible conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Direct visual-map check for reported stair discrepancy; production OGL/Copyright Notice package. Machine schema validation PASSED. |
+| Gold in the Hills | Goblin mine / infiltration / dwarven machinery | Basic Fantasy Role-Playing Game | **2-4 characters, levels 1-3** | OSR conversions only after adapter QA | OGL v1.0a / AA1 Open Game Content | Final visual-map check; production OGL/Copyright Notice package. Machine schema validation PASSED. |
 | The Old Blood | Gothic/vampire horror / city mystery | Shadowdark RPG | Levels 1-2 | Creator states OSR-style compatibility | CC0 original campaign content | Authoritative full-source room/map/stat verification |
 | Leviathan | Sci-fi / space horror / paranoia | System-neutral | None assumed; one-shot | Mothership TESTED by actual play; Monolith creator-listed compatible | CC BY-SA 4.0 text | Direct two-page PDF extraction for exact map/messages/tables |
 
@@ -25,6 +25,7 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 
 | Campaign | Genre | Native ruleset | Known progression | Licence state | Current stage |
 |---|---|---|---|---|---|
+| The Zombraire's Estate | Gothic/undead estate / cursed manor | Basic Fantasy Role-Playing Game | **3-6 characters, levels 2-5** | OGL v1.0a / AA1 Open Game Content | researching; provenance/community play captured; exact keyed extraction paused on source-fetch failure |
 | Castle Inspection | Dark-comedy fantasy / crisis management | System-neutral | One-evening adventure | CC BY-SA 4.0 | researching / partial graph |
 | Well, what now? | OSR cave rescue | System-neutral OSR | Source does not state level | CC BY-SA 4.0 | researching / partial graph |
 | Island of Trials | Fantasy trials one-shot | D&D 5e | Level 5, four players | Itch asset licence CC BY 4.0; PDF scope still to verify | researching |
@@ -41,9 +42,10 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 `Adventure Anthology One`, 1st Edition Release 21, provides a batch of short Basic Fantasy adventures with explicit party/level guidance and anthology text designated Open Game Content under the source OGL declaration. Full queue lives in `_index/basic-fantasy-aa1-pipeline.md`.
 
 Current pipeline state:
-- Merilla's Magic Tower: QA
-- Gold in the Hills: QA
-- 12 additional AA1 adventures queued with source level bands recorded
+- Merilla's Magic Tower: QA, machine schema validation passed
+- Gold in the Hills: QA, machine schema validation passed
+- The Zombraire's Estate: researching
+- 11 additional AA1 adventures queued with source level bands recorded
 
 ## High-priority next built-in candidates
 
@@ -78,8 +80,9 @@ These can be catalogued with public metadata and supported through user-owned/pr
 
 ## Coverage snapshot
 
-- Approved built-in campaigns total: **2**
-- Story/canon/adversarial QA complete but release-gated: **3** (`Born Into Black Nights`, `Merilla's Magic Tower`, `Gold in the Hills`)
+- Approved built-in campaigns total: **3**
+- Approved gothic/ghost built-in: **1** (`Born Into Black Nights`)
+- QA-complete and machine-validated but release-gated: **2** (`Merilla's Magic Tower`, `Gold in the Hills`)
 - Other mature QA architecture: `The Old Blood`, `Leviathan`
 - Approved post-apocalyptic: 0
 - Approved sci-fi/space horror: 0
