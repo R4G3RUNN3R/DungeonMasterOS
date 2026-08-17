@@ -1,0 +1,536 @@
+{
+  "id": "the-old-blood",
+  "title": "The Old Blood",
+  "graphVersion": "0.9.0",
+  "status": "qa",
+  "nativeRuleset": {
+    "name": "Shadowdark RPG",
+    "edition": null,
+    "progressionModel": "levels",
+    "startingProgression": "Levels 1-2",
+    "creatorCompatibility": ["OSR-style systems"]
+  },
+  "initialState": {
+    "victorState": "active_hidden",
+    "edricState": "dormant",
+    "shrineState": "hidden_intact",
+    "murderCount": 2,
+    "collapseStage": 2,
+    "edricFeedCount": 0,
+    "evelynGraveKnownEmpty": false,
+    "secretLabDiscovered": false,
+    "victorExposed": false,
+    "sealedCryptBreached": false,
+    "catacombsKnown": false,
+    "kingBelowKnown": false,
+    "floodedShrineKnown": false,
+    "bloodRiteKnown": false,
+    "campaignResolved": false,
+    "clues": []
+  },
+  "globalRules": [
+    "Never reveal Victor as the initial killer without player-earned evidence.",
+    "Edric remains dormant until the Sealed Crypt is breached.",
+    "If Victor is stopped before entering the Sealed Crypt, Edric remains dormant.",
+    "The Flooded Shrine is the deeper causal threat and is not automatically discovered by solving Victor's murders.",
+    "Killing Edric does not restore Brannam.",
+    "Destroying the Flooded Shrine ends its local influence but does not restore Brannam's material prosperity.",
+    "The Sacrificial Blood Rite can restore prosperity only at the recurring cost stated by the source.",
+    "Every night of meaningful delay while a valid murderer remains active can trigger the source murder procedure and advance collapse.",
+    "Rumours are statements by characters, not campaign truth flags.",
+    "Free-text actions are valid and must be adjudicated against current facts and state rather than forced into a listed choice."
+  ],
+  "clocks": [
+    {
+      "id": "brannam-collapse",
+      "name": "Brannam Collapse",
+      "segments": 6,
+      "current": 2,
+      "advanceRule": "Advance according to murder totals and source decay events. Do not advance solely because a scene occurred.",
+      "effects": [
+        "1: rumours and increased patrols",
+        "2: fear and curfew; families start leaving",
+        "3: mobs/scapegoats; businesses begin closing",
+        "4: civic order fractures",
+        "5: severe decay events and institutional withdrawal",
+        "6: effective collapse of remaining civic order"
+      ]
+    },
+    {
+      "id": "edric-restoration",
+      "name": "Edric's Return",
+      "segments": 6,
+      "current": 0,
+      "advanceRule": "Only advances after Edric awakens and successfully feeds.",
+      "effects": [
+        "1: Belltower rings at midnight without cause",
+        "2: dogs howl and whimper at night",
+        "3: abnormal cold and candle behaviour at Saint Arlen's Chapel",
+        "4: old Brannam images weep dark oily blood",
+        "5: residents wake drained with missing memories",
+        "6: ravens gather in abnormal numbers; Edric nears/full restoration"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "brannam-arrival",
+      "title": "A City Waiting to Die",
+      "locationId": "brannam",
+      "entryConditions": [],
+      "requiredFacts": [
+        "Brannam is a decaying former trade city.",
+        "Two recent bodies, Marya Dolen and Harrin Velth, were found drained of blood with puncture-like wounds.",
+        "Residents are reviving stories about Edric von Braech."
+      ],
+      "hiddenFacts": ["Victor Marlowe killed both victims.", "Edric is dormant.", "The Flooded Shrine is influencing Victor."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "ask-rumours", "label": "Ask residents what happened", "outcomes": [{"id": "rumour-pool", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "rumours-collected"}]}]},
+        {"id": "see-graves", "label": "Go to the Graveyard", "outcomes": [{"id": "graveyard", "nextSceneId": "graveyard-investigation"}]},
+        {"id": "seek-authorities", "label": "Find the mayor or guards", "outcomes": [{"id": "eastward", "nextSceneId": "eastward-authorities"}]},
+        {"id": "seek-history", "label": "Find someone who knows Brannam's history", "outcomes": [{"id": "history", "nextSceneId": "warded-lantern"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow any plausible movement/investigation. Do not expose hidden killer or shrine without earned evidence.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "open-investigation",
+      "title": "Rumours, Fear and Bad Explanations",
+      "locationId": "brannam",
+      "entryConditions": [],
+      "requiredFacts": ["Brannam contains contradictory rumours about Edric, the Chapel, the Ruins and recent disappearances."],
+      "hiddenFacts": ["Some rumours are false or partially true by design."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "victor", "label": "Consult the local alchemist", "outcomes": [{"id": "to-victor", "nextSceneId": "victor-apothecary"}]},
+        {"id": "chapel", "label": "Speak with Father Brenwick", "outcomes": [{"id": "to-chapel", "nextSceneId": "saint-arlens-chapel"}]},
+        {"id": "trades", "label": "Question Crowmarket and tradespeople", "outcomes": [{"id": "to-trades", "nextSceneId": "merchant-clue-web"}]},
+        {"id": "crime", "label": "Trace where the victims were last seen", "outcomes": [{"id": "to-northgate", "nextSceneId": "northgate-crime-scene"}]},
+        {"id": "sewers", "label": "Investigate the sewers early", "outcomes": [{"id": "to-sewers", "nextSceneId": "sewer-exploration"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Route investigation to the location/NPC actually implicated by the player's method. Reward sensible lateral investigation without turning one clue into automatic solution.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "eastward-authorities",
+      "title": "What Passes for Government",
+      "locationId": "eastward",
+      "entryConditions": [],
+      "requiredFacts": ["Mayor Elana Fost and Captain Ren Halvard are trying to preserve order with limited resources.", "Guard activity responds to panic rather than secret truth."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "victim-records", "label": "Ask about the victims and discovery of their bodies", "outcomes": [{"id": "records", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "victim-records"}]}]},
+        {"id": "edric-records", "label": "Ask what authorities know about Edric", "outcomes": [{"id": "history", "nextSceneId": "warded-lantern"}]},
+        {"id": "offer-help", "label": "Offer to investigate officially", "outcomes": [{"id": "cooperate", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "guardDisposition", "value": "cooperative"}]}]},
+        {"id": "leave", "label": "Leave the authorities and pursue another lead", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Authorities can share public/civic facts but cannot reveal Victor or the Shrine without evidence.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "warded-lantern",
+      "title": "Songs About a Dead City",
+      "locationId": "warded-lantern",
+      "entryConditions": [],
+      "requiredFacts": ["Feyra Lrowyn knows Brannam's regional history."],
+      "hiddenFacts": ["If asked about the King Below or connected old lore, Feyra can associate it with a tale of a Flooded Shrine."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "edric-history", "label": "Ask about Edric's conquest and fall", "outcomes": [{"id": "edric-lore", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "edric-history"}]}]},
+        {"id": "king-below", "label": "Ask about the King Below", "conditions": [{"type": "flag-or-clue", "key": "king-below-reference"}], "outcomes": [{"id": "shrine-lore", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "kingBelowKnown", "value": true}, {"target": "campaign", "op": "set", "field": "floodedShrineKnown", "value": true}]}]},
+        {"id": "ruins", "label": "Ask what survived from Edric's keep", "outcomes": [{"id": "ruin-lead", "nextSceneId": "edric-ruins"}]},
+        {"id": "other-lead", "label": "Return to the murder investigation", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Feyra can provide regional history. Do not let an unprompted conversation reveal a secret phrase the PCs have never encountered.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "graveyard-investigation",
+      "title": "Three Recent Graves",
+      "locationId": "graveyard",
+      "entryConditions": [],
+      "requiredFacts": ["The newest graves include Marya Dolen and Harrin Velth; Evelyn Marlowe was buried about a month earlier."],
+      "hiddenFacts": ["Evelyn's grave is empty."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "inspect-victims", "label": "Inspect the victims' graves and burial information", "outcomes": [{"id": "victims", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "grave-records-victims"}]}]},
+        {"id": "inspect-evelyn", "label": "Investigate Evelyn Marlowe's grave", "outcomes": [{"id": "empty-grave", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "evelynGraveKnownEmpty", "value": true}, {"target": "clues", "op": "add", "value": "evelyn-grave-empty"}]}]},
+        {"id": "night-watch", "label": "Watch the Graveyard after dark", "outcomes": [{"id": "night", "nextSceneId": "graveyard-night"}]},
+        {"id": "ask-priest", "label": "Ask who handled Evelyn's funeral", "outcomes": [{"id": "brenwick", "nextSceneId": "saint-arlens-chapel"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Physical investigation may reveal the empty grave if the players actually inspect/exhume/test it. Do not reveal Evelyn's current location until evidence leads to the lab.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "graveyard-night",
+      "title": "The Dead Do Not Rest Quietly",
+      "locationId": "graveyard",
+      "entryConditions": [{"type": "custom", "key": "time", "value": "night"}],
+      "requiredFacts": ["The Graveyard is significantly more dangerous at night and can produce skeleton encounters."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "hold-ground", "label": "Stand your ground", "outcomes": [{"id": "resolve-native-encounter", "nextSceneId": "graveyard-investigation"}]},
+        {"id": "withdraw", "label": "Withdraw before being surrounded", "outcomes": [{"id": "retreat", "nextSceneId": "open-investigation"}]},
+        {"id": "use-undead-event", "label": "Study the undead rather than chase the murder theory", "outcomes": [{"id": "observe", "nextSceneId": "saint-arlens-chapel", "stateChanges": [{"target": "clues", "op": "add", "value": "graveyard-undead-not-proof-of-edric"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve with native rules. Presence of skeletons does not prove Edric committed the murders.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "saint-arlens-chapel",
+      "title": "Saint Arlen's Chapel",
+      "locationId": "saint-arlens-chapel",
+      "entryConditions": [],
+      "requiredFacts": ["Father Brenwick officiated Evelyn's funeral.", "The Chapel provides access to Catacombs but Brenwick considers lower areas unsafe."],
+      "hiddenFacts": ["Clergy tradition preserves stories of blood worship predating Edric."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "evelyn", "label": "Ask about Evelyn Marlowe's funeral", "outcomes": [{"id": "funeral", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "evelyn-funeral-confirmed"}]}]},
+        {"id": "old-cult", "label": "Ask about old religious stories and Edric", "outcomes": [{"id": "old-blood", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "pre-edric-blood-worship"}, {"target": "clues", "op": "add", "value": "king-below-reference"}]}]},
+        {"id": "catacombs", "label": "Ask to enter the Catacombs", "outcomes": [{"id": "catacombs-request", "nextSceneId": "catacombs-entry", "stateChanges": [{"target": "campaign", "op": "set", "field": "catacombsKnown", "value": true}]}]},
+        {"id": "caretaker", "label": "Speak with the Chapel caretaker", "outcomes": [{"id": "tablet", "nextSceneId": "caretaker-relics"}]},
+        {"id": "leave", "label": "Return to the investigation", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Brenwick resists unsafe access but can be persuaded or bypassed based on current threat/evidence. Do not make him the killer or a secret mastermind.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "caretaker-relics",
+      "title": "Warnings from Before Edric",
+      "locationId": "caretaker-cottage",
+      "entryConditions": [],
+      "requiredFacts": ["Material recovered from the Ruins can contain warnings/references to the King Below."],
+      "hiddenFacts": ["This clue points toward an older cause beneath the vampire story."],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "study", "label": "Study the old warning material", "outcomes": [{"id": "learn", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "kingBelowKnown", "value": true}, {"target": "clues", "op": "add", "value": "king-below-warning"}]}]},
+        {"id": "compare-history", "label": "Take the name to Feyra Lrowyn", "outcomes": [{"id": "feyra", "nextSceneId": "warded-lantern", "stateChanges": [{"target": "clues", "op": "add", "value": "king-below-reference"}]}]},
+        {"id": "ruins", "label": "Trace the relic back to Edric's Ruins", "outcomes": [{"id": "ruins", "nextSceneId": "edric-ruins"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Reward historical comparison. Do not jump straight from the name King Below to the exact location/function of the Flooded Shrine unless additional source clues justify it.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "victor-apothecary",
+      "title": "Victor Marlowe's Apothecary",
+      "locationId": "victor-apothecary",
+      "entryConditions": [{"type": "custom", "key": "victorState", "operator": "not-in", "value": ["captured", "dead"]}],
+      "requiredFacts": ["Victor presents as a helpful local alchemist.", "His work area is obsessively clean and an expected distillation coil is missing."],
+      "hiddenFacts": ["Victor moved the coil to his Secret Laboratory.", "A concealed sewer hatch is present."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "question-murders", "label": "Ask Victor about the blood-drained victims", "outcomes": [{"id": "helpful-misdirection", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "victor-interview"}]}]},
+        {"id": "inspect-equipment", "label": "Observe his laboratory equipment", "outcomes": [{"id": "missing-coil", "nextSceneId": "merchant-clue-web", "stateChanges": [{"target": "clues", "op": "add", "value": "missing-distillation-coil"}]}]},
+        {"id": "search-secretly", "label": "Look for hidden access or signs of movement", "outcomes": [{"id": "hatch", "nextSceneId": "sewer-exploration", "stateChanges": [{"target": "clues", "op": "add", "value": "apothecary-hidden-hatch"}]}]},
+        {"id": "follow", "label": "Leave and discreetly follow Victor later", "outcomes": [{"id": "stakeout", "nextSceneId": "annex-search", "stateChanges": [{"target": "clues", "op": "add", "value": "victor-surveillance"}]}]},
+        {"id": "confront", "label": "Confront Victor with the evidence you have", "outcomes": [{"id": "confront", "nextSceneId": "victor-confrontation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Victor's reaction scales with how much real evidence PCs show. Casual suspicion does not force confession or escape. Strong proof can trigger flight.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "merchant-clue-web",
+      "title": "What Victor Has Been Buying",
+      "locationId": "crowmarket-trades",
+      "entryConditions": [],
+      "requiredFacts": ["Multiple ordinary tradespeople have pieces of Victor's recent procurement history."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "glassworker", "label": "Ask the glassworker about Victor's equipment", "outcomes": [{"id": "coil-contradiction", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "coil-story-contradicted"}]}]},
+        {"id": "butcher", "label": "Ask the butcher about Victor's blood purchases", "outcomes": [{"id": "animal-blood", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "animal-blood-experiments"}]}]},
+        {"id": "weavers", "label": "Ask about unusual cloth orders", "outcomes": [{"id": "dark-cloth", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "victor-dark-cloth-order"}]}]},
+        {"id": "dagger", "label": "Trace Victor's unusual ritual dagger", "outcomes": [{"id": "ruins-dagger", "nextSceneId": "edric-ruins", "stateChanges": [{"target": "clues", "op": "add", "value": "victor-ritual-dagger"}]}]},
+        {"id": "combine", "label": "Compare these purchases with Victor's claimed normal work", "outcomes": [{"id": "suspicion", "nextSceneId": "victor-confrontation", "stateChanges": [{"target": "clues", "op": "add", "value": "victor-pattern-suspicious"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Each merchant provides only their own transaction knowledge. Accumulated pattern can justify increased suspicion and searching for a second laboratory.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "northgate-crime-scene",
+      "title": "Where the Blood Was Taken",
+      "locationId": "northgate",
+      "entryConditions": [],
+      "requiredFacts": ["Victor used a derelict Northgate residence after ambushing Marya and Harrin near Crowmarket."],
+      "hiddenFacts": ["The crime scene can contain evidence of alchemical restraint/blood extraction rather than a feeding vampire."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "search", "label": "Search the derelict residence carefully", "outcomes": [{"id": "alchemy-evidence", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "alchemical-murder-evidence"}]}]},
+        {"id": "trace-route", "label": "Trace movement back toward Crowmarket", "outcomes": [{"id": "crowmarket", "nextSceneId": "merchant-clue-web"}]},
+        {"id": "check-drains", "label": "Check drains/sewer access nearby", "outcomes": [{"id": "sewers", "nextSceneId": "sewer-exploration"}]},
+        {"id": "withdraw", "label": "Leave before the abandoned district becomes more dangerous", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Evidence should indicate method, not magically identify Victor unless combined with other clues.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "annex-search",
+      "title": "The Empty Annex",
+      "locationId": "annex",
+      "entryConditions": [],
+      "requiredFacts": ["The Annex is largely abandoned and contains Victor's hidden laboratory."],
+      "hiddenFacts": ["Victor's Secret Laboratory contains Evelyn's body, moved equipment and Voice-from-Below notes."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "watchtower", "label": "Use the derelict watchtower to look for signs of movement", "outcomes": [{"id": "light-trace", "nextSceneId": "secret-laboratory", "stateChanges": [{"target": "clues", "op": "add", "value": "annex-night-light"}]}]},
+        {"id": "search-buildings", "label": "Search abandoned buildings for Victor's second workspace", "outcomes": [{"id": "lab", "nextSceneId": "secret-laboratory"}]},
+        {"id": "follow-sewer", "label": "Approach from the sewer network", "outcomes": [{"id": "sewer-lab", "nextSceneId": "sewer-exploration", "stateChanges": [{"target": "campaign", "op": "set", "field": "searchingForLab", "value": true}]}]},
+        {"id": "leave", "label": "Return to safer streets", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Finding the lab requires plausible searching/surveillance, not mere arrival in the Annex.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "secret-laboratory",
+      "title": "What Victor Was Trying to Undo",
+      "locationId": "secret-laboratory",
+      "entryConditions": [],
+      "requiredFacts": ["Evelyn's exhumed corpse is here.", "Moved alchemical equipment is here.", "Victor's notes reference a Voice from Below.", "A concealed sewer route exists."],
+      "hiddenFacts": ["The Voice is the Flooded Shrine's influence."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "read-notes", "label": "Study Victor's notes", "outcomes": [{"id": "voice", "nextSceneId": "victor-confrontation", "stateChanges": [{"target": "clues", "op": "add", "value": "voice-from-below"}, {"target": "clues", "op": "add", "value": "victor-motive-evelyn"}, {"target": "campaign", "op": "set", "field": "victorExposed", "value": true}]}]},
+        {"id": "inspect-evelyn", "label": "Examine Evelyn's body and the laboratory setup", "outcomes": [{"id": "proof", "nextSceneId": "victor-confrontation", "stateChanges": [{"target": "clues", "op": "add", "value": "evelyn-in-lab"}, {"target": "campaign", "op": "set", "field": "victorExposed", "value": true}]}]},
+        {"id": "sewer-route", "label": "Trace the concealed sewer escape", "outcomes": [{"id": "sewers", "nextSceneId": "sewer-exploration", "stateChanges": [{"target": "clues", "op": "add", "value": "lab-sewer-route"}]}]},
+        {"id": "wait-for-victor", "label": "Hide and wait for Victor to return", "outcomes": [{"id": "ambush", "nextSceneId": "victor-confrontation", "stateChanges": [{"target": "campaign", "op": "set", "field": "victorExposed", "value": true}]}]},
+        {"id": "report", "label": "Take the evidence to authorities", "outcomes": [{"id": "guards", "nextSceneId": "victor-confrontation", "stateChanges": [{"target": "campaign", "op": "set", "field": "victorExposed", "value": true}, {"target": "campaign", "op": "set", "field": "guardDisposition", "value": "supports-victor-arrest"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "The lab can conclusively expose Victor. It does not automatically explain the Flooded Shrine's origin or wake Edric.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "victor-confrontation",
+      "title": "The Alchemist Breaks",
+      "locationId": "dynamic-victor-location",
+      "entryConditions": [],
+      "requiredFacts": ["Victor's response depends on evidence and freedom of movement."],
+      "hiddenFacts": ["His strongest motive is Evelyn; his escape route can lead to the Sealed Crypt."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "arrest", "label": "Try to restrain Victor alive", "outcomes": [{"id": "captured", "nextSceneId": "victor-stopped-ending", "conditions": [{"type": "custom", "key": "resolution", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "captured"}]}]},
+        {"id": "reason", "label": "Use Evelyn and his notes to try to break the Shrine's hold", "outcomes": [{"id": "surrender-or-panic", "nextSceneId": "victor-stopped-ending", "conditions": [{"type": "custom", "key": "resolution", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "surrendered"}]}]},
+        {"id": "attack", "label": "Attack before he can flee", "outcomes": [{"id": "combat", "nextSceneId": "victor-stopped-ending", "conditions": [{"type": "custom", "key": "victor-defeated", "value": true}], "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "dead-or-disabled"}]}]},
+        {"id": "let-run", "label": "Let him run and follow", "outcomes": [{"id": "chase", "nextSceneId": "victor-sewer-chase", "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "fleeing"}]}]},
+        {"id": "question-voice", "label": "Press him about the Voice from Below", "outcomes": [{"id": "deeper-clue", "nextSceneId": "victor-sewer-chase", "stateChanges": [{"target": "clues", "op": "add", "value": "voice-from-below-confirmed"}, {"target": "campaign", "op": "set", "field": "victorState", "value": "fleeing"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Adjudicate restraint, persuasion and combat normally. If Victor has no plausible path to escape, do not teleport him into the sewers to preserve Edric's plot.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "victor-sewer-chase",
+      "title": "Wrong Turn Beneath Brannam",
+      "locationId": "sewers",
+      "entryConditions": [{"type": "custom", "key": "victorState", "value": "fleeing"}],
+      "requiredFacts": ["Victor seeks the outflow/swamp escape; entering the Sealed Crypt is a panicked mistake, not his plan."],
+      "hiddenFacts": ["Edric sleeps in the Sealed Crypt."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "close-pursuit", "label": "Push hard to catch Victor before he reaches deeper tunnels", "outcomes": [{"id": "catch", "nextSceneId": "victor-stopped-ending", "conditions": [{"type": "custom", "key": "chase-result", "value": "catch"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "captured"}]}]},
+        {"id": "track-carefully", "label": "Follow carefully and avoid sewer hazards", "outcomes": [{"id": "crypt-route", "nextSceneId": "sealed-crypt-awakening"}]},
+        {"id": "cut-off-outflow", "label": "Try to reach the Ruined Outflow Passage ahead of him", "outcomes": [{"id": "intercept", "nextSceneId": "victor-stopped-ending", "conditions": [{"type": "custom", "key": "interception", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "captured"}]}]},
+        {"id": "lose-him", "label": "Abandon the chase rather than risk the sewers", "outcomes": [{"id": "escaped-state", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "victorState", "value": "escaped-unknown"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use native chase/exploration rules. The source allows Victor to be stopped. Only route him into the crypt if the chase outcome plausibly produces the wrong turn.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "sewer-exploration",
+      "title": "Beneath the Streets",
+      "locationId": "sewers",
+      "entryConditions": [],
+      "requiredFacts": ["Much of Brannam's sewer network is blocked, flooded or unstable."],
+      "hiddenFacts": ["The network can connect to Victor's hidden routes, the Sealed Crypt and much older King Below evidence."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "follow-victor-signs", "label": "Follow signs of recent human use", "outcomes": [{"id": "lab-route", "nextSceneId": "secret-laboratory"}]},
+        {"id": "ancient-symbols", "label": "Investigate strange older carvings", "outcomes": [{"id": "king-below", "nextSceneId": "deep-ancient-route", "stateChanges": [{"target": "campaign", "op": "set", "field": "kingBelowKnown", "value": true}, {"target": "clues", "op": "add", "value": "king-below-sewer-carvings"}]}]},
+        {"id": "crypt-route", "label": "Push toward the old foundations beneath Edric's Ruins", "outcomes": [{"id": "crypt", "nextSceneId": "sealed-crypt-awakening"}]},
+        {"id": "outflow", "label": "Find the ruined outflow toward the swamp", "outcomes": [{"id": "outflow", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "ruined-outflow-known"}]}]},
+        {"id": "withdraw", "label": "Return to the surface", "outcomes": [{"id": "surface", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source encounter families and time costs. Do not make all sewer routes available from every entrance; respect discovered connections.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "sealed-crypt-awakening",
+      "title": "The Sleeping Tyrant",
+      "locationId": "sealed-crypt",
+      "entryConditions": [{"type": "custom", "key": "edricState", "value": "dormant"}],
+      "requiredFacts": ["Entering/breaching the Sealed Crypt wakes Edric.", "Edric begins weakened."],
+      "hiddenFacts": ["Edric intends to relocate to Saint Arlen's Catacombs and feed."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "attack-now", "label": "Attack Edric while he is weak", "outcomes": [{"id": "fight", "nextSceneId": "edric-immediate-resolution", "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "awakened-weakened"}, {"target": "campaign", "op": "set", "field": "sealedCryptBreached", "value": true}]}]},
+        {"id": "take-blade", "label": "Grab the weapon/relic before he fully rises", "conditions": [{"type": "custom", "key": "whisperingBladePresent", "value": true}], "outcomes": [{"id": "blade", "nextSceneId": "edric-escape", "stateChanges": [{"target": "items", "op": "add", "value": "whispering-blade-of-blood"}, {"target": "campaign", "op": "set", "field": "edricState", "value": "awakened-weakened"}]}]},
+        {"id": "withdraw", "label": "Back away and prepare", "outcomes": [{"id": "retreat", "nextSceneId": "edric-escape", "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "awakened-weakened"}]}]},
+        {"id": "question", "label": "Try to speak with Edric", "outcomes": [{"id": "talk-then-escape", "nextSceneId": "edric-escape", "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "awakened-weakened"}]}]},
+        {"id": "protect-victor", "label": "If Victor is here, try to stop Edric killing him", "conditions": [{"type": "custom", "key": "victorPresent", "value": true}], "outcomes": [{"id": "intervention", "nextSceneId": "edric-escape", "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "awakened-weakened"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Edric prefers survival/escape if threatened while weak. If Victor is present and unprotected, Edric kills him. Do not force Edric's escape if PCs truly defeat him under native rules.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "edric-immediate-resolution",
+      "title": "Kill the Vampire Before the Legend Returns",
+      "locationId": "sealed-crypt",
+      "entryConditions": [{"type": "custom", "key": "edricState", "value": "awakened-weakened"}],
+      "requiredFacts": ["Edric is vulnerable compared with his restored form but still a vampire under native source rules."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "finish", "label": "Commit to destroying Edric", "outcomes": [{"id": "dead", "nextSceneId": "post-edric-investigation", "conditions": [{"type": "custom", "key": "edric-defeated", "value": true}], "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "destroyed"}]}]},
+        {"id": "retreat", "label": "Retreat if the fight turns against you", "outcomes": [{"id": "escape", "nextSceneId": "edric-escape"}]},
+        {"id": "contain", "label": "Try to trap or reseal him rather than kill him", "outcomes": [{"id": "adjudicate", "nextSceneId": "post-edric-investigation", "conditions": [{"type": "custom", "key": "containment", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "contained"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve using native vampire mechanics and actual player resources. Source-specific destruction requirements must be respected by rules adapter.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "edric-escape",
+      "title": "The Tyrant in the Catacombs",
+      "locationId": "brannam",
+      "entryConditions": [{"type": "custom", "key": "edricState", "value": "awakened-weakened"}],
+      "requiredFacts": ["Edric relocates toward the Catacombs beneath Saint Arlen's Chapel."],
+      "hiddenFacts": ["Each successful feeding moves Edric toward restored state and produces a Herald of Return."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "pursue", "label": "Pursue him toward Saint Arlen's Chapel", "outcomes": [{"id": "catacombs", "nextSceneId": "catacombs-entry", "stateChanges": [{"target": "campaign", "op": "set", "field": "catacombsKnown", "value": true}]}]},
+        {"id": "research", "label": "Research Edric's old weaknesses and the Ruins first", "outcomes": [{"id": "ruins", "nextSceneId": "edric-ruins"}]},
+        {"id": "protect-city", "label": "Warn authorities and protect likely victims", "outcomes": [{"id": "defence", "nextSceneId": "open-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "cityWarnedOfEdric", "value": true}]}]},
+        {"id": "leave", "label": "Leave Brannam rather than fight him", "outcomes": [{"id": "abandon", "nextSceneId": "ending-edric-restored"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Time matters now. Meaningful delay can trigger feeding/restoration. Player defensive measures may alter victim selection but do not freeze the world.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "catacombs-entry",
+      "title": "Beneath Saint Arlen's Chapel",
+      "locationId": "catacombs",
+      "entryConditions": [],
+      "requiredFacts": ["The Catacombs have an interior Chapel stair and an exterior grate.", "Upper levels contain prominent burials; deeper levels become older and stranger."],
+      "hiddenFacts": ["If awake, Edric uses the Catacombs as refuge.", "Ancient lower passages connect thematically/physically toward the alien substrate."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "hunt-edric", "label": "Track signs of Edric", "conditions": [{"type": "custom", "key": "edricState", "operator": "in", "value": ["awakened-weakened", "feeding", "restored"]}], "outcomes": [{"id": "hunt", "nextSceneId": "edric-catacomb-confrontation"}]},
+        {"id": "descend", "label": "Ignore the recent crypts and descend into the ancient levels", "outcomes": [{"id": "deep", "nextSceneId": "deep-ancient-route"}]},
+        {"id": "inspect-sarcophagi", "label": "Study the old burials and inscriptions", "outcomes": [{"id": "history", "nextSceneId": "edric-ruins", "stateChanges": [{"target": "clues", "op": "add", "value": "catacomb-history"}]}]},
+        {"id": "secure-grate", "label": "Secure entrances to restrict movement", "outcomes": [{"id": "containment", "nextSceneId": "edric-catacomb-confrontation", "stateChanges": [{"target": "campaign", "op": "set", "field": "catacombEntrancesSecured", "value": true}]}]},
+        {"id": "withdraw", "label": "Return to the Chapel", "outcomes": [{"id": "surface", "nextSceneId": "saint-arlens-chapel"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Respect multi-level geography and Edric state. Do not place Edric in Catacombs while still dormant in the Sealed Crypt.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "edric-catacomb-confrontation",
+      "title": "Blood Beneath the Chapel",
+      "locationId": "catacombs",
+      "entryConditions": [{"type": "custom", "key": "edricState", "operator": "in", "value": ["awakened-weakened", "feeding", "restored"]}],
+      "requiredFacts": ["Edric's current power depends on restoration/feed state and whether the Flooded Shrine remains intact."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "fight", "label": "Confront Edric directly", "outcomes": [{"id": "resolve", "nextSceneId": "post-edric-investigation", "conditions": [{"type": "custom", "key": "edric-defeated", "value": true}], "stateChanges": [{"target": "campaign", "op": "set", "field": "edricState", "value": "destroyed"}]}]},
+        {"id": "lure", "label": "Try to lure or trap him in a more favourable position", "outcomes": [{"id": "tactical", "nextSceneId": "edric-catacomb-confrontation", "stateChanges": [{"target": "campaign", "op": "set", "field": "edricTacticalDisadvantage", "value": true}]}]},
+        {"id": "seek-source", "label": "Avoid him and descend toward the deeper corruption", "outcomes": [{"id": "shrine", "nextSceneId": "deep-ancient-route"}]},
+        {"id": "retreat", "label": "Retreat before he feeds again", "outcomes": [{"id": "surface", "nextSceneId": "edric-escape"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve Edric using current state, not a fixed boss stat. Destruction of Shrine may alter his advantages. Retreat remains valid.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "edric-ruins",
+      "title": "Ruins of von Braech Keep",
+      "locationId": "edric-ruins",
+      "entryConditions": [],
+      "requiredFacts": ["The Ruins preserve traces of Edric's reign, religious conflict and hidden ways downward."],
+      "hiddenFacts": ["Historical/ritual evidence can connect Edric's transformation to the older Flooded Shrine."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "history", "label": "Study murals, records and surviving chambers", "outcomes": [{"id": "edric-history", "nextSceneId": "open-investigation", "stateChanges": [{"target": "clues", "op": "add", "value": "edric-ritual-history"}]}]},
+        {"id": "hidden-stair", "label": "Search for hidden routes below the keep", "outcomes": [{"id": "deep", "nextSceneId": "deep-ancient-route"}]},
+        {"id": "chapel-altar", "label": "Investigate the ruined Chapel and its chalice", "outcomes": [{"id": "altar", "nextSceneId": "edric-ruins", "stateChanges": [{"target": "clues", "op": "add", "value": "saint-arlen-ruin-chapel"}]}]},
+        {"id": "crypt", "label": "Search beneath the ruins for the von Braech crypt", "conditions": [{"type": "custom", "key": "sealedCryptBreached", "value": false}], "outcomes": [{"id": "crypt", "nextSceneId": "sealed-crypt-awakening"}]},
+        {"id": "leave", "label": "Return to Brannam", "outcomes": [{"id": "back", "nextSceneId": "open-investigation"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use keyed Ruins content where extracted. Optional relic/altar interactions must remain optional. Hidden routes require actual searching.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "deep-ancient-route",
+      "title": "Below Human Memory",
+      "locationId": "ancient-depths",
+      "entryConditions": [],
+      "requiredFacts": ["Architecture becomes older, rougher and increasingly alien/organic beneath later human construction."],
+      "hiddenFacts": ["The Flooded Shrine is the ancient causal source behind Edric and Victor."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "follow-water", "label": "Follow the flooded route deeper", "outcomes": [{"id": "shrine", "nextSceneId": "flooded-shrine", "stateChanges": [{"target": "campaign", "op": "set", "field": "floodedShrineKnown", "value": true}]}]},
+        {"id": "study-structure", "label": "Study the chitinous/biological structures", "outcomes": [{"id": "alien", "nextSceneId": "flooded-shrine", "stateChanges": [{"target": "clues", "op": "add", "value": "alien-biological-origin"}]}]},
+        {"id": "withdraw", "label": "Return before going farther", "outcomes": [{"id": "back", "nextSceneId": "catacombs-entry"}]},
+        {"id": "seek-records", "label": "Return to the Ruins to find ritual records first", "outcomes": [{"id": "records", "nextSceneId": "edric-ruins"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Present alien influence as disturbing and partially incomprehensible. Do not explain its full cosmology because the source does not.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "flooded-shrine",
+      "title": "The Flooded Shrine",
+      "locationId": "flooded-shrine",
+      "entryConditions": [],
+      "requiredFacts": ["The Shrine is an ancient alien biological device tied to the King Below.", "It influenced Edric and Victor.", "It can be destroyed or used through the Sacrificial Blood Rite if the rite is known."],
+      "hiddenFacts": ["Its full purpose remains unknowable."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "destroy", "label": "Destroy the Shrine", "outcomes": [{"id": "destroyed", "nextSceneId": "ending-shrine-destroyed", "conditions": [{"type": "custom", "key": "destruction", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "shrineState", "value": "destroyed"}, {"target": "campaign", "op": "set", "field": "campaignResolved", "value": true}]}]},
+        {"id": "study", "label": "Risk studying/communing with it", "outcomes": [{"id": "revelation", "nextSceneId": "flooded-shrine", "stateChanges": [{"target": "clues", "op": "add", "value": "alien-revelation"}]}]},
+        {"id": "blood-rite", "label": "Perform the Sacrificial Blood Rite", "conditions": [{"type": "custom", "key": "bloodRiteKnown", "value": true}], "outcomes": [{"id": "rite", "nextSceneId": "ending-blood-rite", "conditions": [{"type": "custom", "key": "ritual", "value": "success"}], "stateChanges": [{"target": "campaign", "op": "set", "field": "shrineState", "value": "rite-restored"}, {"target": "campaign", "op": "set", "field": "campaignResolved", "value": true}]}]},
+        {"id": "search-rite", "label": "Withdraw and search for records explaining the old blood rite", "outcomes": [{"id": "records", "nextSceneId": "edric-ruins", "stateChanges": [{"target": "campaign", "op": "set", "field": "bloodRiteSearchActive", "value": true}]}]},
+        {"id": "leave", "label": "Leave the Shrine intact", "outcomes": [{"id": "unresolved", "nextSceneId": "post-edric-investigation", "stateChanges": [{"target": "campaign", "op": "set", "field": "shrineState", "value": "intact-known"}]}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow creative destruction plans and investigation, but preserve the two source-defined long-term resolution directions. Do not invent a consequence-free prosperity option.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "post-edric-investigation",
+      "title": "The Murderer Is Dead. The City Is Not Saved.",
+      "locationId": "brannam",
+      "entryConditions": [],
+      "requiredFacts": ["Stopping Victor and/or Edric does not automatically resolve the Flooded Shrine or Brannam's decay."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "seek-cause", "label": "Keep investigating what corrupted Edric and Victor", "outcomes": [{"id": "deep", "nextSceneId": "deep-ancient-route"}]},
+        {"id": "ruins", "label": "Search Edric's Ruins for the old blood rites", "outcomes": [{"id": "rite", "nextSceneId": "edric-ruins", "stateChanges": [{"target": "campaign", "op": "set", "field": "bloodRiteSearchActive", "value": true}]}]},
+        {"id": "declare-success", "label": "Accept solving the murders as enough and leave", "outcomes": [{"id": "partial", "nextSceneId": "ending-partial-victory"}]},
+        {"id": "help-city", "label": "Stay and help Brannam recover without touching the Shrine", "outcomes": [{"id": "mundane-help", "nextSceneId": "ending-partial-victory"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Let the party choose whether to pursue the deepest truth. Partial victory is valid.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    },
+    {
+      "id": "victor-stopped-ending",
+      "title": "The First Killer Is Stopped",
+      "locationId": "brannam",
+      "entryConditions": [{"type": "custom", "key": "edricState", "value": "dormant"}],
+      "requiredFacts": ["Victor no longer kills and Edric remains asleep."],
+      "hiddenFacts": ["The Flooded Shrine remains unless separately resolved."],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "go-deeper", "label": "Follow the Voice from Below / older clues", "outcomes": [{"id": "deep", "nextSceneId": "deep-ancient-route"}]},
+        {"id": "ruins", "label": "Investigate Edric's history without opening the crypt", "outcomes": [{"id": "ruins", "nextSceneId": "edric-ruins"}]},
+        {"id": "leave", "label": "Leave Brannam after solving the murders", "outcomes": [{"id": "partial", "nextSceneId": "ending-partial-victory"}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Do not awaken Edric merely to force more content. If the players stop here, partial victory is canonically valid.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}
+    }
+  ],
+  "endings": [
+    {
+      "id": "ending-partial-victory",
+      "title": "Murders End, Brannam Endures",
+      "conditions": ["Victor stopped or removed", "Edric dormant or destroyed", "Flooded Shrine not permanently resolved"],
+      "summary": "The immediate killings end, but Brannam remains a stagnant dying city under the unresolved influence/history beneath it. The party may return later."
+    },
+    {
+      "id": "ending-shrine-destroyed",
+      "title": "Cut the Root",
+      "conditions": ["Flooded Shrine destroyed"],
+      "summary": "The King Below's local influence ends and Edric is weakened if still active. Brannam is free of the Shrine but does not magically regain its lost prosperity; its people must live with the city that remains."
+    },
+    {
+      "id": "ending-blood-rite",
+      "title": "Prosperity Has a Price",
+      "conditions": ["Sacrificial Blood Rite restored successfully"],
+      "summary": "Brannam returns toward prominence while the annual sacrificial rite continues. The ritual leader becomes a beacon to the alien influence. The city is materially saved by embracing the horror beneath it."
+    },
+    {
+      "id": "ending-edric-restored",
+      "title": "The Tyrant Returns",
+      "conditions": ["Edric awakened and left unresolved long enough to restore"],
+      "summary": "Edric regains his former power, rebuilds his ruined keep and enslaves remaining residents for labour and blood, creating a larger regional threat and a future campaign state."
+    },
+    {
+      "id": "ending-brannam-collapse",
+      "title": "A City Finally Dies",
+      "conditions": ["collapse reaches terminal state with core threats unresolved"],
+      "summary": "Brannam's remaining civic order fails through panic, violence, flight and decay. Surviving threats persist according to their individual states."
+    }
+  ]
+}
