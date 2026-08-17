@@ -7,12 +7,11 @@ const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
-const PUBLISHED_WHERE = "publication_status != 'draft'";
+const PUBLIC_WHERE = "publication_status != 'draft' AND source_kind != 'campaign_homebrew'";
 const SOURCE_KINDS = new Set([
   "canonical_srd",
   "third_party_open",
   "voidsmith_homebrew",
-  "campaign_homebrew",
 ]);
 
 function safeJson<T>(value: unknown, fallback: T): T {
@@ -89,7 +88,7 @@ function facet(column: string) {
     .prepare(
       `SELECT ${column} AS value, COUNT(*) AS count
        FROM item_definitions
-       WHERE ${PUBLISHED_WHERE} AND ${column} != ''
+       WHERE ${PUBLIC_WHERE} AND ${column} != ''
        GROUP BY ${column}
        ORDER BY count DESC, value ASC`,
     )
@@ -107,7 +106,7 @@ export function registerCompendiumRoutes(app: Express): void {
           SUM(CASE WHEN source_kind = 'canonical_srd' THEN 1 ELSE 0 END) AS canonical,
           SUM(CASE WHEN is_homebrew = 1 THEN 1 ELSE 0 END) AS homebrew
          FROM item_definitions
-         WHERE ${PUBLISHED_WHERE}`,
+         WHERE ${PUBLIC_WHERE}`,
       )
       .get() as any;
 
@@ -137,7 +136,7 @@ export function registerCompendiumRoutes(app: Express): void {
     const page = positiveInt(req.query.page, 1, 100000);
     const pageSize = positiveInt(req.query.pageSize, 24, 60);
 
-    const where = [PUBLISHED_WHERE];
+    const where = [PUBLIC_WHERE];
     const args: Array<string | number> = [];
 
     if (q) {
@@ -220,7 +219,7 @@ export function registerCompendiumRoutes(app: Express): void {
   app.get("/api/compendium/items/:definitionKey", (req, res) => {
     const definitionKey = decodeURIComponent(String(req.params.definitionKey || ""));
     const row = sqlite
-      .prepare(`SELECT * FROM item_definitions WHERE definition_key = ? AND ${PUBLISHED_WHERE}`)
+      .prepare(`SELECT * FROM item_definitions WHERE definition_key = ? AND ${PUBLIC_WHERE}`)
       .get(definitionKey) as any;
     if (!row) return res.status(404).json({ message: "Compendium item not found" });
     return res.json(publicDefinition(row));
