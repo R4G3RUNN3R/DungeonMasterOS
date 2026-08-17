@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-17",
+  "approvedCount": 3,
+  "campaigns": [
+    {
+      "id": "midnight-in-bonetown",
+      "title": "Midnight in Bonetown",
+      "nativeRulesets": ["Cairn"],
+      "progression": "Cairn native progression; no invented D&D level",
+      "licence": "CC BY-SA 4.0",
+      "templatePath": "research/campaign-library/campaigns/midnight-in-bonetown/dmos-template.json",
+      "qaPath": "research/campaign-library/campaigns/midnight-in-bonetown/qa.md"
+    },
+    {
+      "id": "a-tomb-of-twins",
+      "title": "A Tomb of Twins",
+      "nativeRulesets": ["CRACK! / B/X-compatible", "Cairn", "Mork Borg"],
+      "progression": "B/X example levels 1-3; Cairn/Mork Borg use their native progression",
+      "licence": "CC BY-SA 4.0",
+      "templatePath": "research/campaign-library/campaigns/a-tomb-of-twins/dmos-template.json",
+      "qaPath": "research/campaign-library/campaigns/a-tomb-of-twins/qa.md"
+    },
+    {
+      "id": "born-into-black-nights",
+      "title": "Born Into Black Nights",
+      "nativeRulesets": ["Cairn"],
+      "progression": "Cairn native progression; source does not state a D&D-style level",
+      "licence": "CC BY-SA 4.0",
+      "templatePath": "research/campaign-library/campaigns/born-into-black-nights/dmos-template.json",
+      "qaPath": "research/campaign-library/campaigns/born-into-black-nights/qa.md",
+      "validatedHead": "f82e0bf16d4d9fefdbc7573fa4f3a5188757c1e5"
+    }
+  ]
+}
