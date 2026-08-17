@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-17T18:25:00+01:00",
+  "purpose": "Machine-readable spoiler-light campaign-library development updates for a future DungeonMasterOS Updates UI.",
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "headline": "Campaign Library research begins",
+      "status": "library-expansion",
+      "summary": "Source-verified campaign research has begun. Native rulesets, progression, source rights, locations, NPCs, factions, encounters, secrets and story outcomes are recorded before campaigns become playable AI-DM templates.",
+      "rulesets": ["D&D 5e", "Cairn", "B/X-compatible OSR", "Mork Borg", "Quest RPG", "Shadowdark", "System-neutral"],
+      "internalReferences": ["research/campaign-library/_index/research-log.md"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "First campaign approved: Midnight in Bonetown",
+      "status": "approved",
+      "summary": "The first campaign passed source, licence, story-graph and adversarial AI-DM review. DungeonMasterOS tracks factions, threats, relics and changing world state without forcing a single route.",
+      "rulesets": ["Cairn", "Cairn-compatible OSR conversion"],
+      "campaignSlug": "midnight-in-bonetown",
+      "internalReferences": ["research/campaign-library/campaigns/midnight-in-bonetown/"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Second campaign approved: A Tomb of Twins",
+      "status": "approved",
+      "summary": "A Tomb of Twins passed full campaign-template review, including competing employers, trapped spirits, lich state, soul-vial custody, alternate outcomes and playable ghost-character continuity.",
+      "rulesets": ["CRACK! / B/X-compatible", "Cairn", "Mork Borg"],
+      "campaignSlug": "a-tomb-of-twins",
+      "internalReferences": ["research/campaign-library/campaigns/a-tomb-of-twins/"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Gothic and sci-fi campaigns enter QA",
+      "status": "qa",
+      "summary": "The Old Blood and Leviathan now have campaign-state graphs. Final authoritative source-detail verification remains before approval.",
+      "rulesets": ["Shadowdark", "System-neutral sci-fi", "Mothership", "Monolith"],
+      "campaignSlugs": ["the-old-blood", "leviathan"],
+      "internalReferences": ["research/campaign-library/campaigns/the-old-blood/", "research/campaign-library/campaigns/leviathan/"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Research expands beyond fantasy",
+      "status": "library-expansion",
+      "summary": "Active research now includes gothic horror, vampire chronicles, science fiction, space horror and post-apocalyptic survival. Proprietary settings use metadata/private-import paths rather than redistributed protected story text.",
+      "rulesets": ["Cairn", "Eco Mofos", "Mothership-compatible/system-neutral sci-fi", "Monolith", "Vampire: The Masquerade V5 private-import", "D&D/Ravenloft private-import"],
+      "internalReferences": ["research/campaign-library/_index/completion-dashboard.md", "research/campaign-library/_index/candidates.md"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Current focus: increase the completed campaign count",
+      "status": "researching",
+      "summary": "Completion now outranks raw discovery. Open, fully accessible campaigns are prioritised so exact locations, NPC behaviour, encounter logic, clocks, consequences and endings can be extracted and QA-tested.",
+      "approvedCount": 2,
+      "nearApproval": ["The Old Blood", "Leviathan"],
+      "focusGenres": ["post-apocalyptic survival", "sci-fi horror", "gothic horror", "open-licensed full-text adventures"]
+    }
+  ]
+}
