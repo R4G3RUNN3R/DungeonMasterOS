@@ -2,7 +2,7 @@
 
 Date: 2026-08-17
 Reviewer: DungeonMasterOS central campaign gate
-Decision: **APPROVED, subject to exact-head CI confirmation after approval commits**
+Decision: **APPROVED**
 
 ## Gate 1 - Source identity and current release
 PASS.
@@ -67,7 +67,9 @@ Existing QA explicitly covers:
 The campaign does not require a fixed chapter order.
 
 ## Gate 8 - Machine-readable import contract
-PASS on the pre-approval v2 migration commit. Final approval commit must receive a new exact-head CI success before release status is considered locked.
+PASS.
+- V2 template validation passed before approval.
+- Campaign Library CI run **37** completed successfully on approval head `bb93877303b54895811d0791ef78dc675fa325ed`, satisfying the exact-head confirmation required by the original approval decision.
 
 ## Gate 9 - Source-versus-community separation
 PASS.
@@ -76,4 +78,4 @@ Creator sources control identity/licence/version. Indexed copies are extraction 
 ## Gate 10 - Final central decision
 APPROVED.
 
-The approval is based on the combined dossier, `source-verification.md`, `keyed-location-register.json`, `named-npc-register.json`, source/provenance records, adversarial QA and v2 importer. Exact-head CI after the approval commit remains the final mechanical confirmation.
+The approval is based on the combined dossier, `source-verification.md`, `keyed-location-register.json`, `named-npc-register.json`, source/provenance records, adversarial QA and v2 importer. The final exact-head Campaign Library CI confirmation has been recorded in `approval-manifest.json`.
