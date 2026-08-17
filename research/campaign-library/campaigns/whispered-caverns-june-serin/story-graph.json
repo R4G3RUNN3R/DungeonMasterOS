@@ -1,0 +1,77 @@
+{
+  "id": "whispered-caverns-june-serin",
+  "title": "The Whispered Caverns of June Serin",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "Quest RPG",
+  "sourceParty": { "min": 1, "max": 4 },
+  "sourceDurationHours": { "min": 4, "max": 10 },
+  "dmosDndConversion": {
+    "status": "pending",
+    "reason": "Quest source uses a normal-person/first-level premise. D&D level must be chosen after full encounter and clue extraction."
+  },
+  "hardCanon": [
+    "Landry Horn is an old friend of the player characters and works as a miner in June Serin.",
+    "Landry sends a coded plea for help.",
+    "Mining teams in the lowest Whispered Caverns lose memories of complete shifts.",
+    "Those shifts produce three to four times normal quantities of suspiciously pure ore.",
+    "The cause of the anomalies is secret and may not be invented by the AI DM."
+  ],
+  "mysteryState": {
+    "causeKnownToPlayers": false,
+    "causeKnownToTemplate": "pending-full-pdf",
+    "clues": [],
+    "theories": []
+  },
+  "scenes": [
+    {
+      "id": "opening-coded-letter",
+      "title": "Landry's Coded Plea",
+      "location": "pre-june-serin",
+      "status": "source-supported",
+      "requiredFacts": [
+        "Landry is an old friend.",
+        "Landry is working in June Serin.",
+        "The letter is coded and urgently asks for help.",
+        "The party chooses to take up the call."
+      ],
+      "suggestedChoices": [
+        { "id": "decode", "label": "Study and decode Landry's message", "classification": "source-supported premise action" },
+        { "id": "travel", "label": "Set out for June Serin", "classification": "direct source progression" },
+        { "id": "research", "label": "Research June Serin and the Whispered Caverns before leaving", "classification": "DMOS free-form-compatible preparation" },
+        { "id": "contacts", "label": "Ask mutual contacts what they know about Landry's situation", "classification": "DMOS free-form-compatible preparation" }
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayCreateMinorDetails": true,
+        "mayCreateMajorNPCs": false,
+        "mayResolveMystery": false,
+        "adjudicationRule": "Allow preparation and interpretation without inventing the true cause, permanent June Serin geography or source clues not yet extracted."
+      }
+    },
+    {
+      "id": "arrival-june-serin",
+      "title": "Arrival in June Serin",
+      "location": "june-serin",
+      "status": "placeholder-pending-pdf",
+      "entryCondition": "Party follows Landry's plea",
+      "knownObjectives": [
+        "Locate Landry Horn",
+        "Investigate miner memory loss",
+        "Investigate abnormal quantities and purity of ore"
+      ],
+      "suggestedChoices": [],
+      "note": "NPCs, clue nodes and city locations must come from full PDF extraction before this scene is executable."
+    }
+  ],
+  "blockingUnknowns": [
+    "Full June Serin map and locations",
+    "Landry's condition and knowledge",
+    "All clue nodes and red herrings",
+    "True mystery cause",
+    "Mine hazards/encounters",
+    "Source endings and fail states",
+    "D&D level/party conversion"
+  ],
+  "endings": []
+}
