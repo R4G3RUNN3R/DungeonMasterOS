@@ -1,0 +1,486 @@
+{
+  "id": "midnight-in-bonetown",
+  "title": "Midnight in Bonetown",
+  "graphVersion": "1.0.0",
+  "status": "approved",
+  "nativeRuleset": {
+    "name": "Cairn",
+    "progressionModel": "system-specific",
+    "startingProgression": null
+  },
+  "initialState": {
+    "elapsedDays": 0,
+    "gebertState": "trapped-in-dim",
+    "gebertRescueDaysRemaining": 21,
+    "bonetownRewardKnown": false,
+    "stoneSourceKnown": false,
+    "mycelicardiaKnown": false,
+    "mycelicardiaAlert": 0,
+    "rixiRelation": 0,
+    "bonetownRelation": 0,
+    "northVillageAttackResolved": false,
+    "waterElementalState": "trapped",
+    "dragonState": "trapped",
+    "balstravaState": "roaming",
+    "delverState": "broken",
+    "warrensKnown": false,
+    "resurrectionStones": 0,
+    "hallucinations": []
+  },
+  "globalRules": [
+    "Every elapsed in-world day reduces Gebert's remaining rescue window; at zero he is unrecoverable alive.",
+    "Free-text actions are always allowed.",
+    "Bonetown skeletons are sapient residents; corrupted skeletons are a separate hostile category.",
+    "Rixi hostility is directed primarily at skeletons/corrupted skeletons and is not automatic hostility to living PCs.",
+    "Off-path travel between forest locations is allowed at approximately triple travel time and three Forest Die rolls.",
+    "Spore hallucinations are perceptions, not persistent facts.",
+    "Resurrection Stones cause corruption and are produced by Dim.",
+    "The Red Dragon, Water Elemental, Balstrava and Mycelicardia are independent actors, not mandatory boss encounters.",
+    "The Gebert objective can resolve without solving every cavern threat."
+  ],
+  "clocks": [
+    {"id": "gebert-digestion", "segments": 21, "current": 0, "advanceRule": "Advance one segment per elapsed in-world day. At 21, Gebert cannot be rescued alive."},
+    {"id": "mycelicardia-alert", "segments": 4, "current": 0, "advanceRule": "Harming infected creatures in the forest worsens the next forest danger according to source procedure."}
+  ],
+  "scenes": [
+    {
+      "id": "midnight-entrance",
+      "title": "The Alley at Midnight",
+      "locationId": "overworld-alley",
+      "requiredFacts": ["The cavern entrance appears magically at midnight in a dank alley.", "A steep dark descent leads toward Bonetown."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "descend", "label": "Descend into the hidden cavern", "nextSceneId": "bonetown-arrival"},
+        {"id": "inspect", "label": "Inspect the magical arch before entering", "nextSceneId": "midnight-entrance"},
+        {"id": "leave", "label": "Leave and return another night", "nextSceneId": "overworld-delay", "stateChanges": [{"target": "campaign", "op": "increment", "field": "elapsedDays", "value": 1}]}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow investigation or refusal. Time spent outside can consume Gebert's deadline."}
+    },
+    {
+      "id": "bonetown-arrival",
+      "title": "Welcome to Bonetown",
+      "locationId": "bonetown",
+      "requiredFacts": ["Bonetown is a functioning community of roughly 100 resurrected skeletons.", "Gebert is missing and reward notices are widespread."],
+      "hiddenFacts": ["Some skeletons are beginning to show fungal corruption."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "reward", "label": "Ask about Gebert and the reward", "nextSceneId": "gebert-briefing"},
+        {"id": "tavern", "label": "Visit the tavern and listen for rumours", "nextSceneId": "bonetown-social"},
+        {"id": "shops", "label": "Visit the shops and prepare", "nextSceneId": "bonetown-commerce"},
+        {"id": "forest", "label": "Head into the Fungal Forest", "nextSceneId": "forest-travel"},
+        {"id": "observe", "label": "Study the town and its skeleton residents", "nextSceneId": "bonetown-corruption"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Treat skeleton residents as ordinary sapient NPCs unless an individual state says corrupted/hostile."}
+    },
+    {
+      "id": "gebert-briefing",
+      "title": "Find the Wizard",
+      "locationId": "bonetown",
+      "requiredFacts": ["Gebert left one week ago seeking Resurrection Stones and failed to return.", "Bonetown offers major rewards for his return, Stone-source information or Stones."],
+      "hiddenFacts": ["Gebert is inside a Dim in the Warrens.", "Dim excrete Resurrection Stones."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "scouts", "label": "Ask what happened to previous search parties", "nextSceneId": "bonetown-social"},
+        {"id": "stones", "label": "Ask what is known about Resurrection Stones", "nextSceneId": "bonetown-corruption"},
+        {"id": "rixi", "label": "Ask who knows the forest best", "nextSceneId": "forest-travel"},
+        {"id": "gear", "label": "Prepare in Bonetown before leaving", "nextSceneId": "bonetown-commerce"},
+        {"id": "depart", "label": "Leave immediately to search", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Bonetown knows Gebert is missing but not the exact Dim containing him or the full Stone source."}
+    },
+    {
+      "id": "bonetown-social",
+      "title": "Drinks, Bones and Rumours",
+      "locationId": "bonetown",
+      "requiredFacts": ["The tavern, musicians and generated skeleton residents provide rumours about the forest, Rixi, Stones and missing scouts."],
+      "hiddenFacts": ["Rumours mix truth and misunderstanding."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "gamble", "label": "Play Knucklebones", "nextSceneId": "bonetown-social"},
+        {"id": "rumours", "label": "Buy drinks and collect rumours", "nextSceneId": "forest-travel"},
+        {"id": "tiana-sam", "label": "Talk with Tiana or the musicians", "nextSceneId": "bonetown-social"},
+        {"id": "scouts", "label": "Look for surviving Skeleton Scouts", "nextSceneId": "forest-travel"},
+        {"id": "leave", "label": "Head into the forest", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Generated rumours stay tagged as rumours until independently verified."}
+    },
+    {
+      "id": "bonetown-commerce",
+      "title": "The Bonetown Strip",
+      "locationId": "bonetown",
+      "requiredFacts": ["Armory, flea market, alchemist and racetrack are available."],
+      "hiddenFacts": ["Albert is becoming corrupted and hoarding weapons."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "armory", "label": "Buy equipment from Albert", "nextSceneId": "bonetown-corruption"},
+        {"id": "flea", "label": "Search Gran's flea market", "nextSceneId": "bonetown-commerce"},
+        {"id": "duli", "label": "Ask Duli about fungal alchemy", "nextSceneId": "fungus-hunt"},
+        {"id": "race", "label": "Bet at the animal racetrack", "nextSceneId": "bonetown-commerce"},
+        {"id": "depart", "label": "Finish preparations and leave", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source prices/items/procedures via Cairn item layer. Albert's secret requires observation or pressure; don't announce it automatically."}
+    },
+    {
+      "id": "bonetown-corruption",
+      "title": "Fungus on the Bones",
+      "locationId": "bonetown",
+      "requiredFacts": ["Some skeletons show early fungal growth and try to hide/remove it.", "Fully corrupted skeletons have historically become violent and been expelled."],
+      "hiddenFacts": ["Albert is one current high-risk example."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "question", "label": "Ask residents about the corruption", "nextSceneId": "gebert-briefing"},
+        {"id": "albert", "label": "Investigate Albert's behaviour", "nextSceneId": "bonetown-commerce"},
+        {"id": "stones", "label": "Examine or ask about the Resurrection Stones", "nextSceneId": "forest-travel"},
+        {"id": "leave", "label": "Leave the problem for now and search for Gebert", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Corruption is gradual and individual. Don't trigger a town-wide uprising without earned state changes."}
+    },
+    {
+      "id": "forest-travel",
+      "title": "Into the Fungal Forest",
+      "locationId": "fungal-forest",
+      "requiredFacts": ["Travel between directly connected points takes about an hour; off-path routes are possible at triple time and risk.", "Forest Die procedures govern danger."],
+      "hiddenFacts": ["Mycelicardia senses harm to infected creatures through the network."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "railroad", "label": "Follow the Rixi railroad", "nextSceneId": "rixi-railroad"},
+        {"id": "ford", "label": "Seek the river ford", "nextSceneId": "river-ford"},
+        {"id": "south", "label": "Travel toward the southern Rixi village", "nextSceneId": "rixi-south"},
+        {"id": "hunt", "label": "Search for useful fungi while travelling", "nextSceneId": "fungus-hunt"},
+        {"id": "offpath", "label": "Cut off the marked paths toward another known location", "nextSceneId": "forest-offpath"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve travel with Forest Die. Any known location may be attempted off-path at 3x time and 3 rolls."}
+    },
+    {
+      "id": "forest-offpath",
+      "title": "Leave the Trails",
+      "locationId": "fungal-forest",
+      "requiredFacts": ["Off-path forest travel is allowed but takes roughly three times as long and three Forest Die rolls."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "continue", "label": "Push toward your chosen destination", "nextSceneId": "forest-travel"},
+        {"id": "return", "label": "Return to a known trail", "nextSceneId": "forest-travel"},
+        {"id": "camp", "label": "Stop and rest", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Ask destination only if player did not name one. Advance time and resolve all three Forest Die events."}
+    },
+    {
+      "id": "fungus-hunt",
+      "title": "Gathering Dangerous Ingredients",
+      "locationId": "fungal-forest",
+      "requiredFacts": ["Fungi have magical types and trade values used by Duli and the Rixi."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "safe", "label": "Search cautiously for whatever fungi you find", "nextSceneId": "forest-travel"},
+        {"id": "target", "label": "Risk a targeted search for a specific magical type", "nextSceneId": "forest-travel"},
+        {"id": "return-duli", "label": "Take ingredients back to Duli", "nextSceneId": "bonetown-commerce"},
+        {"id": "trade-rixi", "label": "Use the mushrooms as Rixi trade currency", "nextSceneId": "rixi-south"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source fungus table/type/MV and hunting procedure."}
+    },
+    {
+      "id": "rixi-railroad",
+      "title": "The Electric Railroad",
+      "locationId": "rixi-railroad",
+      "requiredFacts": ["The railroad provides fast travel with no normal Forest Die along its path if ridden successfully."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "ride", "label": "Catch the moving train", "nextSceneId": "rixi-north"},
+        {"id": "walk", "label": "Follow the railroad on foot", "nextSceneId": "forest-travel"},
+        {"id": "south", "label": "Use the line toward the southern village", "nextSceneId": "rixi-south"},
+        {"id": "leave", "label": "Leave the rail line", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Stowaway/arrest consequences apply at Rixi villages if caught."}
+    },
+    {
+      "id": "river-ford",
+      "title": "Cross the Electric River",
+      "locationId": "river-ford",
+      "requiredFacts": ["Rocks form a difficult ford through eel-filled electrified water.", "Cave Ducks swim here safely."],
+      "hiddenFacts": ["Cave Ducks know useful information about Dim."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "cross", "label": "Cross using the rocks", "nextSceneId": "forest-travel"},
+        {"id": "ducks", "label": "Try to communicate with the Cave Ducks", "nextSceneId": "duck-information"},
+        {"id": "alternate", "label": "Seek another river crossing", "nextSceneId": "waterfall-ferry"},
+        {"id": "back", "label": "Turn back", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Falling means eel danger; creative bridging/insulation plans are valid."}
+    },
+    {
+      "id": "duck-information",
+      "title": "Quacks About Worms",
+      "locationId": "fungal-forest",
+      "requiredFacts": ["Cave Ducks are enemies of Dim and can provide information if PCs can communicate with them."],
+      "hiddenFacts": ["They can provide Quackolocation knowledge/spell."],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "dim", "label": "Ask about the giant worms", "nextSceneId": "dim-warrens-entry", "stateChanges": [{"target": "campaign", "op": "set", "field": "warrensKnown", "value": true}]},
+        {"id": "spell", "label": "Ask how they navigate in darkness", "nextSceneId": "forest-travel"},
+        {"id": "leave", "label": "Thank them and continue", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Communication requires Duckspeaker, magic or plausible character ability. Ducks know Dim ecology, not every cavern secret."}
+    },
+    {
+      "id": "rixi-south",
+      "title": "Rixi Village South",
+      "locationId": "rixi-village-south",
+      "requiredFacts": ["Village is fortified/electrified and will consider admitting outsiders who help against corrupted skeletons."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "pledge", "label": "Offer help against corrupted skeletons", "nextSceneId": "forest-travel", "stateChanges": [{"target": "campaign", "op": "increment", "field": "rixiRelation", "value": 1}]},
+        {"id": "gebert", "label": "Ask about Gebert and the Warrens", "nextSceneId": "dim-warrens-entry"},
+        {"id": "gadgets", "label": "Trade fungi for Rixi gadgets", "nextSceneId": "rixi-south"},
+        {"id": "guides", "label": "Hire Rixi hunters as guides", "nextSceneId": "forest-travel"},
+        {"id": "north", "label": "Take the train to the north village", "nextSceneId": "rixi-north"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Skeleton PCs face serious Rixi hostility and need exceptional diplomacy/context; living outsiders are not automatically attacked."}
+    },
+    {
+      "id": "rixi-north",
+      "title": "Rixi Village North Under Attack",
+      "locationId": "rixi-village-north",
+      "requiredFacts": ["The village is under attack by corrupted skeletons riding Sporespiders when first encountered."],
+      "hiddenFacts": ["Gaspar can repair the Delver."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "defend", "label": "Help defend the Rixi village", "nextSceneId": "rixi-north-after", "stateChanges": [{"target": "campaign", "op": "set", "field": "northVillageAttackResolved", "value": true}, {"target": "campaign", "op": "increment", "field": "rixiRelation", "value": 2}]},
+        {"id": "bypass", "label": "Avoid the fight and continue past", "nextSceneId": "forest-travel"},
+        {"id": "skeletons", "label": "Try to interfere without siding with the Rixi", "nextSceneId": "rixi-north-after"},
+        {"id": "observe", "label": "Watch the fight to understand both sides", "nextSceneId": "rixi-north-after"},
+        {"id": "retreat", "label": "Withdraw", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve battle according to Cairn and faction state. If PCs ignore it, do not reset the attack forever; establish aftermath."}
+    },
+    {
+      "id": "rixi-north-after",
+      "title": "Gaspar and the Delver",
+      "locationId": "rixi-village-north",
+      "requiredFacts": ["Gaspar is the Rixi mechanic who can repair the Delver at a Warrens entrance."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "delver", "label": "Ask Gaspar to help with the Delver", "nextSceneId": "dim-warrens-entry", "stateChanges": [{"target": "campaign", "op": "set", "field": "delverState", "value": "repairable-with-gaspar"}]},
+        {"id": "guides", "label": "Recruit Rixi guides for the Warrens", "nextSceneId": "dim-warrens-entry"},
+        {"id": "gadgets", "label": "Acquire eel-powered gear", "nextSceneId": "rixi-north-after"},
+        {"id": "leave", "label": "Continue exploring the forest", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Rixi gratitude depends on previous actions; free support is strongest if PCs defended the village."}
+    },
+    {
+      "id": "waterfall-ferry",
+      "title": "The Bound Ferryman",
+      "locationId": "waterfall",
+      "requiredFacts": ["A Shroom Troll is magically bound to operate the ferry and wants someone else to take her place."],
+      "hiddenFacts": ["Taking over the chain/service can transfer the binding."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "ride", "label": "Ask for passage across", "nextSceneId": "forest-travel"},
+        {"id": "question", "label": "Ask why the troll is chained to the ferry", "nextSceneId": "waterfall-ferry"},
+        {"id": "free", "label": "Try to break the magical binding", "nextSceneId": "forest-travel"},
+        {"id": "cross-self", "label": "Find another way across without the ferry", "nextSceneId": "forest-travel"},
+        {"id": "take-chain", "label": "Agree to take the troll's place", "nextSceneId": "ferry-bound-ending"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "The troll may deceive PCs, but the AI cannot conceal obvious facts if they investigate. Binding transfer has real consequences."}
+    },
+    {
+      "id": "old-well",
+      "title": "The Voice in the Well",
+      "locationId": "old-well",
+      "requiredFacts": ["A Water Elemental trapped by Balstrava is at the bottom."],
+      "hiddenFacts": ["It wants freedom and revenge."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "talk", "label": "Call down and communicate", "nextSceneId": "old-well"},
+        {"id": "free", "label": "Try to release the elemental", "nextSceneId": "forest-travel", "stateChanges": [{"target": "campaign", "op": "set", "field": "waterElementalState", "value": "free"}]},
+        {"id": "fight", "label": "Attack or contain it", "nextSceneId": "old-well"},
+        {"id": "bottle", "label": "Try to collect water from the well", "nextSceneId": "old-well"},
+        {"id": "leave", "label": "Leave the well alone", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Elemental behaviour remains autonomous. Freed does not equal recruited."}
+    },
+    {
+      "id": "standing-stones",
+      "title": "The Resurrection Vision",
+      "locationId": "standing-stones",
+      "requiredFacts": ["Blood-stained stones show a disturbing resurrection vision when closely inspected."],
+      "hiddenFacts": ["Vision reinforces that Stone resurrection has dangerous consequences."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "inspect", "label": "Study the altar closely", "nextSceneId": "standing-stones"},
+        {"id": "blood", "label": "Examine the old blood and stonework without touching it", "nextSceneId": "forest-travel"},
+        {"id": "ritual", "label": "Experiment with a Resurrection Stone here", "nextSceneId": "standing-stones"},
+        {"id": "leave", "label": "Leave the site", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Vision is a source event; don't add new prophecies or make it objectively rewrite history."}
+    },
+    {
+      "id": "steamy-pool",
+      "title": "The Dragon Under the Water",
+      "locationId": "steamy-pool",
+      "requiredFacts": ["A Red Dragon is trapped below, protected by Sporemanders and willing to bargain for escape.", "It wants to burn the fungal forest/Mycelicardia."],
+      "hiddenFacts": ["A Dim may be able to enlarge its exit; the dragon can command nearby Dim."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "bargain", "label": "Hear the dragon's offer", "nextSceneId": "dragon-bargain"},
+        {"id": "fight", "label": "Attack the dragon or its guardians", "nextSceneId": "steamy-pool"},
+        {"id": "mycelicardia", "label": "Ask what it knows about the fungal network", "nextSceneId": "dragon-bargain", "stateChanges": [{"target": "campaign", "op": "set", "field": "mycelicardiaKnown", "value": true}]},
+        {"id": "dim", "label": "Ask how it could escape", "nextSceneId": "dragon-bargain", "stateChanges": [{"target": "campaign", "op": "set", "field": "warrensKnown", "value": true}]},
+        {"id": "leave", "label": "Leave the dragon trapped", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Treat dragon as intelligent independent actor. It may bargain; its freedom has real consequences."}
+    },
+    {
+      "id": "dragon-bargain",
+      "title": "Fire Against Fungus",
+      "locationId": "steamy-pool",
+      "requiredFacts": ["Dragon can offer its hoard for credible escape and views the Mycelicardia as enemy."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "accept", "label": "Agree to help use a Dim to free it", "nextSceneId": "dim-warrens-entry"},
+        {"id": "other-plan", "label": "Propose another escape plan", "nextSceneId": "steamy-pool"},
+        {"id": "refuse", "label": "Refuse and leave it trapped", "nextSceneId": "forest-travel"},
+        {"id": "betray", "label": "Pretend to agree while planning to take the hoard", "nextSceneId": "steamy-pool"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Dragon evaluates plans intelligently. It is not obligated to hand over treasure before credible progress."}
+    },
+    {
+      "id": "dim-warrens-entry",
+      "title": "Into the Dim Warrens",
+      "locationId": "dim-warrens",
+      "requiredFacts": ["The Warrens have multiple entrances and a procedural exploration system.", "Dim produce Resurrection Stones and Gebert is trapped inside one."],
+      "hiddenFacts": ["A successful Dim encounter roll can reveal Gebert by muffled cries."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "delver", "label": "Repair/use the Delver at the cave-in", "nextSceneId": "warrens-exploration"},
+        {"id": "flooded", "label": "Use the flooded entrance", "nextSceneId": "warrens-exploration"},
+        {"id": "open", "label": "Use the clear open entrance", "nextSceneId": "warrens-exploration"},
+        {"id": "fiery", "label": "Risk the burning/smoke entrance", "nextSceneId": "warrens-exploration"},
+        {"id": "prepare", "label": "Return for guides or equipment", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "No single entrance is mandatory. Use Warrens Die and room/encounter state."}
+    },
+    {
+      "id": "warrens-exploration",
+      "title": "Worm Tunnels",
+      "locationId": "dim-warrens",
+      "requiredFacts": ["Dim movement can swallow obstructing creatures; side tunnels/chambers provide refuge.", "Resurrection Stones can be found behind/around Dim."],
+      "hiddenFacts": ["Gebert may be inside a generated Dim."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "search-gebert", "label": "Prioritise finding a Dim carrying Gebert", "nextSceneId": "gebert-found"},
+        {"id": "stones", "label": "Track where Resurrection Stones accumulate", "nextSceneId": "warrens-waste"},
+        {"id": "nests", "label": "Investigate the nesting chamber", "nextSceneId": "warrens-nest"},
+        {"id": "tomb", "label": "Explore the older tomb breach", "nextSceneId": "warrens-tomb"},
+        {"id": "withdraw", "label": "Leave the Warrens", "nextSceneId": "forest-travel"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Roll/use source Warrens procedure. `Search Gebert` increases focus but does not guarantee immediate discovery unless procedure/evidence supports it."}
+    },
+    {
+      "id": "gebert-found",
+      "title": "Muffled Screams",
+      "locationId": "dim-warrens",
+      "entryConditions": [{"type": "custom", "key": "gebertState", "value": "trapped-in-dim"}],
+      "requiredFacts": ["A Dim carries Gebert inside and he can be heard if the correct encounter occurs."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "kill", "label": "Kill the Dim and cut Gebert free", "nextSceneId": "gebert-rescued"},
+        {"id": "lure", "label": "Lure/control the Dim to a safer place first", "nextSceneId": "gebert-rescued"},
+        {"id": "dragon", "label": "Use the Red Dragon's influence over Dim if available", "nextSceneId": "gebert-rescued"},
+        {"id": "delver", "label": "Use the Delver or tools to create an extraction opportunity", "nextSceneId": "gebert-rescued"},
+        {"id": "retreat", "label": "Mark the worm and retreat to prepare", "nextSceneId": "warrens-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Rescue requires physically plausible action and Cairn resolution. Failure can injure/lose Gebert without magically resetting him into another worm."}
+    },
+    {
+      "id": "gebert-rescued",
+      "title": "Bring Gebert Home",
+      "locationId": "dim-warrens",
+      "requiredFacts": ["Gebert is alive and rescued if extraction succeeded before deadline."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "home", "label": "Escort Gebert back to Bonetown", "nextSceneId": "ending-gebert-rescued", "stateChanges": [{"target": "campaign", "op": "set", "field": "gebertState", "value": "rescued"}]},
+        {"id": "stones", "label": "Ask Gebert what he learned about Resurrection Stones", "nextSceneId": "warrens-waste", "stateChanges": [{"target": "campaign", "op": "set", "field": "stoneSourceKnown", "value": true}]},
+        {"id": "mycelium", "label": "Ask about deeper cavern threats", "nextSceneId": "forest-travel"},
+        {"id": "continue", "label": "Keep exploring with/after securing Gebert", "nextSceneId": "warrens-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Rescue resolves primary reward but doesn't force campaign end."}
+    },
+    {
+      "id": "warrens-nest",
+      "title": "The Nesting Chamber",
+      "locationId": "warrens-nest",
+      "requiredFacts": ["Multiple Dim rest on eggs; many Stones lie between nests."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "sneak", "label": "Steal Stones without disturbing eggs", "nextSceneId": "warrens-exploration"},
+        {"id": "eggs", "label": "Investigate the Dim eggs", "nextSceneId": "warrens-nest"},
+        {"id": "attack", "label": "Attack the nesting Dim", "nextSceneId": "warrens-nest"},
+        {"id": "leave", "label": "Back away quietly", "nextSceneId": "warrens-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Dim protect eggs but are not automatically aggressive if nest remains unthreatened."}
+    },
+    {
+      "id": "warrens-tomb",
+      "title": "The Tomb the Worms Broke",
+      "locationId": "warrens-tomb",
+      "requiredFacts": ["Dim tunnelling breached an older tomb containing magic items."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "search", "label": "Search the sarcophagi and rubble", "nextSceneId": "warrens-exploration"},
+        {"id": "items", "label": "Examine the unusual magic items", "nextSceneId": "warrens-tomb"},
+        {"id": "history", "label": "Investigate who was buried here", "nextSceneId": "warrens-tomb"},
+        {"id": "leave", "label": "Return to the tunnels", "nextSceneId": "warrens-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source item mechanics from item layer."}
+    },
+    {
+      "id": "warrens-waste",
+      "title": "Where the Stones Come From",
+      "locationId": "warrens-waste",
+      "requiredFacts": ["The communal Dim waste area contains thousands of Resurrection Stones."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "proof", "label": "Take enough Stones to prove the source", "nextSceneId": "ending-stone-source", "stateChanges": [{"target": "campaign", "op": "set", "field": "stoneSourceKnown", "value": true}]},
+        {"id": "haul", "label": "Attempt to haul a large quantity away", "nextSceneId": "warrens-exploration"},
+        {"id": "study", "label": "Study why the Dim produce them", "nextSceneId": "warrens-waste"},
+        {"id": "destroy", "label": "Try to destroy the Stone stockpile", "nextSceneId": "warrens-waste"},
+        {"id": "leave", "label": "Leave the stockpile untouched", "nextSceneId": "warrens-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Thousands of Stones create logistics, corruption and economic consequences; do not auto-add them all to inventory."}
+    },
+    {
+      "id": "overworld-delay",
+      "title": "Time Above",
+      "locationId": "overworld",
+      "requiredFacts": ["Gebert's rescue clock continues while PCs are away."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "return-next-midnight", "label": "Return at the next midnight", "nextSceneId": "midnight-entrance"},
+        {"id": "wait-days", "label": "Spend more days preparing", "nextSceneId": "midnight-entrance"},
+        {"id": "abandon", "label": "Abandon the expedition", "nextSceneId": "ending-abandoned"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Advance elapsed days honestly; at deadline set Gebert unrecoverable."}
+    }
+  ],
+  "endings": [
+    {"id": "ending-gebert-rescued", "title": "The Wizard Comes Home", "summary": "Gebert returns alive before the digestion deadline. Bonetown pays its rescue reward; corruption, Rixi tension and the fungal ecosystem remain available campaign threads."},
+    {"id": "ending-stone-source", "title": "The Source of Resurrection", "summary": "The party proves that Dim produce Resurrection Stones and can claim the source-information/recovered-Stone rewards even if Gebert is dead or unrecoverable."},
+    {"id": "ending-gebert-lost", "title": "Too Late", "summary": "The 21-day rescue window expires. Gebert is fully digested. The party may still solve the Stone mystery and continue exploring the cavern."},
+    {"id": "ending-ferry-bound", "title": "A New Ferryman", "summary": "A character inherits the Waterfall ferry's magical obligation if they truly accept/trigger the binding. This is a character-state ending/complication, not necessarily campaign termination."},
+    {"id": "ending-abandoned", "title": "Bonetown Without You", "summary": "The party leaves the crisis unresolved. Gebert's deadline, corruption and cavern faction/ecology states continue off-screen for future return."},
+    {"id": "ending-open-site", "title": "The Cavern Remains", "summary": "Any primary objective can end while Bonetown and the cavern remain a reusable adventure site for trade, faction play, alchemy, Stones and the Mycelicardia threat."}
+  ]
+}
