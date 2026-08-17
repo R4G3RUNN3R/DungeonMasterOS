@@ -1,0 +1,72 @@
+{
+  "id": "de-farra-a-ruinaceleste",
+  "title": "De farra a Ruïnaceleste",
+  "researchStatus": "partial-source-extraction",
+  "language": "ca",
+  "sourceRuleset": "system-agnostic OSR",
+  "sourceParty": { "min": 4, "max": 6 },
+  "sourceLevels": { "min": 4, "max": 8 },
+  "structure": {
+    "acts": 3,
+    "majorSpaces": [
+      "La gran casa de les portes",
+      "Les terres de Ruïnaceleste",
+      "L'altar de les armes deposades"
+    ]
+  },
+  "hardCanon": [
+    "The adventure contains exactly three acts.",
+    "Les terres de Ruïnaceleste is a hexcrawl with exactly eight special locations.",
+    "L'altar de les armes deposades is a three-floor dungeon/lair.",
+    "The source includes six magical items and encounter/object/event tables.",
+    "The AI DM must preserve source proper nouns and may not invent permanent map topology before map extraction."
+  ],
+  "stateModels": {
+    "actProgression": "pending-full-pdf",
+    "hubRelationships": "pending-full-pdf",
+    "hexcrawl": {
+      "specialLocationCount": 8,
+      "hexMap": "pending-MAPA_RC_TERRES.pdf",
+      "randomTables": "pending-full-pdf"
+    },
+    "altarDungeon": {
+      "floorCount": 3,
+      "map": "pending-MAPA_RC_ALTAR.pdf",
+      "keyedRooms": "pending-full-pdf"
+    }
+  },
+  "scenes": [
+    {
+      "id": "opening-grounded-adventurers",
+      "title": "A Poor Month for Adventuring",
+      "status": "public-pitch-only",
+      "requiredFacts": [
+        "The adventurers have recently had a poor run of dangerous work for little money.",
+        "Their employer is displeased.",
+        "The adventure will lead toward Ruïnaceleste and a world-saving threat in the sky."
+      ],
+      "suggestedChoices": [],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayInventEmployerIdentity": false,
+        "mayInventRouteToRuinaceleste": false,
+        "mayInventThreat": false,
+        "adjudicationRule": "Do not make this scene executable beyond generic character interaction until the inciting job and employer are extracted from the source."
+      }
+    }
+  ],
+  "blockingUnknowns": [
+    "Exact three-act structure and transitions",
+    "Employer and inciting job",
+    "All hub residents/factions",
+    "Eight hexcrawl sites and adjacency",
+    "Random encounter/object/event tables",
+    "Three dungeon floors and keyed rooms",
+    "Six magic items",
+    "Main threat/antagonist",
+    "Endings/failure states",
+    "PDF licence variant discrepancy"
+  ],
+  "endings": []
+}
