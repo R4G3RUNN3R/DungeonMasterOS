@@ -1,0 +1,132 @@
+{
+  "id": "leviathan",
+  "title": "Leviathan",
+  "version": "0.8.0",
+  "status": "qa",
+  "rules": {
+    "nativeRuleset": "System-neutral",
+    "nativeEdition": null,
+    "rulesFamily": "Science-fiction",
+    "progressionModel": "none",
+    "startingProgression": null,
+    "endingProgression": null,
+    "recommendedGroupMin": null,
+    "recommendedGroupMax": null,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {
+        "ruleset": "System-neutral sci-fi RPG",
+        "edition": null,
+        "supportLevel": "native",
+        "progressionRecommendation": "One-shot; no advancement assumption.",
+        "groupRecommendation": "Source does not publish a group-size recommendation on the project page.",
+        "conversionNotes": "Use the chosen sci-fi game's normal investigation, repair, hazard and stress procedures.",
+        "validationSource": "https://catshavenolord.itch.io/leviathan"
+      },
+      {
+        "ruleset": "Mothership",
+        "edition": null,
+        "supportLevel": "tested",
+        "progressionRecommendation": "One-shot characters; no advancement assumption.",
+        "groupRecommendation": "Verified actual-play report succeeded with 2 players; this is evidence, not an official recommendation.",
+        "conversionNotes": "Use rolls/stress when failure has meaningful consequences; investigation can often resolve automatically when sensible. Preserve system-neutral scenario facts.",
+        "validationSource": "Creator-page actual-play comments"
+      },
+      {
+        "ruleset": "Monolith",
+        "edition": null,
+        "supportLevel": "direct-compatible",
+        "progressionRecommendation": "One-shot characters.",
+        "groupRecommendation": null,
+        "conversionNotes": "Explicitly named by creator as an example compatible sci-fi RPG; exact mechanics supplied by Monolith adapter.",
+        "validationSource": "https://catshavenolord.itch.io/leviathan"
+      }
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Leviathan",
+    "author": "Luke Simonds",
+    "publisher": "Cats Have No Lord",
+    "primaryUrl": "https://catshavenolord.itch.io/leviathan",
+    "sourceIcon": "external-source",
+    "licence": "CC BY-SA 4.0 (adventure text)",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": true,
+    "attributionText": "Leviathan by Luke Simonds, publishing as Cats Have No Lord. Adventure text licensed CC BY-SA 4.0.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "You wake on a space station with no memory of who you are. A nearby star is becoming dangerous, station systems are failing, the central AI is malfunctioning, and cryptic messages keep arriving. Decide what to repair, what to trust and what is actually threatening you.",
+    "genres": ["science fiction", "space horror", "mystery", "paranoia", "survival"],
+    "themes": ["amnesia", "misinterpretation", "technology failure", "time pressure", "fear of the unknown"],
+    "tone": ["claustrophobic", "paranoid", "escalating", "potentially darkly comic"],
+    "setting": "isolated space station near a star undergoing an intensifying coronal mass ejection",
+    "structure": "scenario",
+    "contentWarnings": ["amnesia", "space hazards", "panic/paranoia", "equipment failure", "possible character death depending on ruleset"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "amnesia", "rule": "Characters begin aboard a space station without memories of who they are.", "sourceRef": "canon.md"},
+      {"id": "cme", "rule": "An intensifying coronal mass ejection is a real environmental threat.", "sourceRef": "canon.md"},
+      {"id": "messages", "rule": "Cryptic messages are an essential escalation mechanism.", "sourceRef": "canon.md"},
+      {"id": "ai", "rule": "The station AI malfunctions and can contribute to fear without being protected from player damage.", "sourceRef": "canon.md"},
+      {"id": "benign-central-threat", "rule": "The apparent central feared threat is ultimately benign; player paranoia must not rewrite this truth.", "sourceRef": "canon.md"}
+    ],
+    "conditional": [
+      {"id": "ignored-problems", "rule": "Ignored station failures create source-consistent downstream consequences.", "condition": {"type": "custom", "key": "unresolvedProblems", "operator": "not-empty", "value": true}, "sourceRef": "canon.md"},
+      {"id": "ai-destroyed", "rule": "If players successfully destroy the AI, subsequent play continues without making it invulnerable or automatically restoring it.", "condition": {"type": "custom", "key": "aiState", "operator": "equals", "value": "destroyed"}, "sourceRef": "canon.md"}
+    ],
+    "soft": [
+      {"id": "station-flavour", "rule": "Ordinary maintenance detail and non-keyed station furnishings may be improvised consistently.", "sourceRef": "canon.md"}
+    ],
+    "freeImprovisation": [
+      {"id": "repair-description", "rule": "Repair narration and sensory details may be improvised while source problem state and selected ruleset mechanics remain authoritative.", "sourceRef": "canon.md"}
+    ]
+  },
+  "locations": [
+    {"id": "station", "name": "Space Station", "type": "space station", "parentId": null, "description": "The isolated environment containing the entire scenario.", "connections": ["ai-interface", "viewports", "airlock", "sleep-pods", "station-systems"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "ai-interface", "name": "Central Computer / AI Interface", "type": "control system", "parentId": "station", "description": "Station AI and data/control interface.", "connections": ["station"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "viewports", "name": "Station Viewports", "type": "observation feature", "parentId": "station", "description": "Allows visual observation of worsening stellar conditions.", "connections": ["station"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "airlock", "name": "Airlock", "type": "pressure boundary", "parentId": "station", "description": "A station access/pressure system that can become part of the escalating failures.", "connections": ["station"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "sleep-pods", "name": "Sleep / Cryogenic Pods", "type": "survival equipment", "parentId": "station", "description": "Pods usable by players as equipment/shelter.", "connections": ["station"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "station-systems", "name": "Station Systems", "type": "infrastructure", "parentId": "station", "description": "Electrical, laboratory, external power and other source-defined systems subject to escalating problems.", "connections": ["station"], "secrets": [], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "station-ai", "name": "Station AI", "role": "computer system / information and malfunction channel", "locationId": "ai-interface", "factionId": null, "publicGoal": null, "privateGoal": null, "knowledge": [], "secrets": [], "sourceRefs": ["canon.md", "encounters.md"]}
+  ],
+  "factions": [],
+  "items": [],
+  "clocks": [
+    {"id": "message-clock", "name": "Cryptic Message Sequence", "segments": 8, "current": 0, "advanceRule": "Use source sequence; exact count/order pending PDF verification. Timing mode may be real-time, paced or accelerating.", "effects": []},
+    {"id": "solar-threat", "name": "Coronal Mass Ejection", "segments": 6, "current": 1, "advanceRule": "Advance with source scenario escalation.", "effects": ["worsening environmental/station pressure"]},
+    {"id": "station-integrity", "name": "Station Integrity", "segments": 5, "current": 5, "advanceRule": "Degrades when source station problems worsen or are left unresolved.", "effects": ["loss of station capabilities and increased hazards"]}
+  ],
+  "scenes": [
+    {"id": "graph-reference", "title": "Executable scenario graph", "locationId": "station", "entryConditions": [], "requiredFacts": ["Full scene/choice/escalation graph is stored in story-graph.json."], "hiddenFacts": [], "choices": [], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use story-graph.json plus PDF-verified problem/message tables once available.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}
+  ],
+  "endings": [
+    {"id": "revelation", "title": "The Monster Was in the Explanation", "conditions": [], "summary": "The benign truth behind the apparent central threat is understood; the group then deals with the very real station/stellar consequences.", "sourceRefs": ["story-graph.json"]},
+    {"id": "survival", "title": "Survive the Station", "conditions": [], "summary": "The party survives/escapes with consequences based on repaired, ignored and destroyed systems.", "sourceRefs": ["story-graph.json"]},
+    {"id": "system-failure", "title": "Too Much Left Broken", "conditions": [], "summary": "Objective station or stellar hazards become fatal/force abandonment despite the central feared threat being benign.", "sourceRefs": ["story-graph.json"]}
+  ],
+  "communityIntelligence": [
+    {"platform": "itch.io", "summary": "Verified 2-player Mothership run; curated escalating malfunctions and flexible message pacing worked well; players ignored some station problems; Mothership increased paranoia despite few rolls.", "sourceUrl": "https://catshavenolord.itch.io/leviathan"}
+  ],
+  "adaptationNotes": [
+    "Default DMOS timerMode should be paced, with real-time and accelerating options.",
+    "Never convert player theories into canon truth.",
+    "Allow AI destruction and ignored station problems.",
+    "Exact source messages, tables and map remain blocked on direct PDF extraction; do not fabricate them."
+  ],
+  "researchSources": [
+    {"url": "https://catshavenolord.itch.io/leviathan", "type": "primary", "supports": "premise, rules compatibility, licence, comments and actual play", "accessedAt": "2026-08-17"},
+    {"url": "https://itch.io/jam/sci-fi-one-shot-jam-2024/rate/2728274", "type": "official-metadata", "supports": "jam constraints and system-agnostic classification", "accessedAt": "2026-08-17"},
+    {"url": "https://surfacelevelgames.blogspot.com/2024/07/sci-fi-one-shot-jam-2024-roundup.html", "type": "community", "supports": "independent review", "accessedAt": "2026-08-17"}
+  ]
+}
