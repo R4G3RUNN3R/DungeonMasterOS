@@ -1,0 +1,140 @@
+{
+  "campaignId": "gold-in-the-hills",
+  "version": 1,
+  "sourceVersion": "Adventure Anthology One 1st Edition Release 21",
+  "initialState": {
+    "mineAlerted": false,
+    "pitArmed": false,
+    "area1Guards": "at-post",
+    "leadership": "area6",
+    "area4BattleRounds": 0,
+    "automaton": "damaged-operable",
+    "elevator": "wedged-damaged",
+    "writtenSourceBoundaryCrossed": false
+  },
+  "nodes": [
+    {
+      "id": "hook",
+      "location": "highlands",
+      "truth": ["Black Fangs are spending raw gold and using new weapons; their lair is an abandoned dwarven mine."],
+      "choices": [
+        {"label": "Investigate missing prospectors", "next": "approach"},
+        {"label": "Trace goblin gold/new weapons", "next": "approach"},
+        {"label": "Travel to the old mine directly", "next": "approach"}
+      ],
+      "freeText": "Allow another plausible hook without changing earthquake/gold truth."
+    },
+    {
+      "id": "approach",
+      "location": "mine-exterior",
+      "truth": ["Careful approach can avoid alerting entrance guards."],
+      "choices": [
+        {"label": "Approach stealthily", "next": "area1"},
+        {"label": "Scout for goblin signs", "next": "area1"},
+        {"label": "Approach openly", "set": {"mineAlerted": true, "pitArmed": true, "area1Guards": "area4", "leadership": "area4"}, "next": "area1-alerted"}
+      ],
+      "freeText": "Any action that clearly warns guards sets global alert; successful capture/stealth can preserve non-alert state."
+    },
+    {
+      "id": "area1",
+      "location": "area1",
+      "truth": ["Two goblin guards are at their post/resting if not alerted."],
+      "choices": [
+        {"label": "Silently disable/capture guards", "next": "area2"},
+        {"label": "Fight before they warn others", "next": "area2"},
+        {"label": "Let them escape", "set": {"mineAlerted": true, "pitArmed": true, "area1Guards": "area4", "leadership": "area4"}, "next": "area2"}
+      ],
+      "freeText": "Warning must propagate if guards successfully retreat/shout."
+    },
+    {
+      "id": "area1-alerted",
+      "location": "area1",
+      "truth": ["Guards have fired/retreated; warning is audible deeper in mine."],
+      "choices": [{"label": "Pursue", "next": "area2"}, {"label": "Proceed cautiously", "next": "area2"}, {"label": "Withdraw", "next": "approach"}],
+      "freeText": "Alert is persistent on immediate return."
+    },
+    {
+      "id": "area2",
+      "location": "area2",
+      "truth": ["35-foot defensive pit; east lever disables mechanism; west one-foot ledge bypasses."],
+      "choices": [
+        {"label": "Use the lever", "set": {"pitArmed": false}, "next": "junction"},
+        {"label": "Cross the narrow ledge", "next": "junction"},
+        {"label": "Bridge/jump/climb", "next": "junction"}
+      ],
+      "freeText": "Resolve actual pit state and method; no automatic hit."
+    },
+    {
+      "id": "junction",
+      "location": "area2",
+      "truth": ["East leads toward active mine; west leads to elevator shaft."],
+      "choices": [{"label": "Go east toward mine", "next": "area4"}, {"label": "Explore elevator chamber", "next": "area3"}, {"label": "Retreat", "next": "approach"}],
+      "freeText": "Preserve map topology."
+    },
+    {
+      "id": "area3",
+      "location": "area3",
+      "truth": ["Elevator wedged 20 feet down; Tentacle Worm inhabits shaft; deeper levels are source-unwritten."],
+      "choices": [
+        {"label": "Deal with/avoid the Tentacle Worm", "next": "junction"},
+        {"label": "Repair the elevator", "set": {"elevator": "repaired-risky"}, "next": "junction"},
+        {"label": "Use repaired elevator to descend", "set": {"writtenSourceBoundaryCrossed": true}, "next": "homebrew-boundary"}
+      ],
+      "freeText": "Each repaired-elevator use has 5% rope failure. Deeper levels must be labelled continuation/homebrew."
+    },
+    {
+      "id": "area4",
+      "location": "area4",
+      "truth": ["Main mining force works here; damaged dwarven automaton is partly buried in slag."],
+      "choices": [
+        {"label": "Attack the main force", "event": "area4-combat", "next": "post-area4"},
+        {"label": "Try deception/intimidation/surrender", "event": "social-adjudication", "next": "post-area4"},
+        {"label": "Investigate/use the automaton", "event": "automaton-command", "next": "post-area4"},
+        {"label": "Withdraw toward other rooms", "next": "junction"}
+      ],
+      "freeText": "If non-alerted combat exceeds six rounds while leadership remains in Area 6, move leadership toward Area 4. Area 5 never reinforces."
+    },
+    {
+      "id": "post-area4",
+      "location": "area4",
+      "truth": ["Area 5 and/or Area 6 may remain unresolved depending on alert/noise state."],
+      "choices": [{"label": "Search automaton/secret work area", "next": "area4-salvage"}, {"label": "Go to tribal lair", "next": "area5"}, {"label": "Seek chief/leadership", "next": "area6"}],
+      "freeText": "Leadership may already have moved or died; reflect actual state."
+    },
+    {
+      "id": "area4-salvage",
+      "location": "area4",
+      "truth": ["Automaton takes simple Dwarven commands and has 20% catastrophic failure chance while moving."],
+      "choices": [{"label": "Repair for extraction", "set": {"automaton": "repaired-extractable"}, "next": "post-area4"}, {"label": "Command it in Dwarven", "event": "automaton-command", "next": "post-area4"}, {"label": "Leave it alone", "next": "post-area4"}],
+      "freeText": "Do not improve its language/intelligence."
+    },
+    {
+      "id": "area5",
+      "location": "area5",
+      "truth": ["Five day-off goblins refuse to help Area 4 but defend themselves here."],
+      "choices": [{"label": "Fight", "next": "post-area4"}, {"label": "Intimidate/capture/negotiate", "next": "post-area4"}, {"label": "Bypass", "next": "post-area4"}],
+      "freeText": "Do not make them retroactively reinforce Area 4."
+    },
+    {
+      "id": "area6",
+      "location": "area6",
+      "truth": ["Default occupants Xikek, Snerk, Yuliak unless alert/noise moved them."],
+      "choices": [{"label": "Confront leadership", "event": "leadership-combat", "next": "ending"}, {"label": "Attempt surrender/terms", "event": "social-adjudication", "next": "ending"}, {"label": "Search/loot trapped chest", "event": "dart-trap", "next": "ending"}],
+      "freeText": "If leadership is already in Area 4, this room reflects that absence."
+    },
+    {
+      "id": "homebrew-boundary",
+      "location": "area3",
+      "truth": ["The written adventure stops here; deeper mine is explicitly left to the GM."],
+      "choices": [],
+      "freeText": "Create/load a clearly labelled DMOS continuation; never present generated lower levels as source canon."
+    },
+    {
+      "id": "ending",
+      "location": null,
+      "truth": ["Outcome depends on tribe/leadership, gold clue, salvage and retreat state."],
+      "choices": [],
+      "freeText": "Allow return to towns, sale/repair of automaton, reporting findings, or unresolved future Black Fang consequences."
+    }
+  ]
+}
