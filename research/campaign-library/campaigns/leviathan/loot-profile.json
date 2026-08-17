@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "loot-policy-v1",
+  "campaignId": "leviathan",
+  "campaignScale": "one-shot",
+  "nativeRuleset": "System-neutral sci-fi horror",
+  "status": "blocked",
+  "coverage": {
+    "sourceLootPresent": false,
+    "sourceLootPreserved": false,
+    "tangibleRewardBeats": 0,
+    "usefulRewardBeats": 0,
+    "signatureRewardBeats": 0,
+    "sourceEvidence": ["sources.md", "qa.md"],
+    "examples": []
+  },
+  "supplemental": {
+    "enabled": false,
+    "mode": "none",
+    "provenance": "source",
+    "rulesAdapterRequired": true,
+    "compendiumUse": "disabled",
+    "antiFarmPersistent": true,
+    "rerollOnReload": false,
+    "artifactsRandomlyAllowed": false,
+    "notes": ["Exact two-page source PDF has not yet been extracted, so the research lane may not claim the source is loot-free or invent station salvage as source canon.", "After exact extraction, if the scenario genuinely lacks tangible discoveries, apply the gap-fill policy with system-neutral/Mothership-compatible salvage rather than fantasy item rarity."]
+  },
+  "placementPolicy": {
+    "intelligentEnemiesMayCarryLoot": true,
+    "ordinaryBeastsHavePocketLoot": false,
+    "undeadMayRetainPossessions": true,
+    "constructsMayYieldSalvage": true,
+    "hiddenCachesAllowed": true,
+    "namedEnemiesPreferDistinctivePossession": true
+  },
+  "approval": {"passesLootGate": false, "blockers": ["Direct authoritative PDF extraction required before source loot coverage can be measured."]}
+}
