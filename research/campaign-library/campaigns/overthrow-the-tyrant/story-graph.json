@@ -1,0 +1,58 @@
+{
+  "id": "overthrow-the-tyrant",
+  "title": "OVERTHROW THE TYRANT - An Homage to Blancaseda",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "system-agnostic OSR",
+  "dmosDndConversion": { "status": "pending" },
+  "hardCanon": [
+    "The adventure concerns consequences left behind by The Heroes Who Departed.",
+    "Blancaseda contains active factions and is ruled or dominated by a Tyrant.",
+    "The source includes regional rumours, wilderness events and key city locations.",
+    "Dead Parrots' Tavern and the source term Undead Kings are real campaign elements.",
+    "The AI DM may not invent the historical acts of The Heroes Who Departed, the identity of the Tyrant or the nature of the Undead Kings before source extraction."
+  ],
+  "scenes": [
+    {
+      "id": "entry-blancaseda-region",
+      "title": "Into Blancaseda",
+      "status": "placeholder-pending-pdf",
+      "requiredFacts": [
+        "The party enters a region shaped by consequences left by prior heroes.",
+        "Regional rumours and wilderness encounters exist in the source.",
+        "The Tyrant and city factions are central to the situation."
+      ],
+      "suggestedChoices": [
+        { "id": "seek-rumours", "label": "Seek local rumours about Blancaseda", "classification": "source-supported activity; exact rumours pending" },
+        { "id": "travel-city", "label": "Continue toward Blancaseda", "classification": "source-supported progression; exact travel nodes pending" },
+        { "id": "dead-parrots", "label": "Look for the Dead Parrots' Tavern", "classification": "source-supported named lead" },
+        { "id": "investigate-heroes", "label": "Ask what the Heroes Who Departed left behind", "classification": "source-supported question; answers pending PDF" }
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayCreateMinorDetails": true,
+        "mayCreateMajorFactionFacts": false,
+        "mayDefineTyrant": false,
+        "adjudicationRule": "Allow travel, conversation and tactical planning without inventing source rumours, faction agendas, Tyrant secrets, historic events or permanent geography."
+      }
+    }
+  ],
+  "stateModelsPending": [
+    "rumour truth-state",
+    "faction attitude/resources",
+    "Tyrant awareness/control",
+    "regional travel events",
+    "legacy consequences of The Heroes Who Departed"
+  ],
+  "endings": [],
+  "blockingUnknowns": [
+    "Full eight-page PDF extraction",
+    "Blancaseda map/locations",
+    "factions and leaders",
+    "Tyrant identity/motivation/abilities",
+    "regional rumours and truth values",
+    "wilderness encounters",
+    "source endings",
+    "D&D 5e conversion level and party range"
+  ]
+}
