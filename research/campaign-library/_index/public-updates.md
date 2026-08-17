@@ -60,53 +60,27 @@ Two additional campaign architectures are close to approval. `The Old Blood` is 
 
 The campaign library is no longer fantasy-only. Active research now covers gothic horror, vampire chronicles, science fiction, space horror and post-apocalyptic survival. Proprietary settings such as Ravenloft and Vampire: The Masquerade are being handled through metadata/private-import paths rather than redistributing protected campaign text.
 
-Open post-apocalyptic candidates now include `These Pillars Remain` and `The Chalk-Marked Grave`; open sci-fi candidates include `Worms In Space`, `The Return of the XBRC Terror`, `Goodbye Shooting Star` and `Derelict Transdimensional Anomaly`.
-
-**Rulesets affected:** Cairn, Eco Mofos, Mothership-compatible/system-neutral sci-fi, Monolith, Vampire: The Masquerade V5 private-import, D&D/Ravenloft private-import
+**Rulesets affected:** Cairn, Eco Mofos, system-neutral sci-fi, Monolith, Vampire: The Masquerade V5 private-import, D&D/Ravenloft private-import
 **Internal references:** `_index/completion-dashboard.md`, `_index/candidates.md`
-
----
-
-## 2026-08-17 - Current focus: increase the completed campaign count
-**Status:** researching
-
-Current priority is completion rather than merely discovering more titles. We are favouring campaigns whose full text is legally adaptable and sufficiently accessible to extract exact locations, NPC behaviour, encounter logic, clocks, consequences and endings. Post-apocalyptic and sci-fi campaigns are being prioritised next so the approved library does not become fantasy-only.
-
-**Current approved count:** 2
-**Near approval:** The Old Blood, Leviathan
-**Next research targets:** post-apocalyptic survival, sci-fi horror, gothic horror and other open-licensed full-text adventures.
-
----
-
-## 2026-08-17 - Born Into Black Nights reaches campaign QA
-**Status:** qa
-
-A third full campaign structure has reached story and adversarial QA. `Born Into Black Nights` is a Cairn gothic-horror adventure built around a haunted settlement, multiple investigation routes, dangerous woodland travel and a ten-room tomb. Its DungeonMasterOS template preserves the difference between defeating undead and actually resolving the haunting, so combat alone cannot accidentally overwrite the source's intended consequences.
-
-**Native ruleset:** Cairn
-**Additional support:** other fantasy systems through explicit conversion only
-**Release state:** story/canon QA complete; automated JSON-schema validation still required before `APPROVED`
-**Internal reference:** `campaigns/born-into-black-nights/`
 
 ---
 
 ## 2026-08-17 - Campaign research now has an Updates feed
 **Status:** library-expansion
 
-Campaign-library milestones are now being recorded in both human-readable Markdown and machine-readable JSON. These spoiler-light entries are intended to become the data source for a future DungeonMasterOS Updates / What We're Working On page, while detailed spoilers, licensing evidence and campaign canon remain in the private research layer.
+Campaign-library milestones are being recorded in human-readable Markdown plus machine-readable update fragments. These spoiler-light entries are intended to become the data source for a future DungeonMasterOS Updates / What We're Working On page, while detailed spoilers, licensing evidence and campaign canon remain in the internal research layer.
 
-**Internal references:** `_index/public-updates.md`, `_index/public-updates.json`
+**Internal references:** `_index/public-updates.md`, `_index/public-updates.d/`
 
 ---
 
 ## 2026-08-17 - Open adventure anthology pipeline discovered
 **Status:** library-expansion
 
-A new batch-research lane has opened through `Adventure Anthology One` for the Basic Fantasy Role-Playing Game. The current research edition contains fourteen short adventures with explicit party/level guidance, and the anthology's text is published as Open Game Content under its OGL declaration. We are processing these adventures one-by-one rather than treating the anthology as a bulk import.
+A batch-research lane has opened through `Adventure Anthology One` for the Basic Fantasy Role-Playing Game. The research edition contains fourteen short adventures with explicit party/progression guidance, and its text is published as Open Game Content under the source OGL declaration. We are processing these adventures one-by-one rather than treating the anthology as a blind bulk import.
 
 **Ruleset affected:** Basic Fantasy Role-Playing Game
-**Range represented:** beginning characters through roughly level 8 across the anthology
-**Current pipeline:** 14 adventures catalogued; Merilla's Magic Tower and Gold in the Hills have reached story/canon QA
+**Range represented:** beginning characters through higher low/mid-level parties across the anthology
 **Internal reference:** `_index/basic-fantasy-aa1-pipeline.md`
 
 ---
@@ -114,11 +88,11 @@ A new batch-research lane has opened through `Adventure Anthology One` for the B
 ## 2026-08-17 - Merilla's Magic Tower reaches QA after version audit
 **Status:** qa
 
-`Merilla's Magic Tower` now has a five-level campaign graph for **3-6 Basic Fantasy characters, levels 4-7**. During research we found that the current anthology release materially changed monsters and magic-item mechanics from an older standalone release, so the template was migrated to the newer source instead of mixing versions. Rescue, guardian damage, theft and assassination consequences are tracked separately.
+`Merilla's Magic Tower` now has a five-level campaign graph for **3-6 Basic Fantasy characters, levels 4-7**. Research found material differences between an older standalone release and the current anthology version, so the DungeonMasterOS template was migrated to the current source rather than mixing editions.
 
 **Native ruleset:** Basic Fantasy Role-Playing Game
 **Progression:** levels 4-7, 3-6 characters
-**Release state:** story/canon/adversarial QA complete; machine validation, final map review and OGL release packaging remain
+**Release state:** story/canon/adversarial QA and machine validation complete; final map review and source-specific release packaging remain
 **Internal reference:** `campaigns/merillas-magic-tower/`
 
 ---
@@ -126,9 +100,45 @@ A new batch-research lane has opened through `Adventure Anthology One` for the B
 ## 2026-08-17 - Gold in the Hills reaches QA
 **Status:** qa
 
-`Gold in the Hills` has been converted into a persistent-state campaign template for **2-4 Basic Fantasy characters, levels 1-3**. The mine remembers whether the party raised the alarm, whether its dwarven trap was armed, where the goblin leadership moved and how long a major battle has lasted. A damaged dwarven mining automaton and a deeper-mine expansion boundary are also tracked without inventing unwritten source levels.
+`Gold in the Hills` has been converted into a persistent-state campaign template for **2-4 Basic Fantasy characters, levels 1-3**. The mine remembers alert state, trap state, actor movement and discovered machinery instead of treating every room as an isolated encounter.
 
 **Native ruleset:** Basic Fantasy Role-Playing Game
 **Progression:** levels 1-3, 2-4 characters
-**Release state:** story/canon/adversarial QA complete; machine validation, final visual-map check and OGL release packaging remain
+**Release state:** story/canon/adversarial QA and machine validation complete; final visual-map check and source-specific release packaging remain
 **Internal reference:** `campaigns/gold-in-the-hills/`
+
+---
+
+## 2026-08-17 - Third campaign approved: Born Into Black Nights
+**Status:** approved
+
+`Born Into Black Nights` has passed the full DungeonMasterOS gate, including source/canon review, adversarial AI-DM QA and automated v2 template validation. It becomes the first approved built-in gothic ghost-horror campaign in the library.
+
+**Native ruleset:** Cairn
+**Progression:** native Cairn progression; no invented D&D level
+**Additional support:** other fantasy systems through explicit conversion only
+**Current approved campaign count:** 3
+**Internal reference:** `campaigns/born-into-black-nights/`
+
+---
+
+## 2026-08-17 - Beneath Brymassen reaches QA
+**Status:** qa
+
+`Beneath Brymassen` now has a full DungeonMasterOS campaign model for **3-6 beginning / level-1 Basic Fantasy characters**. Research also caught an anthology-layout ambiguity that could have incorrectly assigned a neighbouring adventure's level range. The template keeps its two source-supported modes separate: a conventional dungeon/bounty expedition or a captive-rescue scenario.
+
+**Native ruleset:** Basic Fantasy Role-Playing Game
+**Progression:** beginning / level 1, 3-6 characters
+**Release state:** source extraction, story graph, adversarial QA and machine validation complete; final source-map review and OGL/Copyright Notice packaging remain before approval
+**Internal reference:** `campaigns/beneath-brymassen/`
+
+---
+
+## 2026-08-17 - Parallel campaign research lanes established
+**Status:** library-expansion
+
+Campaign work is now being advanced in parallel research lanes for open fantasy/OSR material, sci-fi/space horror, post-apocalyptic survival, and gothic/vampire content. Every lane remains subject to one central approval gate: source, licence, native ruleset/progression, canon/state model, adversarial AI-DM QA and machine validation are all reviewed before a campaign can become `APPROVED`.
+
+**Current approved campaign count:** 3
+**Current QA focus:** Basic Fantasy release gates, open sci-fi full-text extraction, post-apocalyptic full-text extraction, and gothic/vampire completion
+**Internal reference:** `_index/completion-dashboard.md`
