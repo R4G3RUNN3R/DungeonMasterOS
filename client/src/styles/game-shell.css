@@ -1,0 +1,120 @@
+/*
+ * Game shell visual tokens — DungeonMasterOS immersive redesign, Phase 1.
+ *
+ * Scoped to `.dm-shell` on purpose: this is the live-play screen's own
+ * identity (old tavern: walnut, leather, candlelight, bronze, parchment),
+ * deliberately distinct from the rest of the application's theme
+ * (dashboard, pricing, auth). Nothing here touches the global --background/
+ * --primary tokens in index.css, so no other page is affected.
+ */
+
+.dm-shell {
+  /* Surfaces, dark to light */
+  --dm-void: 24 22% 6%;          /* behind everything, under the scene image */
+  --dm-walnut: 22 26% 11%;       /* header, HUD, context panel base */
+  --dm-walnut-raised: 22 24% 15%;/* cards/panels sitting on walnut */
+  --dm-leather: 20 30% 18%;      /* composer, action deck */
+  --dm-line: 25 22% 24%;         /* hairline borders on dark surfaces */
+
+  /* Parchment reading surface (story chronicle) */
+  --dm-parchment: 38 32% 92%;
+  --dm-parchment-ink: 26 30% 14%;
+  --dm-parchment-muted: 28 16% 38%;
+  --dm-parchment-line: 34 24% 78%;
+
+  /* Accents */
+  --dm-amber: 32 78% 55%;        /* candlelight / primary accent */
+  --dm-amber-soft: 32 60% 68%;
+  --dm-bronze: 28 38% 46%;       /* metal accents, borders, icons */
+  --dm-iron: 220 6% 46%;         /* cool metal, for saves/neutral chips */
+  --dm-danger: 5 62% 46%;        /* HP loss / danger, restrained not neon */
+  --dm-danger-soft: 5 45% 62%;
+
+  /* Text on dark surfaces */
+  --dm-text: 34 24% 90%;
+  --dm-text-muted: 30 12% 66%;
+  --dm-text-faint: 28 10% 48%;
+
+  background: hsl(var(--dm-void));
+  color: hsl(var(--dm-text));
+}
+
+/* ── Reusable surface utilities ─────────────────────────────────────── */
+
+.dm-shell .dm-surface {
+  background: hsl(var(--dm-walnut));
+  border: 1px solid hsl(var(--dm-line));
+}
+
+.dm-shell .dm-surface-raised {
+  background: hsl(var(--dm-walnut-raised));
+  border: 1px solid hsl(var(--dm-line));
+}
+
+.dm-shell .dm-leather {
+  background: hsl(var(--dm-leather));
+  border: 1px solid hsl(var(--dm-line));
+}
+
+.dm-shell .dm-parchment {
+  background: hsl(var(--dm-parchment));
+  color: hsl(var(--dm-parchment-ink));
+}
+
+.dm-shell .dm-heading {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  letter-spacing: 0.01em;
+}
+
+.dm-shell .dm-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--dm-text-faint));
+}
+
+.dm-shell .dm-divider {
+  border-color: hsl(var(--dm-line));
+}
+
+.dm-shell .dm-amber-text {
+  color: hsl(var(--dm-amber));
+}
+
+.dm-shell .dm-danger-text {
+  color: hsl(var(--dm-danger-soft));
+}
+
+/* ── Scene backdrop crossfade ───────────────────────────────────────── */
+
+.dm-scene-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+
+.dm-scene-layer.dm-scene-active {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dm-scene-layer {
+    transition-duration: 1ms;
+  }
+}
+
+/* ── Custom scrollbar for the parchment story column ────────────────── */
+
+.dm-shell .dm-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.dm-shell .dm-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--dm-bronze) / 0.4);
+  border-radius: 999px;
+}
+.dm-shell .dm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
