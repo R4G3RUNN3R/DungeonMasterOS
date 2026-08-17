@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
+import { registerCompendiumRoutes } from "./compendium-routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -91,6 +92,9 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
+  // Public, read-only catalogue endpoints. Kept separate from campaign routes so
+  // the website compendium can evolve without touching active gameplay handlers.
+  registerCompendiumRoutes(app);
   await registerRoutes(httpServer, app);
 
   // Error handler
