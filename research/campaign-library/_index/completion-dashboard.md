@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-17
 
-This dashboard tracks playable campaign-template maturity, not merely discoveries. Rulesets are stated explicitly. `Approved` means source rights, campaign canon, ruleset identity, story graph and adversarial AI-DM QA are complete enough for built-in integration without inventing missing story content.
+This dashboard tracks playable campaign-template maturity, not merely discoveries. Rulesets are stated explicitly. `Approved` means source rights, campaign canon, ruleset identity, story graph, adversarial AI-DM QA and required machine validation are complete enough for built-in integration without inventing missing story content. Source-specific release obligations may still prevent approval.
 
 ## Approved built-in campaigns
 
@@ -12,12 +12,13 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | A Tomb of Twins | Ghost/necromancer dungeon / old-school fantasy | CRACK!/B/X-compatible, Cairn, Mörk Borg | B/X example levels 1-3; Cairn/Mörk Borg use native progression | Other OSR via conversion adapter | CC BY-SA 4.0 full text | APPROVED |
 | Born Into Black Nights | Gothic/ghost horror / town investigation / tomb | Cairn | Cairn native; source states no D&D-style level | Other fantasy systems through explicit conversion only | CC BY-SA 4.0 text | APPROVED |
 
-## QA-complete architecture, source-detail or release blockers remain
+## QA-complete architecture, release blockers remain
 
 | Campaign | Genre | Native ruleset | Progression | Additional support | Licence | Remaining blocker |
 |---|---|---|---|---|---|---|
 | Merilla's Magic Tower | Magical tower / rescue / assassination | Basic Fantasy Role-Playing Game | **3-6 characters, levels 4-7** | B/X-compatible conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Direct visual-map check for reported stair discrepancy; production OGL/Copyright Notice package. Machine schema validation PASSED. |
 | Gold in the Hills | Goblin mine / infiltration / dwarven machinery | Basic Fantasy Role-Playing Game | **2-4 characters, levels 1-3** | OSR conversions only after adapter QA | OGL v1.0a / AA1 Open Game Content | Final visual-map check; production OGL/Copyright Notice package. Machine schema validation PASSED. |
+| Beneath Brymassen | Beginner dungeon / rescue / humanoid factions | Basic Fantasy Role-Playing Game | **3-6 beginning / level-1 characters** | B/X-compatible OSR conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Direct visual-map check; production OGL/Copyright Notice package. Story/canon/adversarial QA and machine schema validation PASSED. |
 | The Old Blood | Gothic/vampire horror / city mystery | Shadowdark RPG | Levels 1-2 | Creator states OSR-style compatibility | CC0 original campaign content | Authoritative full-source room/map/stat verification |
 | Leviathan | Sci-fi / space horror / paranoia | System-neutral | None assumed; one-shot | Mothership TESTED by actual play; Monolith creator-listed compatible | CC BY-SA 4.0 text | Direct two-page PDF extraction for exact map/messages/tables |
 
@@ -25,7 +26,7 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 
 | Campaign | Genre | Native ruleset | Known progression | Licence state | Current stage |
 |---|---|---|---|---|---|
-| The Zombraire's Estate | Gothic/undead estate / cursed manor | Basic Fantasy Role-Playing Game | **3-6 characters, levels 2-5** | OGL v1.0a / AA1 Open Game Content | researching; provenance/community play captured; exact keyed extraction paused on source-fetch failure |
+| The Zombraire's Estate | Gothic/undead estate / cursed manor | Basic Fantasy Role-Playing Game | **3-6 characters, levels 2-5** | OGL v1.0a / AA1 Open Game Content | researching; provenance/community play captured; exact keyed extraction incomplete |
 | Castle Inspection | Dark-comedy fantasy / crisis management | System-neutral | One-evening adventure | CC BY-SA 4.0 | researching / partial graph |
 | Well, what now? | OSR cave rescue | System-neutral OSR | Source does not state level | CC BY-SA 4.0 | researching / partial graph |
 | Island of Trials | Fantasy trials one-shot | D&D 5e | Level 5, four players | Itch asset licence CC BY 4.0; PDF scope still to verify | researching |
@@ -36,6 +37,11 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | The Crypt of Unending Hunger | Vampire crypt / gothic dungeon | Cairn monsters / one-page dungeon | Cairn-style, source level not stated | CC BY 4.0 | primary source/licence verified; exact PDF extraction pending |
 | These Pillars Remain | Post-apocalyptic survival horror | Self-contained one-page TTRPG | Native source system; no level assumption | CC BY-SA 4.0 | source verified; sheet extraction pending |
 | The Chalk-Marked Grave | Acid-rain post-apocalyptic pointcrawl | Cairn; Eco Mofos adaptable | Cairn/system-specific | CC BY-SA 4.0 | source verified; pointcrawl/hive extraction pending |
+| The Return of the XBRC Terror | Sci-fi salvage/survival horror | System-neutral | One-page / few-hour scenario | CC BY-SA 4.0 | source/licence verified; exact text extraction pending |
+| Cascading Failure | Sci-fi derelict / collapsing ship | System-neutral | One-page / few-hour scenario | CC BY-SA 4.0 | source/licence verified; exact text extraction pending |
+| Derelict Transdimensional Anomaly | Sci-fi pointcrawl / time-space anomaly | System-neutral | One-page scenario | CC BY-SA 4.0 text/map | source/licence verified; exact node/table extraction pending |
+| Nautilus of Time | Time-travel derelict / procedural sci-fi | System-neutral | Scenario; no level model | CC BY-SA 4.0 | source/licence verified; source tables still to extract |
+| The Horror of Station XK-629 | Asteroid-station survival horror | System-neutral | One-page scenario | CC BY-SA 4.0 | source/licence verified; exact station key extraction pending |
 
 ## Open anthology completion pipeline
 
@@ -44,27 +50,44 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 Current pipeline state:
 - Merilla's Magic Tower: QA, machine schema validation passed
 - Gold in the Hills: QA, machine schema validation passed
+- Beneath Brymassen: QA, machine schema validation passed
 - The Zombraire's Estate: researching
-- 11 additional AA1 adventures queued with source level bands recorded
+- 10 additional AA1 adventures queued with source progression bands recorded
+
+## Parallel completion lanes
+
+### Lane A - Basic Fantasy / OGL
+Close visual-map and OGL packaging gates for Merilla, Gold and Beneath, while extracting the remaining AA1 queue.
+
+### Lane B - Sci-fi / space horror
+Prioritise complete, open one-page sources: Leviathan, The Return of the XBRC Terror, Cascading Failure, Derelict Transdimensional Anomaly, Nautilus of Time and The Horror of Station XK-629.
+
+### Lane C - Post-apocalyptic
+Prioritise These Pillars Remain, The Chalk-Marked Grave and additional Eco Mofos/open-jam scenarios whose full text can be extracted.
+
+### Lane D - Gothic / vampire / proprietary compatibility
+Finish The Old Blood and The Crypt of Unending Hunger as open built-ins; preserve Ravenloft and Vampire: The Masquerade as metadata/private-import unless separate rights permit more.
+
+Every lane is research-only until the central approval gate verifies source, licence, ruleset/progression, canon graph, adversarial QA and machine validation.
 
 ## High-priority next built-in candidates
 
 | Campaign | Genre | Native ruleset | Licence | Why high priority |
 |---|---|---|---|---|
-| The Zombraire's Estate | Gothic/undead estate | Basic Fantasy | OGL v1.0a / AA1 OGC | Full indexed text; levels 2-5; strong gothic branch candidate |
-| Beneath Brymassen | Low-level dungeon/rescue | Basic Fantasy | OGL v1.0a / AA1 OGC | Beginning-character coverage; short full-text source |
-| Night of the Necromancer | Village siege / necromancer | Basic Fantasy | OGL v1.0a / AA1 OGC | Levels 3-5; excellent state-machine/siege diversity |
-| The Crypt of Unending Hunger | Gothic/vampire dungeon | Cairn monsters | CC BY 4.0 | Explicitly open one-page vampire adventure; strong built-in vampire path without VTM IP |
-| The Ghosts of Aramoor | Coastal pirate-ghost horror | System-neutral; OSR intended | CC BY-SA 4.0 | Fully open one-page ghost adventure |
-| Worms In Space | Sci-fi body horror | Monolith | CC BY-SA 4.0 text | Open sci-fi horror scenario |
-| The Return of the XBRC Terror | Sci-fi salvage/survival horror | System-neutral | CC BY-SA 4.0 | Open one-page derelict scenario |
-| Goodbye Shooting Star | Sci-fi derelict / super-soldier horror | System-neutral | CC BY-SA 4.0 text | Open one-page scenario with community feedback |
+| The Return of the XBRC Terror | Sci-fi salvage/survival horror | System-neutral | CC BY-SA 4.0 | Open one-page derelict scenario; non-fantasy completion priority |
+| Cascading Failure | Sci-fi collapsing-ship survival | System-neutral | CC BY-SA 4.0 | Real-time failure state, victims, loot and hidden antagonist; strong AI state-machine test |
 | Derelict Transdimensional Anomaly | Sci-fi pointcrawl | System-neutral | CC BY-SA 4.0 text/map | Branching non-combat exploration |
+| Nautilus of Time | Procedural time-travel derelict | System-neutral | CC BY-SA 4.0 | Randomised levels/time paradoxes; creator actual-play evidence exists |
+| The Horror of Station XK-629 | Asteroid station horror | System-neutral | CC BY-SA 4.0 | Compact survival-horror template candidate |
+| The Zombraire's Estate | Gothic/undead estate | Basic Fantasy | OGL v1.0a / AA1 OGC | Levels 2-5; strong gothic branch candidate |
+| Night of the Necromancer | Village siege / necromancer | Basic Fantasy | OGL v1.0a / AA1 OGC | Levels 3-5; excellent state-machine/siege diversity |
+| The Crypt of Unending Hunger | Gothic/vampire dungeon | Cairn monsters | CC BY 4.0 | Open vampire content without VTM IP |
+| The Ghosts of Aramoor | Coastal pirate-ghost horror | System-neutral; OSR intended | CC BY-SA 4.0 | Fully open one-page ghost adventure |
 | These Pillars Remain | Post-apocalyptic survival horror | self-contained one-page TTRPG | CC BY-SA 4.0 | Fast post-apocalyptic completion once source sheet captured |
 | The Chalk-Marked Grave | Weird post-apocalyptic pointcrawl | Cairn / Eco Mofos | CC BY-SA 4.0 | Factions, relics, wasteland locations and hive dungeon |
 | COMPOUND INTEREST | Southern-gothic / mutagenic modern horror | FIST | CC BY-SA 4.0 text | Modern/alt-history horror expansion |
-| A Pale Lantern | Science-fantasy / cosmic dungeon | Shadowdark | Levels 4-6 | CC0 original content | Open source and clear level range |
-| Terror of Dunmoor | Regional sandbox horror/fantasy | Shadowdark | Levels 1-2 | CC0 original content | Three simultaneous threats |
+| A Pale Lantern | Science-fantasy / cosmic dungeon | Shadowdark | CC0 original content | Levels 4-6 |
+| Terror of Dunmoor | Regional sandbox horror/fantasy | Shadowdark | CC0 original content | Levels 1-2; three simultaneous threats |
 
 ## Proprietary/private-import catalogue
 
@@ -82,10 +105,10 @@ These can be catalogued with public metadata and supported through user-owned/pr
 
 - Approved built-in campaigns total: **3**
 - Approved gothic/ghost built-in: **1** (`Born Into Black Nights`)
-- QA-complete and machine-validated but release-gated: **2** (`Merilla's Magic Tower`, `Gold in the Hills`)
+- Story/canon/adversarial QA complete and machine-validated but release-gated: **3 Basic Fantasy campaigns** (`Merilla's Magic Tower`, `Gold in the Hills`, `Beneath Brymassen`)
 - Other mature QA architecture: `The Old Blood`, `Leviathan`
-- Approved post-apocalyptic: 0
-- Approved sci-fi/space horror: 0
+- Approved post-apocalyptic: **0**
+- Approved sci-fi/space horror: **0**
 - VTM: proprietary private-import path established; no built-in copyrighted chronicle
 - Ravenloft: proprietary private-import path established; no built-in copyrighted adventure
 
@@ -100,4 +123,5 @@ A title does not count as a completed/release-ready campaign merely because it h
 7. adversarial AI-DM QA passes;
 8. source attribution is ready for the public UI;
 9. machine-readable template passes schema/format validation;
-10. any source-specific release package/licence obligations are cleared.
+10. any source-specific release package/licence obligations are cleared;
+11. final approval is made by the central DungeonMasterOS campaign gate after reviewing all lane/submission work.
