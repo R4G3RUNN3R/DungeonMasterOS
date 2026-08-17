@@ -1,0 +1,95 @@
+{
+  "$schema": "../../_templates/campaign-template-v2.schema.json",
+  "id": "gold-in-the-hills",
+  "title": "Gold in the Hills",
+  "version": "1.0-dmos-aa1-r21",
+  "status": "qa",
+  "rules": {
+    "nativeRuleset": "Basic Fantasy Role-Playing Game",
+    "nativeEdition": "Adventure Anthology One 1st Edition Release 21",
+    "rulesFamily": "B/X-compatible old-school d20 fantasy",
+    "progressionModel": "levels",
+    "startingProgression": 1,
+    "endingProgression": 3,
+    "recommendedGroupMin": 2,
+    "recommendedGroupMax": 4,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {"ruleset": "Basic Fantasy Role-Playing Game", "edition": "AA1 Release 21", "supportLevel": "native", "progressionRecommendation": "Levels 1-3", "groupRecommendation": "2-4 characters", "conversionNotes": null, "validationSource": "AA1 Release 21 introduction"}
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Gold in the Hills",
+    "author": "Ray Allen",
+    "publisher": "Adventure Anthology One / Basic Fantasy community",
+    "primaryUrl": "https://anyflip.com/lbapq/cowt/basic/",
+    "sourceIcon": "OGL",
+    "licence": "Open Game License v1.0a",
+    "licenceUrl": "https://bfsrd.opengamingnetwork.com/legal-information/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": null,
+    "attributionText": "Gold In The Hills Copyright 2007 Ray Allen; Adventure Anthology One/OGL v1.0a Copyright Notice chain required.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "Raw gold and brand-new weapons are appearing in the hands of the Black Fang goblins. Trace the wealth to an abandoned dwarven mine where stealth, old machinery and one bad alarm can change the whole dungeon.",
+    "genres": ["fantasy", "mine crawl", "infiltration", "goblins"],
+    "themes": ["greed", "old technology", "finite resources", "alert state"],
+    "tone": ["dangerous", "old-school", "exploratory"],
+    "setting": "An abandoned dwarven mine in the Highlands",
+    "structure": "branching",
+    "contentWarnings": ["combat", "pit/falling hazards", "paralysis creature"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "gold", "rule": "A minor earthquake exposed a limited gold vein that Xikek used to rearm the Black Fangs; it is already nearly exhausted.", "sourceRef": "canon.md"},
+      {"id": "alert", "rule": "Entrance-guard warning changes pit state and mine/leadership deployment globally.", "sourceRef": "canon.md"},
+      {"id": "dayoff", "rule": "Area 5's five goblins do not reinforce Area 4.", "sourceRef": "canon.md"},
+      {"id": "automaton", "rule": "The damaged dwarven automaton understands only simple Dwarven commands and has a 20% catastrophic-failure chance while moving.", "sourceRef": "canon.md"},
+      {"id": "lower-levels", "rule": "Deeper elevator-accessed levels are source-authorised GM expansion, not written source canon.", "sourceRef": "canon.md"}
+    ],
+    "conditional": [
+      {"id": "pit", "rule": "If entrance guards successfully warn the mine, one arms Area 2's pit.", "condition": {"type": "flag", "key": "mine_alerted", "operator": "==", "value": true}, "sourceRef": "encounters.md"},
+      {"id": "leadership", "rule": "If Area 4 combat exceeds six rounds while leadership remains in Area 6, Xikek/Snerk/Yuliak investigate.", "condition": {"type": "custom", "key": "area4_battle_rounds", "operator": ">", "value": 6}, "sourceRef": "encounters.md"}
+    ],
+    "soft": [{"id": "hooks", "rule": "Several hooks can lead to the mine: gold/new weapons, missing prospectors, trader connection or similar local investigation.", "sourceRef": "README.md"}],
+    "freeImprovisation": [{"id": "continuation", "rule": "Generated deeper mine content is allowed only after crossing the explicit source boundary and must be labelled DMOS continuation/homebrew.", "sourceRef": "story-graph.json"}]
+  },
+  "locations": [
+    {"id": "mine-exterior", "name": "Mine Exterior", "type": "wilderness-entry", "parentId": null, "description": "South-side mountain portal with goblin signs and dirty runoff.", "connections": ["area1"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "area1", "name": "Area 1 - Guards", "type": "dungeon", "parentId": "mine-exterior", "description": "Two entrance guards; their escape can alert the mine.", "connections": ["mine-exterior", "area2"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "area2", "name": "Area 2 - Pit of Protection", "type": "dungeon", "parentId": "mine-exterior", "description": "35-foot old dwarven pit with disable lever and narrow ledge.", "connections": ["area1", "area3", "area4"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "area3", "name": "Area 3 - Elevator to the Underdark", "type": "dungeon", "parentId": "mine-exterior", "description": "Damaged elevator shaft and Tentacle Worm; written-source expansion boundary.", "connections": ["area2"], "secrets": ["Deeper levels are not written canon."], "sourceRefs": ["locations.md"]},
+    {"id": "area4", "name": "Area 4 - The Mine", "type": "dungeon", "parentId": "mine-exterior", "description": "Main mining chamber, workforce and damaged dwarven automaton.", "connections": ["area2", "area5", "area6"], "secrets": ["Secret work area with incomplete automaton/toolbox."], "sourceRefs": ["locations.md"]},
+    {"id": "area5", "name": "Area 5 - Tribal Lair", "type": "dungeon", "parentId": "mine-exterior", "description": "Five off-duty goblins who do not help the mine battle.", "connections": ["area4"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "area6", "name": "Area 6 - Chief's Chamber", "type": "dungeon", "parentId": "mine-exterior", "description": "Xikek/Snerk/Yuliak default location and trapped treasure chest.", "connections": ["area4"], "secrets": [], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "xikek", "name": "Xikek the Loud", "role": "Black Fang chief", "locationId": "area6", "factionId": "black-fangs", "publicGoal": "Protect/exploit the mine and tribe.", "privateGoal": null, "knowledge": ["Knows current gold diggings."], "secrets": ["Does not know mine history or that the vein is nearly exhausted."], "sourceRefs": ["npcs.md"]},
+    {"id": "snerk", "name": "Snerk", "role": "Bodyguard", "locationId": "area6", "factionId": "black-fangs", "publicGoal": "Protect Xikek.", "privateGoal": null, "knowledge": [], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "yuliak", "name": "Yuliak", "role": "Shaman", "locationId": "area6", "factionId": "black-fangs", "publicGoal": "Support tribal defence.", "privateGoal": null, "knowledge": [], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "automaton", "name": "Dwarven Mining Automaton", "role": "Damaged ancient construct", "locationId": "area4", "factionId": null, "publicGoal": null, "privateGoal": null, "knowledge": [], "secrets": ["Simple Dwarven command parser; catastrophic-failure risk."], "sourceRefs": ["npcs.md"]}
+  ],
+  "factions": [{"id": "black-fangs", "name": "Black Fang tribe", "goals": ["Defend lair", "Exploit remaining exposed gold", "Maintain new weapons/resources"], "sourceRefs": ["canon.md"]}],
+  "items": [{"id": "automaton-salvage", "name": "Dwarven Mining Automaton", "locationId": "area4", "sourceRef": "items-rewards.md"}, {"id": "xikek-ring", "name": "Ring of Protection +1", "initialHolderNpcId": "xikek", "sourceRef": "items-rewards.md"}],
+  "clocks": [{"id": "area4-noise", "name": "Area 4 Battle Noise", "segments": 7, "current": 0, "advanceRule": "Advance one per combat round while leadership remains in Area 6; after round 6 they investigate.", "effects": ["Leadership remains Area 6 through six rounds", "After six rounds leadership moves toward Area 4"]}],
+  "scenes": [
+    {"id": "approach", "title": "Approach the Mine", "locationId": "mine-exterior", "entryConditions": [], "requiredFacts": ["Careful approach can preserve surprise."], "hiddenFacts": ["Guard warning changes mine state."], "choices": [{"label": "Sneak/scout"}, {"label": "Approach openly"}, {"label": "Search goblin signs"}], "suggestedChoiceCount": 3, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Set mine alert only when actions actually warn guards.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "guards-pit", "title": "Guards and Dwarven Pit", "locationId": "area1", "entryConditions": [], "requiredFacts": ["Guard escape can arm pit and alert mine; pit has lever and ledge."], "hiddenFacts": [], "choices": [{"label": "Silently neutralise guards"}, {"label": "Let/pursue retreating guards"}, {"label": "Disable pit lever"}, {"label": "Bypass pit"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Persist alert/pit state globally.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "junction", "title": "Mine Junction", "locationId": "area2", "entryConditions": [], "requiredFacts": ["West is elevator; east is active mine."], "hiddenFacts": [], "choices": [{"label": "Explore elevator"}, {"label": "Enter active mine"}, {"label": "Retreat"}], "suggestedChoiceCount": 3, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Preserve topology/source boundary.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "main-mine", "title": "The Active Mine", "locationId": "area4", "entryConditions": [], "requiredFacts": ["Main force, alert-dependent leadership and damaged automaton are here/affected by state."], "hiddenFacts": ["Gold nearly exhausted."], "choices": [{"label": "Fight"}, {"label": "Deceive/intimidate"}, {"label": "Use automaton"}, {"label": "Withdraw"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Track combat rounds and leadership movement; Area 5 never reinforces.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "deep-rooms", "title": "Lair and Leadership", "locationId": "area4", "entryConditions": [], "requiredFacts": ["Area 5 and Area 6 occupancy reflect prior alert/noise movement."], "hiddenFacts": [], "choices": [{"label": "Visit Area 5"}, {"label": "Seek Area 6"}, {"label": "Salvage automaton"}, {"label": "Leave mine"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "No room resets; use actual actor locations/deaths/surrender state.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}
+  ],
+  "endings": [
+    {"id": "mine-resolved", "title": "Black Fang Mine Resolved", "conditions": [], "summary": "Party leaves/reports with outcome based on tribe, leadership, treasure and salvage actually achieved.", "sourceRefs": ["canon.md"]},
+    {"id": "deeper-continuation", "title": "Deeper Mine Continuation", "conditions": [{"type": "flag", "key": "written_source_boundary_crossed", "operator": "==", "value": true}], "summary": "Written source ends; a labelled DMOS/homebrew continuation begins below the elevator shaft.", "sourceRefs": ["story-graph.json"]}
+  ],
+  "communityIntelligence": [],
+  "adaptationNotes": ["Actual-play reports show level-1 use can be dangerous.", "Do not import community Steel Fisted Goblins into canon.", "Production requires OGL package/Copyright Notice.", "Machine schema validation pending."],
+  "researchSources": [{"url": "https://anyflip.com/lbapq/cowt/basic/", "type": "mirror", "supports": "AA1 Release 21 full source text", "accessedAt": "2026-08-17"}]
+}
