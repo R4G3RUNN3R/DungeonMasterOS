@@ -11,6 +11,7 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | Midnight in Bonetown | Weird fantasy / fungal horror / pointcrawl | Cairn | Cairn/system-specific, no invented D&D level | Cairn-compatible/OSR via conversion adapter | CC BY-SA 4.0 | APPROVED |
 | A Tomb of Twins | Ghost/necromancer dungeon / old-school fantasy | CRACK!/B/X-compatible, Cairn, Mörk Borg | B/X example levels 1-3; Cairn/Mörk Borg use native progression | Other OSR via conversion adapter | CC BY-SA 4.0 full text | APPROVED |
 | Born Into Black Nights | Gothic/ghost horror / town investigation / tomb | Cairn | Cairn native; source states no D&D-style level | Other fantasy systems through explicit conversion only | CC BY-SA 4.0 text | APPROVED |
+| The Old Blood | Gothic/vampire horror / investigative city sandbox | Shadowdark RPG | **Levels 1-2** | Creator-supported OSR-style systems via explicit rules adapter | CC0 original campaign content | APPROVED |
 
 ## QA-complete architecture, release blockers remain
 
@@ -19,7 +20,6 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | Merilla's Magic Tower | Magical tower / rescue / assassination | Basic Fantasy Role-Playing Game | **3-6 characters, levels 4-7** | B/X-compatible conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Direct visual-map check for reported stair discrepancy; production OGL/Copyright Notice package. Machine schema validation PASSED. |
 | Gold in the Hills | Goblin mine / infiltration / dwarven machinery | Basic Fantasy Role-Playing Game | **2-4 characters, levels 1-3** | OSR conversions only after adapter QA | OGL v1.0a / AA1 Open Game Content | Final visual-map check; production OGL/Copyright Notice package. Machine schema validation PASSED. |
 | Beneath Brymassen | Beginner dungeon / rescue / humanoid factions | Basic Fantasy Role-Playing Game | **3-6 beginning / level-1 characters** | B/X-compatible OSR conversion only after adapter QA | OGL v1.0a / AA1 Open Game Content | Direct visual-map check; production OGL/Copyright Notice package. Story/canon/adversarial QA and machine schema validation PASSED. |
-| The Old Blood | Gothic/vampire horror / city mystery | Shadowdark RPG | Levels 1-2 | Creator states OSR-style compatibility | CC0 original campaign content | Authoritative full-source room/map/stat verification |
 | Leviathan | Sci-fi / space horror / paranoia | System-neutral | None assumed; one-shot | Mothership TESTED by actual play; Monolith creator-listed compatible | CC BY-SA 4.0 text | Direct two-page PDF extraction for exact map/messages/tables |
 
 ## Active research / partial graphs
@@ -40,8 +40,9 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | The Return of the XBRC Terror | Sci-fi salvage/survival horror | System-neutral | One-page / few-hour scenario | CC BY-SA 4.0 | source/licence verified; exact text extraction pending |
 | Cascading Failure | Sci-fi derelict / collapsing ship | System-neutral | One-page / few-hour scenario | CC BY-SA 4.0 | source/licence verified; exact text extraction pending |
 | Derelict Transdimensional Anomaly | Sci-fi pointcrawl / time-space anomaly | System-neutral | One-page scenario | CC BY-SA 4.0 text/map | source/licence verified; exact node/table extraction pending |
-| Nautilus of Time | Time-travel derelict / procedural sci-fi | System-neutral | Scenario; no level model | CC BY-SA 4.0 | source/licence verified; source tables still to extract |
+| Nautilus of Time | Time-travel derelict / procedural sci-fi | System-neutral | Scenario; no level model | CC BY-SA 4.0 | source/licence verified; source tables partially extracted |
 | The Horror of Station XK-629 | Asteroid-station survival horror | System-neutral | One-page scenario | CC BY-SA 4.0 | source/licence verified; exact station key extraction pending |
+| Pharmacy Run | Post-apocalyptic Western / gang towns / moral compromise | Americhaos 1994 | Native source rules; no D&D level model | CC0 | source/licence verified; DOS module content extraction pending |
 
 ## Open anthology completion pipeline
 
@@ -60,13 +61,13 @@ Current pipeline state:
 Close visual-map and OGL packaging gates for Merilla, Gold and Beneath, while extracting the remaining AA1 queue.
 
 ### Lane B - Sci-fi / space horror
-Prioritise complete, open one-page sources: Leviathan, The Return of the XBRC Terror, Cascading Failure, Derelict Transdimensional Anomaly, Nautilus of Time and The Horror of Station XK-629.
+Prioritise complete, open sources: Leviathan, The Return of the XBRC Terror, Cascading Failure, Derelict Transdimensional Anomaly, Nautilus of Time and The Horror of Station XK-629.
 
 ### Lane C - Post-apocalyptic
-Prioritise These Pillars Remain, The Chalk-Marked Grave and additional Eco Mofos/open-jam scenarios whose full text can be extracted.
+Prioritise These Pillars Remain, The Chalk-Marked Grave, Pharmacy Run and additional open Eco Mofos/jam scenarios whose full text can be extracted.
 
 ### Lane D - Gothic / vampire / proprietary compatibility
-Finish The Old Blood and The Crypt of Unending Hunger as open built-ins; preserve Ravenloft and Vampire: The Masquerade as metadata/private-import unless separate rights permit more.
+The Old Blood is now approved. Finish The Crypt of Unending Hunger as the next open vampire built-in; preserve Ravenloft and Vampire: The Masquerade as metadata/private-import unless separate rights permit more.
 
 Every lane is research-only until the central approval gate verifies source, licence, ruleset/progression, canon graph, adversarial QA and machine validation.
 
@@ -74,6 +75,7 @@ Every lane is research-only until the central approval gate verifies source, lic
 
 | Campaign | Genre | Native ruleset | Licence | Why high priority |
 |---|---|---|---|---|
+| Pharmacy Run | Post-apocalyptic Western | Americhaos 1994 | CC0 | Open post-apocalyptic campaign story with clean commercial reuse rights; executable text still needs extraction |
 | The Return of the XBRC Terror | Sci-fi salvage/survival horror | System-neutral | CC BY-SA 4.0 | Open one-page derelict scenario; non-fantasy completion priority |
 | Cascading Failure | Sci-fi collapsing-ship survival | System-neutral | CC BY-SA 4.0 | Real-time failure state, victims, loot and hidden antagonist; strong AI state-machine test |
 | Derelict Transdimensional Anomaly | Sci-fi pointcrawl | System-neutral | CC BY-SA 4.0 text/map | Branching non-combat exploration |
@@ -103,10 +105,10 @@ These can be catalogued with public metadata and supported through user-owned/pr
 
 ## Coverage snapshot
 
-- Approved built-in campaigns total: **3**
-- Approved gothic/ghost built-in: **1** (`Born Into Black Nights`)
-- Story/canon/adversarial QA complete and machine-validated but release-gated: **3 Basic Fantasy campaigns** (`Merilla's Magic Tower`, `Gold in the Hills`, `Beneath Brymassen`)
-- Other mature QA architecture: `The Old Blood`, `Leviathan`
+- Approved built-in campaigns total: **4**
+- Approved gothic/vampire/ghost built-ins: **2** (`Born Into Black Nights`, `The Old Blood`)
+- Story/canon/adversarial QA complete and machine-validated but OGL/map release-gated: **3 Basic Fantasy campaigns** (`Merilla's Magic Tower`, `Gold in the Hills`, `Beneath Brymassen`)
+- Mature sci-fi QA architecture: `Leviathan`
 - Approved post-apocalyptic: **0**
 - Approved sci-fi/space horror: **0**
 - VTM: proprietary private-import path established; no built-in copyrighted chronicle
