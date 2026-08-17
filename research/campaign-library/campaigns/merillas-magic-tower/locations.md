@@ -1,77 +1,62 @@
 # Merilla's Magic Tower - Locations and Topology
 
-## Exterior / approach
+Authoritative gameplay version: **Adventure Anthology One Release 21**.
 
-Merilla's small tower stands in an enormous ravine near foothills at the far edge of a small duchy. It has fallen silent. The apparently only normal entrance is a large set of double doors facing southeast.
+## Exterior / approach
+Merilla's tower stands in an enormous ravine near foothills at the edge of a small duchy. The apparently only normal entrance is southeast-facing double doors.
 
 ### Entry doors
-- East door: bears runic writing; attempting to read it triggers a fireball trap dealing 10d6 damage, save vs. Spells for half under native rules.
-- The trap is knowledge/action-triggered. Seeing runes is not sufficient by itself.
-- This entry leads to the ground/entry level.
+- East door bears runic writing.
+- Attempting to read the runes triggers a 10d6 fireball, save vs. Spells for half under native rules.
+- Merely seeing/approaching the runes is not the explicit trigger.
 
-## Tower Ground / Entry Level
-
-A circular chamber containing:
-
-- large bookcases on south/west walls with roughly 200 tomes and 600 scrolls;
-- north-wall work table and shelves with more than 500 containers of magical components/substances;
-- a Bronze Golem near the work area, initially statue-like, defending a 30-foot approach radius;
-- Ring of Wonder inside the Bronze Golem's head;
-- a 25-foot-square Carpet Trapper in the southwest area;
+## Ground / Entry Level
+Circular research/work chamber containing:
+- south/west bookcases of scrolls and tomes;
+- north work table and north/east component shelves;
+- Bronze Golem south of worktable on east wall;
+- Ring of Wonder inside the golem's head;
+- 25-foot-square Carpet Trapper in southwest corner;
 - two Rust Monsters;
-- central wooden spiral staircase leading upward to Level 2.
+- central wooden spiral staircase leading up.
 
-Search probabilities from source:
-- approximately 2% of scrolls are actual spell scrolls penned by Merilla;
-- approximately 1% of tomes are magical;
-- approximately 2% of the component containers are potions.
-The source leaves exact results/details to the GM.
+Release 21 says most writing is instructional magical material; more important works are in codes/languages only Merilla can read and are very time-consuming to decipher. The component containers show **no magical aura** under detect magic. Older Release 3 percentage-based magical-scroll/potion searches are superseded.
 
 ## Tower Level 2 - Treasure storage
+- north chest: fireball trapped, 15,000 gp;
+- southwest chest: fireball trapped, 15,000 gp;
+- southeast chest: Morphganger disguised as chest;
+- **Platemail of Life Protection +3**, 6 charges, on south-wall armour rack.
 
-Three chest-like objects are present:
+Dispel magic can disable the fireball traps under native rules.
 
-- north chest: real treasure chest, fireball trapped, contains 15,000 gp;
-- southwest chest: real treasure chest, fireball trapped, contains 15,000 gp;
-- southeast chest: Morphganger disguised as a chest.
+## Tower Level 3 - Relaxation / meditation
+Small living area with chairs/pillows and a raised stone slab along the north wall.
 
-A dispel magic effect can disable the fireball traps under the source rules.
+A Faerie Dragon created by Merilla rests here. It is mentally linked to her, tries to awaken her when possible (5% per round), and functions more as watchdog than ordinary guard.
 
-Vertical connection: ground staircase -> Level 2 -> upward progression to Level 3.
+Older Release 3 Life Protection chainmail on this floor is superseded; current armour is on Level 2.
 
-## Tower Level 3 - Relaxation / watchdog level
+## Tower Level 4 - Pipe Beast guard level
+Central stairs end here; a smaller spiral staircase continues to Level 5. The otherwise empty room contains **two Pipe Beasts** whose job is to prevent anyone except Merilla ascending to the private chamber.
 
-Contains:
+This supersedes standalone Release 3's three Blast Spores.
 
-- Faerie Dragon on a low stone slab against the north wall;
-- magical chainmail +2 with the `Stores Life Energy` property hanging on the south wall;
-- continuation upward to Level 4.
-
-The Faerie Dragon is mentally linked to Merilla and attempts to wake her when possible (5% per round). It uses magic as its attack capability and acts more as Merilla's watchdog than a simple passive monster.
-
-## Tower Level 4 - Blast Spore level
-
-Contains three Blast Spores hovering in the chamber. They are extremely fragile but dangerous if struck, with source-defined disease/explosion damage.
-
-Vertical connection leads onward to Merilla's private Level 5.
-
-## Tower Level 5 - Merilla's private chambers
-
+## Tower Level 5 - Private chambers
 Initial state:
+- Merilla is semi-comatose in bed to the north;
+- two assassins stand beside the bed arguing over who will kill her;
+- assassins followed the party and scaled through the tower's only windows while the party distracted guardians;
+- small chest east of bed holds personal jewellery/fine clothing;
+- small desk west holds unfinished scrolls/writing tools;
+- newly-created Sword of Smiting +1 is on a table to the south.
 
-- Merilla lies exhausted/semi-comatose in bed after completing the Sword of Smiting +1;
-- two assassins, level 7 and level 4 under the native rules, have entered through the tower's only windows using scaling tools while the party distracted the lower guardians;
-- the assassins are arguing over which one will kill Merilla;
-- small chest east of bed contains Merilla's personal jewellery and fine clothing;
-- small desk west of bed contains unfinished scrolls/writing tools;
-- table to the south holds the newly created Sword of Smiting +1.
+Merilla cannot defend herself unless earlier play validly changed her wake state.
 
-The only windows in the tower are the route used by the assassins to reach this level. They are not the normal player route unless players devise a comparable climbing/infiltration approach.
+## Default topology
+`Exterior -> Ground -> Level 2 -> Level 3 -> Level 4 -> Level 5`
 
-## Topology guard
+Level 5 has the only windows, so exceptional climbing/flight/teleportation can be adjudicated if the rules and geometry support it. Do not invent extra floors, rooms or secret normal bypasses.
 
-Authoritative default vertical route:
-
-`Exterior/Entry Doors -> Ground Level -> Level 2 -> Level 3 -> Level 4 -> Level 5`
-
-DMOS may adjudicate climbing/flight/teleportation according to the selected ruleset and source geometry, but it must not invent extra internal floors, rooms, secret tunnels or normal stair bypasses merely to support a generated response.
+## Community-reported map/text discrepancy
+A 2026 Basic Fantasy reviewer reports that the Release 21 text places the central staircase in the first large ground-floor chamber while the map appears to place a staircase behind a secret door elsewhere. This remains **community intelligence/source ambiguity**, not silently resolved canon. Until direct visual-map inspection, DMOS uses the explicit Release 21 text and flags the discrepancy for release QA.
