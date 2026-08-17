@@ -75,3 +75,24 @@ Current priority is completion rather than merely discovering more titles. We ar
 **Current approved count:** 2
 **Near approval:** The Old Blood, Leviathan
 **Next research targets:** post-apocalyptic survival, sci-fi horror, gothic horror and other open-licensed full-text adventures.
+
+---
+
+## 2026-08-17 - Born Into Black Nights reaches campaign QA
+**Status:** qa
+
+A third full campaign structure has reached story and adversarial QA. `Born Into Black Nights` is a Cairn gothic-horror adventure built around a haunted settlement, multiple investigation routes, dangerous woodland travel and a ten-room tomb. Its DungeonMasterOS template preserves the difference between defeating undead and actually resolving the haunting, so combat alone cannot accidentally overwrite the source's intended consequences.
+
+**Native ruleset:** Cairn
+**Additional support:** other fantasy systems through explicit conversion only
+**Release state:** story/canon QA complete; automated JSON-schema validation still required before `APPROVED`
+**Internal reference:** `campaigns/born-into-black-nights/`
+
+---
+
+## 2026-08-17 - Campaign research now has an Updates feed
+**Status:** library-expansion
+
+Campaign-library milestones are now being recorded in both human-readable Markdown and machine-readable JSON. These spoiler-light entries are intended to become the data source for a future DungeonMasterOS Updates / What We're Working On page, while detailed spoilers, licensing evidence and campaign canon remain in the private research layer.
+
+**Internal references:** `_index/public-updates.md`, `_index/public-updates.json`
