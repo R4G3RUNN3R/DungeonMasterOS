@@ -1,0 +1,329 @@
+{
+  "$schema": "../../_templates/campaign-template-v2.schema.json",
+  "id": "born-into-black-nights",
+  "title": "Born Into Black Nights",
+  "version": "1.0-dmos",
+  "status": "qa",
+  "rules": {
+    "nativeRuleset": "Cairn",
+    "nativeEdition": null,
+    "rulesFamily": "Cairn / Into-the-Odd-style OSR",
+    "progressionModel": "system-specific",
+    "startingProgression": null,
+    "endingProgression": null,
+    "recommendedGroupMin": null,
+    "recommendedGroupMax": null,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {
+        "ruleset": "Cairn",
+        "edition": null,
+        "supportLevel": "native",
+        "progressionRecommendation": "Use native Cairn character/progression assumptions; the source does not specify a D&D-style level.",
+        "groupRecommendation": null,
+        "conversionNotes": null,
+        "validationSource": "Creator primary page"
+      },
+      {
+        "ruleset": "Other fantasy TTRPGs",
+        "edition": null,
+        "supportLevel": "converted",
+        "progressionRecommendation": "Determine equivalent low-scale undead/dungeon difficulty through the selected rules adapter; do not advertise a fixed level until conversion QA exists.",
+        "groupRecommendation": null,
+        "conversionNotes": "Creator explicitly states the adventure can be adapted to another fantasy TTRPG with minimal adjustment.",
+        "validationSource": "Creator primary page"
+      }
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Born Into Black Nights",
+    "author": "Jason Renslow / JunkyardTornado",
+    "publisher": "JunkyardTornado",
+    "primaryUrl": "https://junkyardtornado.itch.io/born-into-black-nights",
+    "sourceIcon": "itch.io",
+    "licence": "CC BY-SA 4.0 (text)",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": true,
+    "attributionText": "Born Into Black Nights, text by Jason Renslow / JunkyardTornado, licensed CC BY-SA 4.0. Native ruleset: Cairn by Yochai Gal.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "A small woodland town is being tormented by nightmares and restless dead. Investigate the townspeople, trace the haunting through dangerous woods, and discover what an old founder truly needs before violence makes the curse worse.",
+    "genres": ["gothic fantasy", "ghost horror", "undead", "town investigation", "dungeon crawl"],
+    "themes": ["restless dead", "ancestry", "grave robbery", "misunderstood haunting", "community"],
+    "tone": ["eerie", "melancholic", "old-school adventure"],
+    "setting": "Bertram's Grove and surrounding woods",
+    "structure": "hybrid",
+    "contentWarnings": ["undead", "nightmares", "grave disturbance", "fire-death imagery", "possession threat"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "cause", "rule": "Kyran disturbed Bertram's tomb and stole Bertram's ring; this disturbance caused the supernatural unrest.", "sourceRef": "canon.md"},
+      {"id": "bertram-goal", "rule": "Bertram wants to be laid properly to rest, not to conquer or punish the town.", "sourceRef": "canon.md"},
+      {"id": "ancestry", "rule": "Fleur descends from Bertram and Zahra is especially sensitive to his unrest.", "sourceRef": "canon.md"},
+      {"id": "true-resolution", "rule": "Permanent resolution requires restoring Bertram to his sarcophagus and performing a peaceful rest rite; combat victory alone is insufficient.", "sourceRef": "canon.md"},
+      {"id": "destruction-consequence", "rule": "Complete destruction of Bertram can lead to his return about a month later as a ghost with renewed nightmares/possession threat.", "sourceRef": "canon.md"}
+    ],
+    "conditional": [
+      {"id": "zahra-walk", "rule": "Zahra sleepwalks toward the ruins if allowed to leave town during an episode.", "condition": {"type": "flag", "key": "zahra_unrestrained_sleepwalk", "operator": "==", "value": true}, "sourceRef": "canon.md"},
+      {"id": "room5-awakens", "rule": "Disturbing the grave hall awakens its buried skeletons.", "condition": {"type": "flag", "key": "room5_floor_disturbed", "operator": "==", "value": true}, "sourceRef": "locations.md"},
+      {"id": "haunting-ended", "rule": "The town nightmare crisis ends when Bertram is properly laid to rest.", "condition": {"type": "flag", "key": "bertram_properly_restored", "operator": "==", "value": true}, "sourceRef": "canon.md"}
+    ],
+    "soft": [
+      {"id": "town-expansion", "rule": "Minor townspeople, ordinary buildings and local services may be improvised because the source explicitly leaves Bertram's Grove open for Warden expansion.", "sourceRef": "npcs.md"}
+    ],
+    "freeImprovisation": [
+      {"id": "minor-local-detail", "rule": "Weather, routine dialogue, incidental residents, travel colour and ordinary town services may be improvised if they do not alter clue ownership or campaign truth.", "sourceRef": "npcs.md"}
+    ]
+  },
+  "locations": [
+    {"id": "bertrams-grove", "name": "Bertram's Grove", "type": "town", "parentId": null, "description": "Mixed human/gnome settlement suffering recurring undead nightmares.", "connections": ["woods"], "secrets": ["Fleur and Zahra descend from Bertram."], "sourceRefs": ["locations.md"]},
+    {"id": "woods", "name": "Surrounding Woods", "type": "wilderness", "parentId": null, "description": "Dangerous woods containing random encounters and the forgotten tomb.", "connections": ["bertrams-grove", "tomb-1"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-1", "name": "Tomb Room 1 - Entrance", "type": "dungeon", "parentId": null, "description": "Broken former sealed entrance.", "connections": ["tomb-2", "tomb-6", "woods"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-2", "name": "Tomb Room 2 - Old Camp", "type": "dungeon", "parentId": "tomb-1", "description": "Abandoned cook-fire camp and mundane salvage.", "connections": ["tomb-1", "tomb-3"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-3", "name": "Tomb Room 3 - Funerary Temple", "type": "dungeon", "parentId": "tomb-1", "description": "Ruined prayer chamber for peaceful passage of the dead.", "connections": ["tomb-2", "tomb-4", "tomb-7"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-4", "name": "Tomb Room 4 - Tapestry", "type": "dungeon", "parentId": "tomb-1", "description": "Historical tapestry and collapsed passage.", "connections": ["tomb-3", "tomb-5"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-5", "name": "Tomb Room 5 - Grave Hall", "type": "dungeon", "parentId": "tomb-1", "description": "Unstable grave hall containing dormant skeletons and relics.", "connections": ["tomb-4"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-6", "name": "Tomb Room 6 - Flooded Passage", "type": "dungeon", "parentId": "tomb-1", "description": "Stagnant flooded passage inhabited by dangerous cave fish.", "connections": ["tomb-1", "tomb-7"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-7", "name": "Tomb Room 7 - Boarded Undead Chamber", "type": "dungeon", "parentId": "tomb-1", "description": "Reinforced chamber containing trapped zombies and a hidden gem cache.", "connections": ["tomb-3", "tomb-6", "tomb-8", "tomb-10"], "secrets": ["Kyran reinforced access after his intrusion."], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-8", "name": "Tomb Room 8 - Overgrown Chamber", "type": "dungeon", "parentId": "tomb-1", "description": "Roof-broken chamber choked with vines, flies and plant-overgrown zombies.", "connections": ["tomb-7", "tomb-9"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-9", "name": "Tomb Room 9 - Fire Memorial", "type": "dungeon", "parentId": "tomb-1", "description": "Resting place of fire victims, haunted by sensory visions of their deaths.", "connections": ["tomb-8", "tomb-10"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-10", "name": "Tomb Room 10 - Bertram's Chamber", "type": "dungeon", "parentId": "tomb-1", "description": "Bertram's sarcophagus, journal and current Draugr manifestation.", "connections": ["tomb-7", "tomb-9"], "secrets": ["Bertram seeks correct burial/rest rather than victory over the living."], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "oskar", "name": "Oskar", "role": "Burgomaster / quest patron", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "End Zahra's haunting.", "privateGoal": null, "knowledge": ["Zahra is severely haunted and sleepwalking."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "zahra", "name": "Zahra", "role": "Haunting victim / living clue", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "Relief from nightmares.", "privateGoal": null, "knowledge": [], "secrets": ["Descends from Bertram and is drawn toward his unrest."], "sourceRefs": ["npcs.md"]},
+    {"id": "fleur", "name": "Fleur", "role": "Zahra's mother / descendant of Bertram", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "See Zahra recover.", "privateGoal": null, "knowledge": [], "secrets": ["Bertram is her great-grandfather."], "sourceRefs": ["npcs.md"]},
+    {"id": "tiana", "name": "Tiana", "role": "Family bodyguard", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "Protect Zahra and Oskar's family.", "privateGoal": null, "knowledge": ["Zahra repeatedly tries to wander during sleepwalking."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "anet", "name": "Anet", "role": "Potion crafter / alternate hook", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "Obtain anise plants for sleep potions.", "privateGoal": null, "knowledge": ["Approximate area where needed herbs can be found."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "pyke", "name": "Pyke", "role": "Woodsman / undead witness", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "Avoid danger while helping the town if necessary.", "privateGoal": null, "knowledge": ["Has seen undead moving in the woods."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "osian", "name": "Osian", "role": "Mystic / historical clue holder", "locationId": "bertrams-grove", "factionId": "town", "publicGoal": "Have the tomb disturbance taken seriously.", "privateGoal": null, "knowledge": ["Knew Bertram personally.", "Knows Fleur/Zahra's ancestry.", "Suspects the tomb disturbance caused the nightmares.", "Can recognise Bertram's ring."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "kyran", "name": "Kyran", "role": "Grave robber / causal culprit", "locationId": "bertrams-grove", "factionId": null, "publicGoal": "Leave with profit and avoid blame.", "privateGoal": "Conceal responsibility for disturbing the tomb.", "knowledge": ["Knows he entered and disturbed the tomb.", "Knows which passages he reinforced."], "secrets": ["Stole Bertram's ring and caused the unrest."], "sourceRefs": ["npcs.md"]},
+    {"id": "bertram", "name": "Bertram", "role": "Restless founder / Draugr", "locationId": "tomb-10", "factionId": "restless-dead", "publicGoal": null, "privateGoal": "Be laid properly to rest.", "knowledge": [], "secrets": ["Correct peaceful restoration, not simple destruction, resolves the haunting."], "sourceRefs": ["npcs.md"]}
+  ],
+  "factions": [
+    {"id": "town", "name": "Bertram's Grove residents", "goals": ["End the nightmare crisis", "Protect the settlement"], "sourceRefs": ["README.md"]},
+    {"id": "restless-dead", "name": "Restless dead of Bertram's Tomb", "goals": ["Return to rest once the disturbance is corrected"], "sourceRefs": ["canon.md"]}
+  ],
+  "items": [
+    {"id": "bertrams-ring", "name": "Bertram's Ring", "plotCritical": true, "initialHolderNpcId": "kyran", "sourceRef": "items-rewards.md"},
+    {"id": "bertrams-journal", "name": "Bertram's Journal", "plotCritical": false, "locationId": "tomb-10", "sourceRef": "items-rewards.md"},
+    {"id": "rod-fisher-folk", "name": "Rod of the Fisher Folk", "plotCritical": false, "locationId": "tomb-5", "sourceRef": "items-rewards.md"}
+  ],
+  "clocks": [
+    {"id": "haunting", "name": "Nightmare Crisis", "segments": 4, "current": 2, "advanceRule": "Advance narratively if the party abandons the town/tomb problem or worsens Bertram's unrest.", "effects": ["More residents suffer nightmares", "Zahra's sleepwalking remains dangerous", "Complete destructive handling can create a future ghost/possession campaign state"]}
+  ],
+  "scenes": [
+    {
+      "id": "arrival-investigation",
+      "title": "Nightmares in Bertram's Grove",
+      "locationId": "bertrams-grove",
+      "entryConditions": [],
+      "requiredFacts": ["The town suffers recurring nightmares; Zahra is the most visible victim."],
+      "hiddenFacts": ["Kyran caused the unrest.", "Zahra is descended from Bertram.", "Bertram wants proper rest."],
+      "choices": [
+        {"label": "Speak with Oskar's family", "nextSceneId": "family-clues"},
+        {"label": "Ask townspeople about undead in the woods", "nextSceneId": "woods-clues"},
+        {"label": "Consult the gnome mystic Osian", "nextSceneId": "osian-clues"},
+        {"label": "Investigate the tavern and suspicious travellers", "nextSceneId": "kyran-clues"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve any town action normally. Minor residents/services may be invented, but mandatory clue ownership and ancestry/cause cannot change.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["npcs.md", "canon.md"]
+    },
+    {
+      "id": "family-clues",
+      "title": "The Burgomaster's Household",
+      "locationId": "bertrams-grove",
+      "entryConditions": [],
+      "requiredFacts": ["Zahra has severe nightmares and sleepwalking; Tiana is exhausted from preventing her departure."],
+      "hiddenFacts": ["Zahra is drawn toward the tomb because of ancestry."],
+      "choices": [
+        {"label": "Watch Zahra during a sleepwalking episode", "nextSceneId": "woods-clues"},
+        {"label": "Ask about family history", "nextSceneId": "osian-clues"},
+        {"label": "Seek another local explanation", "nextSceneId": "arrival-investigation"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow protective, investigative or magical approaches without prematurely revealing ancestry unless earned.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["npcs.md"]
+    },
+    {
+      "id": "osian-clues",
+      "title": "Osian's Memory",
+      "locationId": "bertrams-grove",
+      "entryConditions": [],
+      "requiredFacts": ["Osian suspects the old tomb was disturbed and personally knew Bertram."],
+      "hiddenFacts": ["Osian knows the Bertram ancestry and can recognise the stolen ring."],
+      "choices": [
+        {"label": "Ask about Bertram and the tomb", "nextSceneId": "travel-to-tomb"},
+        {"label": "Show Osian suspicious objects or the ring", "nextSceneId": "kyran-clues"},
+        {"label": "Ask about Zahra's family", "nextSceneId": "travel-to-tomb"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Osian may reveal only source-backed historical/ancestry knowledge; do not turn him into a spell-solving deus ex machina.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["npcs.md"]
+    },
+    {
+      "id": "kyran-clues",
+      "title": "The Grave Robber",
+      "locationId": "bertrams-grove",
+      "entryConditions": [],
+      "requiredFacts": ["Kyran is preparing to leave and is strongly motivated by money."],
+      "hiddenFacts": ["Kyran disturbed the tomb and stole Bertram's ring."],
+      "choices": [
+        {"label": "Bribe Kyran for the truth", "nextSceneId": "travel-to-tomb"},
+        {"label": "Pressure or intimidate Kyran", "nextSceneId": "travel-to-tomb"},
+        {"label": "Steal or inspect the ring", "nextSceneId": "osian-clues"},
+        {"label": "Follow Kyran instead of confronting him", "nextSceneId": "travel-to-tomb"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow any plausible social/criminal approach. Kyran can die or escape without changing the true cause; preserve another path to the tomb/rest solution.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["npcs.md", "items-rewards.md"]
+    },
+    {
+      "id": "woods-clues",
+      "title": "Signs in the Woods",
+      "locationId": "woods",
+      "entryConditions": [],
+      "requiredFacts": ["Undead have been seen moving through the woods; the tomb is overgrown and easy to miss."],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Track the undead", "nextSceneId": "travel-to-tomb"},
+        {"label": "Follow Zahra's sleepwalking route", "nextSceneId": "travel-to-tomb"},
+        {"label": "Use local guidance or herb-search directions", "nextSceneId": "travel-to-tomb"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use the woodland encounter table when appropriate. Creative navigation may still find the tomb if reasonably supported.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["encounters.md"]
+    },
+    {
+      "id": "travel-to-tomb",
+      "title": "The Forgotten Tomb",
+      "locationId": "tomb-1",
+      "entryConditions": [],
+      "requiredFacts": ["The overgrown tomb was disturbed recently relative to its long peace."],
+      "hiddenFacts": ["Several reinforced/blocked passages reflect Kyran's retreat through the tomb."],
+      "choices": [
+        {"label": "Explore the western rooms", "nextSceneId": "tomb-exploration"},
+        {"label": "Force the flooded eastern route", "nextSceneId": "tomb-exploration"},
+        {"label": "Search for signs of the grave robber", "nextSceneId": "tomb-exploration"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Preserve exact room topology and door state. Do not teleport characters between unconnected rooms.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["locations.md"]
+    },
+    {
+      "id": "tomb-exploration",
+      "title": "Among the Restless Dead",
+      "locationId": null,
+      "entryConditions": [],
+      "requiredFacts": ["Room-specific hazards trigger from player actions and local conditions; wandering monsters remain possible."],
+      "hiddenFacts": ["The tomb contains historical/religious context showing it was meant for peaceful rest."],
+      "choices": [
+        {"label": "Search for historical/religious clues", "nextSceneId": "bertram-chamber"},
+        {"label": "Push toward the boarded/moaning chambers", "nextSceneId": "bertram-chamber"},
+        {"label": "Collect useful tools/relics before advancing", "nextSceneId": "bertram-chamber"},
+        {"label": "Retreat to town and reassess", "nextSceneId": "arrival-investigation"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Run the actual room entered from locations.md/encounters.md. The listed choices are navigation suggestions, not a skip over unexplored topology.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["locations.md", "encounters.md"]
+    },
+    {
+      "id": "bertram-chamber",
+      "title": "Bertram's Rest",
+      "locationId": "tomb-10",
+      "entryConditions": [],
+      "requiredFacts": ["Bertram manifests as a Draugr with skeletons; his remains and sarcophagus are here."],
+      "hiddenFacts": ["Defeating him is not the permanent solution."],
+      "choices": [
+        {"label": "Defeat the Draugr and investigate the sarcophagus", "nextSceneId": "resolution-choice"},
+        {"label": "Try to understand what the restless dead need", "nextSceneId": "resolution-choice"},
+        {"label": "Use Bertram's ring/journal or funerary clues", "nextSceneId": "resolution-choice"},
+        {"label": "Destroy the remains completely", "nextSceneId": "destructive-ending"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve combat/social/ritual improvisation honestly. Bertram's incoherent Draugr state cannot provide a convenient exposition monologue. Clues and ritual logic must come from established evidence/actions.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["canon.md", "encounters.md"]
+    },
+    {
+      "id": "resolution-choice",
+      "title": "Lay the Founder to Rest",
+      "locationId": "tomb-10",
+      "entryConditions": [],
+      "requiredFacts": ["A peaceful restoration of Bertram's remains is required for permanent resolution."],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Return Bertram to the sarcophagus, restore the ring if available, close it and offer peaceful rites", "nextSceneId": "proper-ending"},
+        {"label": "Leave after defeating the undead", "nextSceneId": "temporary-ending"},
+        {"label": "Destroy Bertram completely", "nextSceneId": "destructive-ending"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Accept equivalent sincere peaceful-rest actions. The stolen ring helps but is not an absolute completion lock if unavailable.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["canon.md"]
+    },
+    {
+      "id": "proper-ending",
+      "title": "Quiet Graves",
+      "locationId": "tomb-10",
+      "entryConditions": [{"type": "flag", "key": "bertram_properly_restored", "operator": "==", "value": true}],
+      "requiredFacts": ["The undead return to rest and the nightmare crisis ends."],
+      "hiddenFacts": [],
+      "choices": [],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow epilogue/free play in town; no further forced campaign choice is required.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["items-rewards.md"]
+    },
+    {
+      "id": "temporary-ending",
+      "title": "The Dead Stir Again",
+      "locationId": null,
+      "entryConditions": [],
+      "requiredFacts": ["Combat alone does not permanently end the haunting."],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Return before the unrest worsens", "nextSceneId": "resolution-choice"},
+        {"label": "Abandon Bertram's Grove", "nextSceneId": null},
+        {"label": "Seek another way to learn the burial rite", "nextSceneId": "arrival-investigation"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Continue the unresolved campaign without falsely awarding permanent victory.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["canon.md"]
+    },
+    {
+      "id": "destructive-ending",
+      "title": "A Worse Ghost",
+      "locationId": null,
+      "entryConditions": [],
+      "requiredFacts": ["Complete destruction can cause Bertram to return in roughly a month as a ghost, with nightmares and possession risk."],
+      "hiddenFacts": [],
+      "choices": [],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Treat this as a delayed-failure campaign continuation state rather than an immediate clean victory.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["canon.md"]
+    }
+  ],
+  "endings": [
+    {"id": "ending-rest", "title": "Bertram Properly Laid to Rest", "conditions": [{"type": "flag", "key": "bertram_properly_restored", "operator": "==", "value": true}], "summary": "The tomb quiets, its undead return to their graves and the nightmares end. Oskar/town rewards and possible homestead follow.", "sourceRefs": ["canon.md", "items-rewards.md"]},
+    {"id": "ending-temporary", "title": "Undead Defeated, Haunting Unresolved", "conditions": [{"type": "flag", "key": "bertram_defeated_without_rest", "operator": "==", "value": true}], "summary": "The party wins a fight but not the campaign problem; the dead begin to return and nightmares persist.", "sourceRefs": ["canon.md"]},
+    {"id": "ending-ghost", "title": "Bertram Destroyed", "conditions": [{"type": "flag", "key": "bertram_completely_destroyed", "operator": "==", "value": true}], "summary": "The body is destroyed, but the source establishes a later ghost return with renewed nightmares and possession risk.", "sourceRefs": ["canon.md"]},
+    {"id": "ending-abandoned", "title": "Bertram's Grove Abandoned", "conditions": [{"type": "flag", "key": "party_abandons_crisis", "operator": "==", "value": true}], "summary": "The nightmare crisis remains active. DMOS preserves the unresolved state for later return rather than forcing off-screen resolution.", "sourceRefs": ["canon.md"]}
+  ],
+  "communityIntelligence": [],
+  "adaptationNotes": [
+    "Do not create a D&D level range without separate conversion QA.",
+    "The ring is a powerful clue/restoration component but the source does not make it an absolute hard gate if unavailable.",
+    "Town expansion is explicitly allowed; generated townspeople must not replace named clue holders.",
+    "Visual map ingestion is useful but non-blocking because room connection/door-state information is present in source text."
+  ],
+  "researchSources": [
+    {"url": "https://junkyardtornado.itch.io/born-into-black-nights", "type": "primary", "supports": "Author, native ruleset, premise, licence, creator adaptation statement, source files", "accessedAt": "2026-08-17"},
+    {"url": "https://www.scribd.com/document/805545676/Born-Into-Black-Nights-A5", "type": "mirror", "supports": "Indexed full-text campaign structure; not used as licence authority", "accessedAt": "2026-08-17"}
+  ]
+}
