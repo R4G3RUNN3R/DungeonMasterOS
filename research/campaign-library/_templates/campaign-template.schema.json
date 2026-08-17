@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dungeonmaster-os.com/schemas/campaign-template.schema.json",
+  "title": "DungeonMasterOS Campaign Template",
+  "type": "object",
+  "required": ["id", "title", "version", "status", "rules", "source", "playerMetadata", "canon", "locations", "npcs", "factions", "scenes", "endings"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["draft", "researching", "qa", "approved", "metadata-only", "rejected"] },
+    "rules": {
+      "type": "object",
+      "required": ["ruleset", "edition", "startingLevel"],
+      "properties": {
+        "ruleset": { "type": "string" },
+        "edition": { "type": "string" },
+        "startingLevel": { "type": "integer", "minimum": 1 },
+        "endingLevel": { "type": ["integer", "null"], "minimum": 1 },
+        "recommendedPartyMin": { "type": ["integer", "null"], "minimum": 1 },
+        "recommendedPartyMax": { "type": ["integer", "null"], "minimum": 1 },
+        "estimatedHoursMin": { "type": ["number", "null"], "minimum": 0 },
+        "estimatedHoursMax": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind", "title", "author", "primaryUrl", "licence"],
+      "properties": {
+        "kind": { "enum": ["open-licensed", "official-metadata", "third-party", "dmos-original", "community", "unknown"] },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "publisher": { "type": "string" },
+        "primaryUrl": { "type": "string" },
+        "sourceIconUrl": { "type": "string" },
+        "licence": { "type": "string" },
+        "licenceUrl": { "type": "string" },
+        "attributionText": { "type": "string" },
+        "adaptationAllowed": { "type": ["boolean", "null"] },
+        "commercialUseAllowed": { "type": ["boolean", "null"] },
+        "shareAlike": { "type": ["boolean", "null"] },
+        "verifiedAt": { "type": "string" }
+      }
+    },
+    "playerMetadata": {
+      "type": "object",
+      "required": ["pitch", "themes"],
+      "properties": {
+        "pitch": { "type": "string" },
+        "premise": { "type": "string" },
+        "themes": { "type": "array", "items": { "type": "string" } },
+        "tone": { "type": "array", "items": { "type": "string" } },
+        "structure": { "enum": ["linear", "branching", "sandbox", "hybrid"] },
+        "contentWarnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "canon": {
+      "type": "object",
+      "required": ["hard", "conditional", "soft", "freeImprovisation"],
+      "properties": {
+        "hard": { "type": "array", "items": { "$ref": "#/$defs/canonRule" } },
+        "conditional": { "type": "array", "items": { "$ref": "#/$defs/conditionalCanonRule" } },
+        "soft": { "type": "array", "items": { "$ref": "#/$defs/canonRule" } },
+        "freeImprovisation": { "type": "array", "items": { "$ref": "#/$defs/canonRule" } }
+      }
+    },
+    "locations": { "type": "array", "items": { "$ref": "#/$defs/location" } },
+    "npcs": { "type": "array", "items": { "$ref": "#/$defs/npc" } },
+    "factions": { "type": "array", "items": { "$ref": "#/$defs/faction" } },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "milestones": { "type": "array", "items": { "$ref": "#/$defs/milestone" } },
+    "scenes": { "type": "array", "items": { "$ref": "#/$defs/scene" } },
+    "endings": { "type": "array", "items": { "$ref": "#/$defs/ending" } },
+    "communityIntelligence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sourceUrl", "summary"],
+        "properties": {
+          "sourceUrl": { "type": "string" },
+          "platform": { "type": "string" },
+          "summary": { "type": "string" },
+          "category": { "enum": ["balance", "missed-clue", "logic-gap", "pacing", "npc", "encounter", "ending", "other"] },
+          "verifiedAgainstSourceCanon": { "type": "boolean" }
+        }
+      }
+    },
+    "adaptationNotes": { "type": "array", "items": { "type": "string" } },
+    "researchSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url", "type", "accessedAt"],
+        "properties": {
+          "url": { "type": "string" },
+          "type": { "enum": ["primary", "official-metadata", "community", "archive", "mirror", "index"] },
+          "supports": { "type": "string" },
+          "accessedAt": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "canonRule": {
+      "type": "object",
+      "required": ["id", "rule"],
+      "properties": {
+        "id": { "type": "string" },
+        "rule": { "type": "string" },
+        "sourceRef": { "type": "string" }
+      }
+    },
+    "conditionalCanonRule": {
+      "allOf": [
+        { "$ref": "#/$defs/canonRule" },
+        {
+          "type": "object",
+          "required": ["condition"],
+          "properties": { "condition": { "$ref": "#/$defs/condition" } }
+        }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["flag", "not-flag", "location", "has-item", "npc-state", "faction-state", "scene-complete", "level", "custom"] },
+        "key": { "type": "string" },
+        "operator": { "type": "string" },
+        "value": {}
+      }
+    },
+    "stateChange": {
+      "type": "object",
+      "required": ["targetType", "targetId", "operation"],
+      "properties": {
+        "targetType": { "enum": ["campaign", "scene", "location", "npc", "faction", "item", "party"] },
+        "targetId": { "type": "string" },
+        "operation": { "enum": ["set", "increment", "decrement", "add", "remove", "reveal", "hide", "complete", "fail"] },
+        "field": { "type": "string" },
+        "value": {}
+      }
+    },
+    "choice": {
+      "type": "object",
+      "required": ["id", "label", "outcomes"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "playerFacingText": { "type": "string" },
+        "conditions": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "outcomes": { "type": "array", "items": { "$ref": "#/$defs/outcome" } }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "conditions": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "nextSceneId": { "type": ["string", "null"] },
+        "narrativeDirective": { "type": "string" },
+        "stateChanges": { "type": "array", "items": { "$ref": "#/$defs/stateChange" } },
+        "failForward": { "type": "boolean" }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": ["id", "title", "locationId", "entryConditions", "requiredFacts", "choices", "freeTextPolicy"],
+      "properties": {
+        "id": { "type": "string" },
+        "act": { "type": ["string", "number"] },
+        "chapter": { "type": ["string", "number"] },
+        "title": { "type": "string" },
+        "locationId": { "type": "string" },
+        "entryConditions": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "requiredFacts": { "type": "array", "items": { "type": "string" } },
+        "hiddenFacts": { "type": "array", "items": { "type": "string" } },
+        "activeNpcIds": { "type": "array", "items": { "type": "string" } },
+        "activeFactionIds": { "type": "array", "items": { "type": "string" } },
+        "encounterIds": { "type": "array", "items": { "type": "string" } },
+        "choices": { "type": "array", "minItems": 0, "maxItems": 8, "items": { "$ref": "#/$defs/choice" } },
+        "suggestedChoiceCount": { "type": "integer", "minimum": 3, "maximum": 5, "default": 4 },
+        "freeTextPolicy": {
+          "type": "object",
+          "required": ["allowed", "adjudicationRule"],
+          "properties": {
+            "allowed": { "const": true },
+            "adjudicationRule": { "type": "string" },
+            "mustPreserveHardCanon": { "const": true },
+            "mayCreateMinorDetails": { "type": "boolean" },
+            "mayCreateMajorLocations": { "type": "boolean", "default": false },
+            "mayCreateMajorNpcs": { "type": "boolean", "default": false }
+          }
+        },
+        "exitStateChanges": { "type": "array", "items": { "$ref": "#/$defs/stateChange" } },
+        "sourceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "location": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "parentId": { "type": ["string", "null"] },
+        "description": { "type": "string" },
+        "connections": { "type": "array", "items": { "type": "string" } },
+        "secrets": { "type": "array", "items": { "type": "string" } },
+        "sourceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "npc": {
+      "type": "object",
+      "required": ["id", "name", "role", "publicGoal", "privateGoal"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "locationId": { "type": ["string", "null"] },
+        "factionId": { "type": ["string", "null"] },
+        "publicGoal": { "type": "string" },
+        "privateGoal": { "type": "string" },
+        "personality": { "type": "string" },
+        "knowledge": { "type": "array", "items": { "type": "string" } },
+        "secrets": { "type": "array", "items": { "type": "string" } },
+        "requiredFutureScenes": { "type": "array", "items": { "type": "string" } },
+        "deathPolicy": { "enum": ["normal", "protected-until-condition", "replaceable", "must-survive", "source-unspecified"] },
+        "sourceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "faction": {
+      "type": "object",
+      "required": ["id", "name", "goals"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "goals": { "type": "array", "items": { "type": "string" } },
+        "leaderNpcIds": { "type": "array", "items": { "type": "string" } },
+        "allies": { "type": "array", "items": { "type": "string" } },
+        "enemies": { "type": "array", "items": { "type": "string" } },
+        "sourceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "definitionKey": { "type": ["string", "null"] },
+        "ownerNpcId": { "type": ["string", "null"] },
+        "locationId": { "type": ["string", "null"] },
+        "plotCritical": { "type": "boolean" },
+        "sourceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "milestone": {
+      "type": "object",
+      "required": ["id", "trigger"],
+      "properties": {
+        "id": { "type": "string" },
+        "trigger": { "$ref": "#/$defs/condition" },
+        "levelGain": { "type": "integer", "minimum": 0 },
+        "rewardText": { "type": "string" }
+      }
+    },
+    "ending": {
+      "type": "object",
+      "required": ["id", "title", "conditions", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "conditions": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "summary": { "type": "string" },
+        "epilogueDirectives": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
