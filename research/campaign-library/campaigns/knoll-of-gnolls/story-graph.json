@@ -1,0 +1,55 @@
+{
+  "id": "knoll-of-gnolls",
+  "title": "Knoll of Gnolls",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "Embark / old-school adaptable",
+  "sourceTier": "low-level",
+  "dmosDndConversion": { "status": "pending" },
+  "hardCanon": [
+    "A secret cave hidden among rolling knolls contains more than forty keyed locations.",
+    "Gnolls currently claim the cave.",
+    "Claims that the gnolls are vicious and mutated are rumours until source details verify them.",
+    "Secret magics and ancient creatures are present in the source.",
+    "Permanent dungeon topology must come from the source maps."
+  ],
+  "dungeonState": {
+    "map": "pending-full-pdf",
+    "keyedLocationCountMinimum": 40,
+    "discoveredLocations": [],
+    "visitedLocations": [],
+    "changedLocations": [],
+    "openedSecrets": [],
+    "creatureStates": {},
+    "factionStates": {},
+    "treasureStates": {}
+  },
+  "rumours": [
+    {
+      "id": "gnolls-vicious-mutated",
+      "claim": "The gnolls are vicious and mutated.",
+      "truth": "pending-source-extraction",
+      "aiRule": "May be stated as rumour only until source evidence is discovered."
+    }
+  ],
+  "scenes": [],
+  "freeTextPolicy": {
+    "allowed": true,
+    "mustPreserveHardCanon": true,
+    "mayCreatePermanentTopology": false,
+    "mayResolveRumoursWithoutEvidence": false,
+    "mayBypassLockedOrSecretRoutes": false,
+    "adjudicationRule": "Free-text plans may solve encounters creatively, but cannot rewrite the keyed map, source creature identity, secret locations or truth-state of rumours."
+  },
+  "blockingUnknowns": [
+    "Complete PDF and maps",
+    "All 40+ location keys",
+    "Gnoll NPCs/factions/mutations",
+    "Ancient creatures and magic",
+    "Traps/hazards",
+    "Wandering encounters",
+    "Treasure and secrets",
+    "Objectives/endings",
+    "D&D 5e level and party conversion"
+  ],
+  "endings": []
+}
