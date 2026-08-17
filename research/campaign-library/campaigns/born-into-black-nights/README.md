@@ -1,6 +1,6 @@
 # Born Into Black Nights
 
-Status: `qa`
+Status: `approved`
 
 ## Executive summary
 
@@ -33,8 +33,14 @@ The adventure has several independent entry hooks and a non-obvious resolution c
 
 This makes the scenario a useful test of clue graphs and outcome-state handling rather than simple combat completion.
 
-## Current QA state
+## Approval state
 
-The full textual adventure structure has been extracted from a publicly indexed copy and cross-checked against the creator's primary page for title, author, ruleset and licence. A structured story graph, canon locks, location model, NPC knowledge model and failure paths are being built from that source.
+The full textual adventure structure has been extracted and cross-checked against the creator's primary page for title, author, ruleset and licence. Canon locks, ten-room tomb topology, NPC knowledge, encounters, items, alternate clue paths, failure states and a v2 DungeonMasterOS campaign template are present.
 
-The visual town/tomb maps are not required for story completion because the source text specifies the relevant tomb room connections and the Warden is explicitly expected to expand Bertram's Grove as needed. Exact visual map ingestion can remain an enhancement.
+Adversarial story/canon QA passed. The branch-level `Campaign Library CI` also successfully parsed the library and schema-validated the v2 campaign templates at commit `f82e0bf16d4d9fefdbc7573fa4f3a5188757c1e5`.
+
+The visual town/tomb maps are useful enhancements but non-blocking for play because the source text specifies the required room connections and explicitly allows the Warden to expand Bertram's Grove with minor local details.
+
+## Release note
+
+This template's adapted text is subject to the source CC BY-SA 4.0 terms. Attribution and ShareAlike obligations must remain attached when the built-in campaign is packaged for users.
