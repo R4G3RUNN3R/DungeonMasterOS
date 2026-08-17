@@ -9,6 +9,7 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 | Campaign | Genre | Native ruleset | Progression | Additional support | Licence | Status |
 |---|---|---|---|---|---|---|
 | Midnight in Bonetown | Weird fantasy / fungal horror / pointcrawl | Cairn | Cairn/system-specific, no invented D&D level | Cairn-compatible/OSR via conversion adapter | CC BY-SA 4.0 | APPROVED |
+| A Tomb of Twins | Ghost/necromancer dungeon / old-school fantasy | CRACK!/B/X-compatible, Cairn, Mörk Borg | B/X example levels 1-3; Cairn/Mörk Borg use native progression | Other OSR via conversion adapter | CC BY-SA 4.0 full text | APPROVED |
 
 ## QA-complete architecture, source-detail blockers remain
 
@@ -33,7 +34,6 @@ This dashboard tracks playable campaign-template maturity, not merely discoverie
 
 | Campaign | Genre | Native ruleset | Licence | Why high priority |
 |---|---|---|---|---|
-| A Tomb of Twins | Old-school fantasy dungeon | B/X/CRACK!, Cairn, Mork Borg stat support | CC BY-SA 4.0 text | Full open text; compact 1-2 session scope; multiple native stat families |
 | Worms In Space | Sci-fi body horror | Monolith | CC BY-SA 4.0 text | Open sci-fi horror scenario suitable for non-fantasy library |
 | The Meeps | Sci-fi/body horror | Lucky Star | CC BY-SA 4.0 text | Open scenario with corporate objective structure |
 | Born Into Black Nights | Gothic/ghost horror | Cairn | CC BY-SA 4.0 | Strong non-D&D gothic scenario |
@@ -57,7 +57,8 @@ These can be catalogued with public metadata and supported through user-owned/pr
 
 ## Coverage snapshot
 
-- Approved fantasy/OSR: 1
+- Approved built-in campaigns total: 2
+- Approved fantasy/OSR: 2
 - Approved gothic/vampire: 0 (The Old Blood in QA)
 - Approved sci-fi/space horror: 0 (Leviathan in QA)
 - Approved post-apocalyptic: 0
