@@ -142,3 +142,17 @@ Campaign work is now being advanced in parallel research lanes for open fantasy/
 **Current approved campaign count:** 3
 **Current QA focus:** Basic Fantasy release gates, open sci-fi full-text extraction, post-apocalyptic full-text extraction, and gothic/vampire completion
 **Internal reference:** `_index/completion-dashboard.md`
+
+---
+
+## 2026-08-17 - Fourth campaign approved: The Old Blood
+**Status:** approved
+
+`The Old Blood` has passed the central DungeonMasterOS campaign gate after a final full-source audit. The Shadowdark levels **1-2** gothic/vampire investigation now has complete keyed registers for its sewer network, Catacombs, ruined keep, secret dungeon and deeper Shrine, plus a complete named-resident table and validated v2 campaign template. The AI-DM preserves the distinction between the initial murderer, the dormant vampire threat and the deeper cause beneath Brannam, allowing players to solve one layer without magically resolving the others.
+
+**Native ruleset:** Shadowdark RPG
+**Progression:** levels 1-2
+**Additional support:** creator-supported OSR-style systems through explicit rules adapters
+**Licence:** CC0 original campaign writing/layout/design; referenced rules mechanics remain separately licensed
+**Current approved campaign count:** 4
+**Internal reference:** `campaigns/the-old-blood/`
