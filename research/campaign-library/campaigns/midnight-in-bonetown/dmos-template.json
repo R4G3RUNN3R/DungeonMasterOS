@@ -1,0 +1,155 @@
+{
+  "id": "midnight-in-bonetown",
+  "title": "Midnight in Bonetown",
+  "version": "1.0.0",
+  "status": "approved",
+  "rules": {
+    "nativeRuleset": "Cairn",
+    "nativeEdition": null,
+    "rulesFamily": "Cairn / NSR / OSR",
+    "progressionModel": "system-specific",
+    "startingProgression": null,
+    "endingProgression": null,
+    "recommendedGroupMin": null,
+    "recommendedGroupMax": null,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {
+        "ruleset": "Cairn",
+        "edition": null,
+        "supportLevel": "native",
+        "progressionRecommendation": "Use normal Cairn characters and advancement. The adventure does not state a D&D-style level range.",
+        "groupRecommendation": null,
+        "conversionNotes": "Native source stat blocks and procedures use Cairn HP/STR/DEX/WIL, saves, Fatigue/Deprivation and related rules.",
+        "validationSource": "https://catshavenolord.itch.io/midnight-in-bonetown"
+      },
+      {
+        "ruleset": "Cairn-compatible / OSR fantasy",
+        "edition": null,
+        "supportLevel": "converted",
+        "progressionRecommendation": "Low-powered exploration-capable characters; exact power mapping must come from selected rules adapter.",
+        "groupRecommendation": null,
+        "conversionNotes": "Convert Cairn stats/saves/detachment/monster/item mechanics while preserving campaign procedures, factions, locations and state.",
+        "validationSource": "DungeonMasterOS conversion policy; source is OSR/NSR-tagged but does not claim universal mechanical identity."
+      }
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Midnight in Bonetown",
+    "author": "Luke Simonds / Cats Have No Lord",
+    "publisher": "Cats Have No Lord",
+    "primaryUrl": "https://catshavenolord.itch.io/midnight-in-bonetown",
+    "sourceIcon": "external-source",
+    "licence": "CC BY-SA 4.0 (full adventure text)",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": true,
+    "attributionText": "Midnight in Bonetown by Luke Simonds / Cats Have No Lord. Full adventure text licensed CC BY-SA 4.0. DungeonMasterOS adaptation must retain attribution and ShareAlike obligations.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "At midnight, a hidden alley descends to a town of resurrected skeletons. Their wizard has vanished into a hallucinogenic fungal wilderness, the native Rixi have turned against corrupted undead, and somewhere beyond the electric river enormous fire-breathing worms are producing the stones that raise the dead.",
+    "genres": ["fantasy", "weird fantasy", "dungeon crawl", "pointcrawl", "faction play", "fungal horror", "dark comedy"],
+    "themes": ["resurrection", "corruption", "ecology", "outsiders", "trade", "faction conflict", "strange bargains"],
+    "tone": ["whimsical", "dangerous", "weird", "exploratory"],
+    "setting": "Bonetown and the subterranean Fungal Forest",
+    "structure": "sandbox",
+    "contentWarnings": ["undead", "body/fungal corruption", "hallucinations", "digestion/body horror", "gambling", "dangerous resurrection", "potential faction violence"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "bonetown", "rule": "Bonetown is a functioning community of resurrected skeletons founded by Gebert.", "sourceRef": "canon.md"},
+      {"id": "gebert", "rule": "Gebert begins trapped alive inside a Dim and has a 21-day rescue window from campaign start.", "sourceRef": "canon.md"},
+      {"id": "stones", "rule": "Dim produce Resurrection Stones, which can reanimate the dead but progressively corrupt resurrected skeletons.", "sourceRef": "canon.md"},
+      {"id": "rixi", "rule": "The Rixi are native cavern inhabitants using eel-powered technology and are hostile to skeletons because corrupted skeletons attacked them.", "sourceRef": "canon.md"},
+      {"id": "mycelicardia", "rule": "The Mycelicardia is a malicious fungal network attempting to expand its influence toward the overworld.", "sourceRef": "canon.md"},
+      {"id": "open-site", "rule": "The campaign is an open adventure site and does not require a single boss or mandatory path.", "sourceRef": "canon.md"}
+    ],
+    "conditional": [
+      {"id": "deadline", "rule": "At 21 elapsed days, Gebert becomes unrecoverable alive unless already rescued.", "condition": {"type": "custom", "key": "elapsedDays", "operator": ">=", "value": 21}, "sourceRef": "canon.md"},
+      {"id": "fungal-alert", "rule": "Harming an infected forest creature worsens the next forest danger through Mycelicardia awareness.", "condition": {"type": "custom", "key": "infectedCreatureHarmed", "operator": "equals", "value": true}, "sourceRef": "canon.md"},
+      {"id": "dragon-free", "rule": "A freed Red Dragon acts on its own desire to burn the fungal network; rescue does not domesticate it.", "condition": {"type": "custom", "key": "dragonState", "operator": "equals", "value": "free"}, "sourceRef": "canon.md"}
+    ],
+    "soft": [
+      {"id": "minor-skeletons", "rule": "Unnamed skeleton residents may be generated using the source NPC/rumour pattern.", "sourceRef": "npcs.md"}
+    ],
+    "freeImprovisation": [
+      {"id": "flavour", "rule": "Ordinary dialogue, cavern ambience and non-keyed town detail may be improvised without changing faction knowledge or procedures.", "sourceRef": "canon.md"}
+    ]
+  },
+  "locations": [
+    {"id": "overworld-alley", "name": "Midnight Alley Entrance", "type": "magical access point", "parentId": null, "description": "A magical arched passage that appears at midnight and descends to the cavern.", "connections": ["bonetown"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "bonetown", "name": "Bonetown", "type": "skeleton town", "parentId": "cavern", "description": "Subterranean town of roughly 100 resurrected skeletons and visitor-facing businesses.", "connections": ["fungal-forest"], "secrets": ["Some residents are beginning to show corruption."], "sourceRefs": ["locations.md"]},
+    {"id": "fungal-forest", "name": "Fungal Forest", "type": "pointcrawl region", "parentId": "cavern", "description": "Hallucinogenic fungal wilderness threaded by electric river and Mycelicardia network.", "connections": ["rixi-railroad", "river-ford", "rixi-village-south", "waterfall", "rixi-village-north", "old-well", "standing-stones", "steamy-pool", "dim-warrens"], "secrets": ["Off-path travel between any known forest points is allowed at triple time/risk."], "sourceRefs": ["locations.md"]},
+    {"id": "rixi-railroad", "name": "Rixi Railroad", "type": "transport route", "parentId": "fungal-forest", "description": "Narrow-gauge electric-era railroad linking Rixi activity.", "connections": ["fungal-forest", "rixi-village-south", "rixi-village-north"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "river-ford", "name": "River Ford", "type": "hazard crossing", "parentId": "fungal-forest", "description": "Rock crossing through eel-filled electrified water.", "connections": ["fungal-forest"], "secrets": ["Cave Ducks can provide Dim information if communicated with."], "sourceRefs": ["locations.md"]},
+    {"id": "rixi-village-south", "name": "Rixi Village South", "type": "fortified settlement", "parentId": "fungal-forest", "description": "Electrified Rixi village offering gadgets, lodging and guides to trusted visitors.", "connections": ["rixi-railroad", "fungal-forest"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "waterfall", "name": "Waterfall Ferry", "type": "river crossing", "parentId": "fungal-forest", "description": "Dangerous electric waterfall crossed by a magically bound Shroom Troll ferry.", "connections": ["fungal-forest"], "secrets": ["The ferryman wants to transfer the binding."], "sourceRefs": ["locations.md"]},
+    {"id": "rixi-village-north", "name": "Rixi Village North", "type": "fortified settlement", "parentId": "fungal-forest", "description": "Rixi village initially under corrupted-skeleton attack; home of Gaspar.", "connections": ["rixi-railroad", "fungal-forest", "dim-warrens"], "secrets": ["Gaspar can repair the Delver."], "sourceRefs": ["locations.md"]},
+    {"id": "old-well", "name": "Old Well", "type": "encounter site", "parentId": "fungal-forest", "description": "Deep well containing a Water Elemental trapped by Balstrava.", "connections": ["fungal-forest"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "standing-stones", "name": "Standing Stones", "type": "ritual site", "parentId": "fungal-forest", "description": "Blood-stained stones that produce a disturbing resurrection vision.", "connections": ["fungal-forest"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "steamy-pool", "name": "Steamy Pool", "type": "dragon prison", "parentId": "fungal-forest", "description": "Hot pool hiding a trapped Red Dragon and guarded by fungal creatures.", "connections": ["fungal-forest"], "secrets": ["Dragon wants a Dim to enlarge its escape route."], "sourceRefs": ["locations.md"]},
+    {"id": "dim-warrens", "name": "Dim Warrens", "type": "procedural dungeon", "parentId": "cavern", "description": "Tunnel maze excavated by giant fire-breathing worms that excrete Resurrection Stones.", "connections": ["fungal-forest"], "secrets": ["Gebert is trapped inside a Dim.", "The communal waste chamber contains thousands of Stones."], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "gebert", "name": "Gebert", "role": "missing wizard / Bonetown founder", "locationId": "dim-warrens", "factionId": "bonetown", "publicGoal": null, "privateGoal": "Survive inside the Dim and return to Bonetown.", "knowledge": ["Resurrection Stone expeditions", "Bonetown", "cavern exploration"], "secrets": ["currently inside a Dim"], "sourceRefs": ["npcs.md"]},
+    {"id": "balstrava", "name": "Balstrava", "role": "spore-maddened witch", "locationId": "fungal-forest", "factionId": null, "publicGoal": null, "privateGoal": null, "knowledge": ["old cavern exploration", "magic"], "secrets": ["trapped the Water Elemental and Red Dragon"], "sourceRefs": ["npcs.md"]},
+    {"id": "tiana", "name": "Tiana", "role": "tavern keeper", "locationId": "bonetown", "factionId": "bonetown", "publicGoal": "Run the tavern and host visitors.", "privateGoal": null, "knowledge": ["Bonetown rumours"], "secrets": ["mutual romantic misunderstanding with Scapula Sam"], "sourceRefs": ["npcs.md"]},
+    {"id": "albert", "name": "Albert", "role": "armory proprietor", "locationId": "bonetown", "factionId": "bonetown", "publicGoal": "Run the armory while avoiding scrutiny.", "privateGoal": "Hoard weapons as his corruption progresses.", "knowledge": ["Bonetown equipment"], "secrets": ["becoming corrupted", "hoarding weapons"], "sourceRefs": ["npcs.md"]},
+    {"id": "duli", "name": "Duli", "role": "alchemist", "locationId": "bonetown", "factionId": null, "publicGoal": "Develop strange fungal concoctions.", "privateGoal": null, "knowledge": ["fungal alchemy"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "gaspar", "name": "Gaspar", "role": "Rixi mechanic", "locationId": "rixi-village-north", "factionId": "rixi", "publicGoal": "Maintain Rixi technology.", "privateGoal": null, "knowledge": ["Delver construction/repair", "Rixi gadgets"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "ferry-troll", "name": "Waterfall Shroom Troll", "role": "bound ferryman", "locationId": "waterfall", "factionId": null, "publicGoal": "Operate the ferry.", "privateGoal": "Transfer the magical obligation to someone else.", "knowledge": ["river crossing"], "secrets": ["binding can be transferred"], "sourceRefs": ["npcs.md"]},
+    {"id": "water-elemental", "name": "Water Elemental", "role": "trapped independent entity", "locationId": "old-well", "factionId": null, "publicGoal": "Escape.", "privateGoal": "Take revenge on Balstrava.", "knowledge": ["its imprisonment"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "red-dragon", "name": "Red Dragon", "role": "trapped independent power", "locationId": "steamy-pool", "factionId": null, "publicGoal": "Escape the pool.", "privateGoal": "Burn the fungal forest/Mycelicardia after escape.", "knowledge": ["Mycelicardia threat", "Dim can widen escape"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "mycelicardia", "name": "Mycelicardia", "role": "distributed fungal antagonist", "locationId": "fungal-forest", "factionId": "mycelicardia-network", "publicGoal": null, "privateGoal": "Spread fungal influence into the overworld.", "knowledge": [], "secrets": [], "sourceRefs": ["npcs.md"]}
+  ],
+  "factions": [
+    {"id": "bonetown", "name": "Bonetown Skeletons", "goals": ["recover Gebert", "obtain Resurrection Stones", "maintain/grow Bonetown"], "sourceRefs": ["factions.md"]},
+    {"id": "corrupted-skeletons", "name": "Corrupted Skeletons", "goals": ["violent roaming behaviour driven by corruption"], "sourceRefs": ["factions.md"]},
+    {"id": "rixi", "name": "Rixi Villages", "goals": ["defend villages", "hunt corrupted skeletons", "develop cavern technology", "harvest fungi/minerals"], "sourceRefs": ["factions.md"]},
+    {"id": "mycelicardia-network", "name": "Mycelicardia Network", "goals": ["spread fungal influence throughout cavern and into overworld"], "sourceRefs": ["factions.md"]},
+    {"id": "dim", "name": "Dim", "goals": ["tunnel, feed and reproduce as giant worm ecology"], "sourceRefs": ["factions.md"]}
+  ],
+  "items": [
+    {"id": "resurrection-stone", "name": "Resurrection Stone", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "delver", "name": "The Delver", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "starscryer", "name": "Starscryer", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "endless-thread", "name": "Endless Thread", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "instant-boat", "name": "Instant Boat", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "duckspeaker", "name": "Duckspeaker", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "flamefender", "name": "Flamefender", "plotCritical": false, "sourceRef": "items-rewards.md"}
+  ],
+  "clocks": [
+    {"id": "gebert-digestion", "name": "Gebert Digestion", "segments": 21, "current": 0, "advanceRule": "One segment per elapsed in-world day; at 21 Gebert cannot be rescued alive.", "effects": ["rescue remains possible until terminal segment", "terminal state preserves Stone-source quest"]},
+    {"id": "mycelicardia-alert", "name": "Mycelicardia Alert", "segments": 4, "current": 0, "advanceRule": "Harming spore-infected forest creatures worsens the next forest danger per source procedure.", "effects": ["increased immediate encounter danger"]}
+  ],
+  "scenes": [
+    {"id": "graph-reference", "title": "Executable Bonetown campaign graph", "locationId": "bonetown", "entryConditions": [], "requiredFacts": ["Full scene, choice, deadline and faction graph is stored in story-graph.json."], "hiddenFacts": [], "choices": [], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use story-graph.json plus Cairn rules/item layer.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}
+  ],
+  "endings": [
+    {"id": "gebert-rescued", "title": "The Wizard Comes Home", "conditions": [], "summary": "Gebert is rescued before the 21-day deadline and returned to Bonetown; other cavern threats remain available.", "sourceRefs": ["story-graph.json"]},
+    {"id": "stone-source", "title": "The Source of Resurrection", "conditions": [], "summary": "The party proves that Dim produce Resurrection Stones and can claim rewards even if Gebert is lost.", "sourceRefs": ["story-graph.json"]},
+    {"id": "gebert-lost", "title": "Too Late", "conditions": [], "summary": "Gebert becomes unrecoverable after the deadline; the open cavern campaign continues.", "sourceRefs": ["story-graph.json"]},
+    {"id": "open-site", "title": "The Cavern Remains", "conditions": [], "summary": "Bonetown, Rixi, the dragon, fungal network, alchemy and Warrens remain a reusable adventure site after primary objectives resolve.", "sourceRefs": ["story-graph.json"]}
+  ],
+  "communityIntelligence": [
+    {"platform": "itch.io jam feed", "summary": "Readers specifically praised the intelligent-skeleton premise, setting, NPCs and factions; one noted intelligent skeletons can confuse players if not established clearly.", "sourceUrl": "https://itch.io/jam/a-town-a-forest-a-dungeon/feed?from_event=16404088"}
+  ],
+  "adaptationNotes": [
+    "Present skeleton/corrupted-skeleton/Rixi distinctions clearly in opening play.",
+    "Persist the 21-day Gebert deadline across sessions and overworld trips.",
+    "Store hallucinations as perception state, never automatic world truth.",
+    "Exact visual pointcrawl direct edges should be ingested when map assets are supported; source off-path travel provides a complete fallback without invented barriers.",
+    "ShareAlike obligations apply to this DMOS derivative campaign package."
+  ],
+  "researchSources": [
+    {"url": "https://catshavenolord.itch.io/midnight-in-bonetown", "type": "primary", "supports": "release, Cairn ruleset, licence, campaign structure", "accessedAt": "2026-08-17"},
+    {"url": "https://catshavenolord.itch.io/midnight-in-bonetown/devlog/551648/fixing-an-error", "type": "primary", "supports": "corrected release state", "accessedAt": "2026-08-17"},
+    {"url": "https://itch.io/jam/a-town-a-forest-a-dungeon/rate/2116650", "type": "official-metadata", "supports": "jam provenance", "accessedAt": "2026-08-17"}
+  ]
+}
