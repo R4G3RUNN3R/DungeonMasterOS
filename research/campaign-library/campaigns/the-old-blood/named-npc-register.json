@@ -1,0 +1,36 @@
+{
+  "campaignId": "the-old-blood",
+  "source": "The Old Blood current 88-page release",
+  "residentTable": [
+    {"name":"Devin Crowl","location":"Highroad / smuggler operations","role":"smuggler contact","plotUse":"Sealed Ledger favour path and smuggler information","confidence":"verified"},
+    {"name":"Rillek Harst","location":"Eastward / wilderness when hunting","role":"hunter","plotUse":"rumour-vs-truth example; often simply away hunting","confidence":"verified"},
+    {"name":"Grella Fenn","location":"Crowmarket pawnbroker","role":"pawnbroker / antiquities contact","plotUse":"Ruins artefact trade and Victor purchase history","confidence":"verified"},
+    {"name":"Father Brenwick","location":"Saint Arlen's Chapel","role":"priest","plotUse":"Evelyn funeral, blood-worship history, Catacomb access","confidence":"verified"},
+    {"name":"Ulric Tarn","location":"Tradesman's Ward smithy","role":"blacksmith","plotUse":"named local tradesperson","confidence":"verified"},
+    {"name":"Mira Tarn","location":"Tradesman's Ward","role":"local resident","plotUse":"named resident; retain only source-backed soft details","confidence":"verified"},
+    {"name":"Armond Velst","location":"Warded Lantern, Eastward","role":"inn owner","plotUse":"named local proprietor","confidence":"verified"},
+    {"name":"Feyra Lrowyn","location":"Warded Lantern, Eastward","role":"bard / historian","plotUse":"Brannam history and King Below / Flooded Shrine lead","confidence":"verified"},
+    {"name":"Lisbet Harrow","location":"Gardenrow / caretaker cottage","role":"chapel caretaker","plotUse":"caretaker resources and Ruins-recovered warning material","confidence":"verified"},
+    {"name":"Elana Fost","location":"Eastward mayor's office","role":"mayor","plotUse":"civic authority and collapse-state response","confidence":"verified"},
+    {"name":"Cassard Vole","location":"Rusted Tankard, Tradesman's Ward","role":"named resident","plotUse":"do not invent major knowledge beyond source","confidence":"verified"},
+    {"name":"Dren Varick","location":"Rusted Tankard, Tradesman's Ward","role":"named resident","plotUse":"do not invent major knowledge beyond source","confidence":"verified"},
+    {"name":"Jorik Stann","location":"Crowmarket butcher","role":"butcher","plotUse":"animal fats/bones/blood supplied to Victor","confidence":"verified"},
+    {"name":"Mirela Venth","location":"Crowmarket herbalist stall","role":"herbalist","plotUse":"supplied Victor herbs/roots/plants; recalls unusual combination including poisonous herbs","confidence":"verified"},
+    {"name":"Thessin Cade","location":"Crowmarket chandler stall","role":"chandler","plotUse":"supplied candles/wax/oils; saw Victor carrying crates toward the Annex late at night","confidence":"verified"},
+    {"name":"Garren Paine","location":"Eastward cobbler shop","role":"cobbler","plotUse":"named resident/site owner; no major clue inferred","confidence":"verified"},
+    {"name":"Tira Luthan","location":"Tradesman's Ward glassblower","role":"glassblower","plotUse":"Victor laboratory-glass history and distillation-coil contradiction","confidence":"verified"},
+    {"name":"Calla Bryne","location":"Tradesman's Ward Weaver's Guildhall","role":"weaver / guild member","plotUse":"Victor's large dark-cloth orders","confidence":"verified"},
+    {"name":"Nerris Velth","location":"Tradesman's Ward Weaver's Guildhall","role":"weaver","plotUse":"named resident; no unverified relationship to Harrin Velth may be invented","confidence":"verified"},
+    {"name":"Erin Druet","location":"Crowmarket fishmonger stand","role":"fishmonger","plotUse":"supplied fish scales/oils/hides to Victor; notes his purchases stopped weeks ago","confidence":"verified"}
+  ],
+  "majorActorsOutsideResidentTable": [
+    "Victor Marlowe",
+    "Evelyn Marlowe",
+    "Edric von Braech",
+    "Captain Ren Halvard",
+    "Marya Dolen",
+    "Harrin Velth",
+    "The Forgotten"
+  ],
+  "policy": "NPC knowledge is source-bounded. A named resident is not automatically a clue source merely because the AI needs exposition."
+}
