@@ -1,0 +1,275 @@
+{
+  "campaignId": "beneath-brymassen",
+  "version": 1,
+  "initialState": {
+    "campaignMode": null,
+    "childrenState": "not-applicable",
+    "room8Kobolds": "undisturbed",
+    "room11Broker": "neutral",
+    "room12Orcs": "present",
+    "room14Chieftain": "not-applicable",
+    "outsideExitDiscovered": false,
+    "shrineDiscovered": false,
+    "room13Opened": false,
+    "surfaceRewardResolved": false
+  },
+  "modeInitialization": {
+    "crawl": {
+      "childrenState": "not-applicable",
+      "room14Chieftain": "not-applicable",
+      "room14Variant": "bird-cage"
+    },
+    "rescue": {
+      "childrenState": "captive",
+      "room14Chieftain": "alive",
+      "room14Variant": "jail-cell"
+    }
+  },
+  "nodes": [
+    {
+      "id": "choose-hook",
+      "location": "brymassen",
+      "truth": ["The source provides two separate campaign modes; select one before dungeon initialization."],
+      "choices": [
+        {"label": "Accept Mayor Forsythe's humanoid bounty", "set": {"campaignMode": "crawl"}, "next": "entry"},
+        {"label": "Help the parents recover their four kidnapped children", "set": {"campaignMode": "rescue"}, "next": "entry"},
+        {"label": "Investigate before accepting terms", "next": "surface-investigation"}
+      ],
+      "freeText": "Players may refuse, negotiate or investigate. If they later enter the dungeon without a formal contract, choose the room-14 variant according to the established fiction and never merge variants."
+    },
+    {
+      "id": "surface-investigation",
+      "location": "brymassen",
+      "truth": ["Crawl mode originates at the mill; rescue mode originates at a leather-worker's cellar."],
+      "choices": [
+        {"label": "Question the mayor", "next": "choose-hook"},
+        {"label": "Speak to the kidnapped children's family", "next": "choose-hook"},
+        {"label": "Inspect the breach/footprints", "next": "entry"}
+      ],
+      "freeText": "Allow ordinary local investigation without inventing additional hidden masterminds or alternate kidnappers."
+    },
+    {
+      "id": "entry",
+      "location": "room-1",
+      "truth": ["The crawl tunnel opens above the floor; a differently coloured stone marks the ceiling spear-trap trigger."],
+      "choices": [
+        {"label": "Inspect the exit carefully", "next": "room-1-resolved"},
+        {"label": "Climb down immediately", "event": "resolve-room1-spear-trap", "next": "room-1-resolved"},
+        {"label": "Probe from the tunnel", "next": "room-1-resolved"}
+      ],
+      "freeText": "Reward source-supported caution. Do not invent a second trap."
+    },
+    {
+      "id": "room-1-resolved",
+      "location": "room-1",
+      "truth": ["East and west routes are available; secret shrine access depends on discovery/key state."],
+      "choices": [
+        {"label": "Explore toward the pits", "next": "room-3"},
+        {"label": "Search for concealed features", "event": "search-room1-area", "next": "room-2-or-remain"},
+        {"label": "Take the alternate corridor", "next": "room-4-or-5-by-map"}
+      ],
+      "freeText": "Use source map topology. Secret doors are not automatically found because a player asks generally."
+    },
+    {
+      "id": "room-2",
+      "location": "room-2",
+      "truth": ["This is a protected sanctuary; the healing chalice functions only here."],
+      "choices": [
+        {"label": "Rest/use the sanctuary", "next": "dungeon-exploration"},
+        {"label": "Use holy water with the chalice", "event": "apply-shrine-healing-limit", "next": "dungeon-exploration"},
+        {"label": "Take valuables and leave", "next": "dungeon-exploration"}
+      ],
+      "freeText": "The chalice loses its special healing function outside this room."
+    },
+    {
+      "id": "room-3",
+      "location": "room-3",
+      "truth": ["One pit is open; one is concealed and spiked; the hidden-shrine key is on the corpse below the southern pit."],
+      "choices": [
+        {"label": "Cross using the narrow ledge", "event": "resolve-dexterity-crossing", "next": "dungeon-exploration"},
+        {"label": "Inspect both pits", "event": "discover-pit-differences", "next": "dungeon-exploration"},
+        {"label": "Recover the corpse's gear/key", "event": "recover-room3-key", "set": {"shrineDiscovered": true}, "next": "dungeon-exploration"}
+      ],
+      "freeText": "Permit ropes, poles, bridging and other reasonable tactics. Preserve actual pit depths/triggers."
+    },
+    {
+      "id": "room-4",
+      "location": "room-4",
+      "truth": ["Wading through the sludge is safe; probing/searching can disturb the centipede nest."],
+      "choices": [
+        {"label": "Cross without disturbing debris", "next": "dungeon-exploration"},
+        {"label": "Probe the sludge", "event": "roll-centipede-disturbance", "next": "dungeon-exploration"},
+        {"label": "Search thoroughly", "event": "roll-centipede-disturbance", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Do not trigger centipedes merely for entering; disturbance is the source condition."
+    },
+    {
+      "id": "room-5",
+      "location": "room-5",
+      "truth": ["The east passage eventually exits into a concealed outside cavern."],
+      "choices": [
+        {"label": "Follow the fresh-air passage", "set": {"outsideExitDiscovered": true}, "next": "outside-exit"},
+        {"label": "Take another dungeon door", "next": "dungeon-exploration"},
+        {"label": "Mark the junction and continue", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Once discovered, persist the outside route as a valid later entry/exit."
+    },
+    {
+      "id": "room-6",
+      "location": "room-6",
+      "truth": ["Opening the door normally brings the opener into the swinging axe path."],
+      "choices": [
+        {"label": "Inspect/disarm before opening", "event": "adjudicate-battle-axe-bypass", "next": "dungeon-exploration"},
+        {"label": "Open normally", "event": "resolve-battle-axe-attack", "next": "dungeon-exploration"},
+        {"label": "Open from range/with improvised method", "event": "adjudicate-bypass", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Allow careful source-consistent avoidance."
+    },
+    {
+      "id": "room-7",
+      "location": "room-7",
+      "truth": ["There is no secret door and the painted/yellow button does nothing."],
+      "choices": [
+        {"label": "Inspect the fake door outline", "next": "room-7"},
+        {"label": "Press the yellow mark", "next": "room-7"},
+        {"label": "Move on", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Repeated searching returns no new passage. Never create one as a reward for persistence."
+    },
+    {
+      "id": "room-8",
+      "location": "room-8",
+      "truth": ["Six kobolds are hiding from their chieftain after stealing part of the tribal treasure."],
+      "choices": [
+        {"label": "Listen/translate their argument", "event": "reveal-room8-faction-state", "next": "room-8-resolution"},
+        {"label": "Attack", "set": {"room8Kobolds": "hostile"}, "next": "room-8-resolution"},
+        {"label": "Parley", "set": {"room8Kobolds": "negotiating"}, "next": "room-8-resolution"},
+        {"label": "Withdraw quietly", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Negotiation, recruitment, intimidation or betrayal may emerge, but source does not define a guaranteed alliance."
+    },
+    {
+      "id": "room-9",
+      "location": "room-9",
+      "truth": ["Green Slime hangs in the central ceiling and responds to creatures/objects reaching beneath it."],
+      "choices": [
+        {"label": "Look upward before entering", "event": "spot-green-slime", "next": "dungeon-exploration"},
+        {"label": "Cross the centre", "event": "resolve-green-slime", "next": "dungeon-exploration"},
+        {"label": "Avoid the centre/room", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Use environmental geometry rather than making the slime pursue beyond source behaviour without cause."
+    },
+    {
+      "id": "room-10",
+      "location": "room-10",
+      "truth": ["Each thorough search interval has a small source-defined chance of producing one random result from a mixed reward/hazard table."],
+      "choices": [
+        {"label": "Search briefly", "event": "roll-catacomb-search", "next": "room-10"},
+        {"label": "Continue prolonged searching", "event": "roll-catacomb-search", "next": "room-10"},
+        {"label": "Leave the bones undisturbed", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Never choose only favourable results. Apply the source random table faithfully."
+    },
+    {
+      "id": "room-11",
+      "location": "room-11",
+      "truth": ["The grizzled hobgoblin is neutral unless attacked and trades information for coin using ESP and local knowledge."],
+      "choices": [
+        {"label": "Buy information", "set": {"room11Broker": "trading"}, "event": "broker-information-with-uncertainty", "next": "dungeon-exploration"},
+        {"label": "Question without paying", "event": "broker-bargain", "next": "dungeon-exploration"},
+        {"label": "Attack", "set": {"room11Broker": "hostile"}, "next": "dungeon-exploration"},
+        {"label": "Leave him alone", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Broker statements can mix useful truth and lies. Do not promote unverified broker claims to hard canon."
+    },
+    {
+      "id": "room-12",
+      "location": "room-12",
+      "truth": ["Five orcs are focused on removing a glowing skull; in rescue mode they are prospective slavers/buyers for the children."],
+      "choices": [
+        {"label": "Approach quietly", "event": "resolve-orc-surprise", "next": "room-12-resolution"},
+        {"label": "Attack openly", "set": {"room12Orcs": "hostile"}, "next": "room-12-resolution"},
+        {"label": "Talk/negotiate", "set": {"room12Orcs": "negotiating"}, "next": "room-12-resolution"},
+        {"label": "Withdraw", "next": "dungeon-exploration"}
+      ],
+      "freeText": "In rescue mode, knowledge about the impending child sale may affect negotiation if learned elsewhere."
+    },
+    {
+      "id": "room-13",
+      "location": "room-13",
+      "truth": ["Four skeletons stay inert unless attacked or the sarcophagus is touched."],
+      "choices": [
+        {"label": "Inspect without touching", "next": "room-13"},
+        {"label": "Open/touch the sarcophagus", "set": {"room13Opened": true}, "event": "activate-room13-guardians", "next": "room-13-resolution"},
+        {"label": "Attack the skeletons first", "event": "activate-room13-guardians", "next": "room-13-resolution"},
+        {"label": "Leave", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Do not animate the guardians merely because characters enter."
+    },
+    {
+      "id": "room-14-rescue",
+      "location": "room-14",
+      "entryCondition": {"campaignMode": "rescue"},
+      "truth": ["Four children are captive in a suspended cage; five kobolds and their chieftain are debating ransom or sale to the Room 12 orcs."],
+      "choices": [
+        {"label": "Negotiate/ransom the children", "event": "resolve-kobold-negotiation", "next": "rescue-resolution"},
+        {"label": "Attack the guards", "event": "resolve-room14-combat", "next": "rescue-resolution"},
+        {"label": "Create a distraction and lower the cage", "event": "resolve-stealth-rescue", "next": "rescue-resolution"},
+        {"label": "Listen before entering", "event": "reveal-sale-plan", "next": "room-14-rescue"}
+      ],
+      "freeText": "Support creative rescue plans. The children remain physically suspended until the cage is lowered/reached safely."
+    },
+    {
+      "id": "rescue-resolution",
+      "location": "room-14",
+      "truth": ["Success requires getting the four children free/alive, not merely defeating the kobolds."],
+      "choices": [
+        {"label": "Escort the children back to their parents", "set": {"childrenState": "rescued", "surfaceRewardResolved": true}, "next": "end-rescue"},
+        {"label": "Continue exploring before returning", "set": {"childrenState": "rescued-in-dungeon"}, "next": "dungeon-exploration"},
+        {"label": "Use the discovered outside route", "next": "outside-exit"}
+      ],
+      "freeText": "Track child safety while further exploring. Do not auto-teleport captives home."
+    },
+    {
+      "id": "room-14-crawl",
+      "location": "room-14",
+      "entryCondition": {"campaignMode": "crawl"},
+      "truth": ["The room contains a fallen iron bird cage, a crushed goblin and seven loose stirges."],
+      "choices": [
+        {"label": "Fight/drive off the stirges", "next": "crawl-resolution"},
+        {"label": "Withdraw", "next": "dungeon-exploration"},
+        {"label": "Search the crushed goblin after handling the threat", "next": "crawl-resolution"}
+      ],
+      "freeText": "There are no children or chieftain in this mode."
+    },
+    {
+      "id": "dungeon-exploration",
+      "location": "dungeon",
+      "truth": ["Previously discovered routes, hazards, deaths, negotiations and mode remain persistent."],
+      "choices": [
+        {"label": "Continue to an unexplored connected room", "next": "source-map-adjudication"},
+        {"label": "Backtrack", "next": "source-map-adjudication"},
+        {"label": "Leave through a known exit", "next": "surface-return"},
+        {"label": "Rest/regroup if fiction permits", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Use actual map connections. Do not reset rooms after retreat."
+    },
+    {
+      "id": "surface-return",
+      "location": "brymassen",
+      "truth": ["Surface reward depends on the accepted hook and actual evidence/rescue result."],
+      "choices": [
+        {"label": "Claim bounty with proof", "set": {"surfaceRewardResolved": true}, "next": "end-crawl"},
+        {"label": "Return rescued children", "set": {"surfaceRewardResolved": true, "childrenState": "home"}, "next": "end-rescue"},
+        {"label": "Return later and continue dungeon exploration", "next": "dungeon-exploration"}
+      ],
+      "freeText": "Do not pay both contracts unless both were independently established and fulfilled."
+    }
+  ],
+  "endings": [
+    {"id": "end-crawl", "summary": "The party returns under the bounty/crawl contract and receives only the reward actually supported by proof and the agreed terms."},
+    {"id": "end-rescue", "summary": "The four children are returned alive to their family; the rescue reward and family outcome resolve according to actual events."},
+    {"id": "end-partial", "summary": "The party withdraws or leaves objectives incomplete; dungeon state persists for later return."},
+    {"id": "end-emergent", "summary": "Negotiated kobold/orc/broker outcomes may continue into homebrew campaign state, clearly separated from source canon."}
+  ]
+}
