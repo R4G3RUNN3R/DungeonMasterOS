@@ -1,12 +1,14 @@
 # Changelog
 
 ## 2026-08-17
-- Characters: added ten original level-1 D&D 3.5e PHB/SRD starter presets in `shared/default-characters.ts`, covering Fighter, Cleric, Barbarian, Bard, Druid, Monk, Paladin, Ranger, Rogue, and Wizard.
+- Characters: added eleven original level-1 D&D 3.5e PHB/SRD starter presets covering all eleven PHB base classes: Fighter, Cleric, Barbarian, Bard, Druid, Monk, Paladin, Ranger, Rogue, Wizard, and Sorcerer.
+- Sorcerer: added Neris Tallow, a Half-Elf spontaneous arcane caster with proper level-1 sorcerer spells known, spell slots, saves, equipment, familiar, and progression guidance distinct from the Wizard preset.
+- Catalogue: added `shared/default-character-catalogue.ts` as the growing canonical preset export, combining the original ten presets with the Sorcerer while preserving the original array for backwards compatibility.
 - Character data: each preset includes core ability scores, HP, speed, AC, initiative, BAB, saves, feats, racial traits, class features, skills, spellcasting where relevant, combat notes, personality, backstory, and starting gear definitions.
-- AI progression: each preset carries a bounded Claude scaling profile and higher-level progression guide that preserves the character concept, follows core 3.5e class progression, and flags permanent player choices instead of silently making them.
+- AI progression: each preset carries bounded Claude scaling guidance that preserves the character concept, follows core 3.5e class progression, and flags permanent player choices instead of silently making them.
 - Inventory: starter equipment is represented separately from the flexible character-data blob so it can be seeded into the real item system when the character picker is wired into creation.
-- Expected impact: DungeonMasterOS now has a reusable canonical source of ten distinct 3.5e starter characters for character selection and future higher-level guidance.
-- Risk: low. This change adds shared preset data and helper functions without changing the existing live character-creation route or UI behavior.
+- Expected impact: DungeonMasterOS now has a reusable starter option for every core 3.5e PHB class, including players who prefer spontaneous arcane casting over Wizard preparation.
+- Risk: low. These changes add shared preset/catalogue data without changing the existing live character-creation route or UI behavior.
 
 ## 2026-04-18
 - Routes: applied the uploaded `server/routes.ts` visitor identity patch shape directly to `main` while preserving the rest of the newer route file.
