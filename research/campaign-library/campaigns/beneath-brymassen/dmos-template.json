@@ -1,0 +1,209 @@
+{
+  "$schema": "../../_templates/campaign-template-v2.schema.json",
+  "id": "beneath-brymassen",
+  "title": "Beneath Brymassen",
+  "version": "1.0-dmos",
+  "status": "qa",
+  "rules": {
+    "nativeRuleset": "Basic Fantasy Role-Playing Game",
+    "nativeEdition": "1st Edition-era anthology",
+    "rulesFamily": "B/X-compatible OSR",
+    "progressionModel": "levels",
+    "startingProgression": 1,
+    "endingProgression": 1,
+    "recommendedGroupMin": 3,
+    "recommendedGroupMax": 6,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {
+        "ruleset": "Basic Fantasy Role-Playing Game",
+        "edition": null,
+        "supportLevel": "native",
+        "progressionRecommendation": "3-6 beginning player characters; DMOS treats the source as level-1 introductory play.",
+        "groupRecommendation": "3-6 characters",
+        "conversionNotes": null,
+        "validationSource": "Adventure Anthology One Release 21 title block plus independent RPG index level tag"
+      },
+      {
+        "ruleset": "B/X-compatible OSR systems",
+        "edition": null,
+        "supportLevel": "converted",
+        "progressionRecommendation": "Use an explicit level-1/beginner conversion adapter; do not import Basic Fantasy stat assumptions silently.",
+        "groupRecommendation": "3-6 characters before system-specific scaling",
+        "conversionNotes": "Community use demonstrates portability, but converted stats require separate adapter QA.",
+        "validationSource": "Community play/conversion evidence"
+      }
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Beneath Brymassen / Adventure Anthology One Release 21",
+    "author": "Collaborative dungeon by Eldrad Wolfsbane, Mak, The Expert, skisko, Thomas Kolter, Maliki, Jim Bobb, Stuart Marshall, hjmartin70, J.D. Neal, David Gerard, and Chris Gonnerman",
+    "publisher": "Basic Fantasy Project",
+    "primaryUrl": "https://www.basicfantasy.org/",
+    "sourceIcon": "book",
+    "licence": "Open Game License v1.0a; anthology text designated Open Game Content",
+    "licenceUrl": null,
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": false,
+    "attributionText": "Beneath Brymassen, Adventure Anthology One. Original source Copyright 2008-2012 by the contributors listed in the source OGL Copyright Notice. DMOS release must include the required OGL v1.0a and complete notice package.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "Raiders have breached the cellars beneath Brymassen. Take a straightforward bounty to clear them out, or race underground to recover four kidnapped children before their captors decide what to do with them.",
+    "genres": ["old-school fantasy", "dungeon crawl", "rescue", "low-level adventure"],
+    "themes": ["exploration", "traps", "humanoid factions", "risk versus reward"],
+    "tone": ["adventurous", "dangerous", "occasionally darkly comic"],
+    "setting": "Brymassen and the dungeon beneath its buildings",
+    "structure": "hybrid",
+    "contentWarnings": ["child kidnapping in rescue mode", "poison", "disease", "undead remains", "lethal traps"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "two-modes", "rule": "The campaign has separate crawl and rescue modes, and Room 14 must use exactly one matching source variant.", "sourceRef": "canon.md"},
+      {"id": "room7-false", "rule": "Room 7 has no secret door; its apparent clues are deliberate false leads.", "sourceRef": "canon.md"},
+      {"id": "broker-neutral", "rule": "The Room 11 grizzled hobgoblin is non-hostile unless attacked and operates as an information broker.", "sourceRef": "npcs-factions.md"},
+      {"id": "room8-splinter", "rule": "Room 8 kobolds are hiding from their own chieftain after stealing part of the tribal treasure.", "sourceRef": "npcs-factions.md"},
+      {"id": "room12-sale-link", "rule": "In rescue mode, the Room 12 orcs are the slavers/buyers the Room 14 kobolds are considering selling the children to.", "sourceRef": "npcs-factions.md"},
+      {"id": "room5-exit", "rule": "Room 5's eastern natural passage leads to a concealed outside exit.", "sourceRef": "locations.md"}
+    ],
+    "conditional": [
+      {"id": "room13-guardians", "rule": "Room 13 skeleton guardians activate only if attacked or the sarcophagus is touched.", "condition": {"type": "flag", "key": "room13_triggered", "operator": "==", "value": true}, "sourceRef": "canon.md"},
+      {"id": "centipede-disturbance", "rule": "Room 4 centipedes may emerge when the sludge/debris is disturbed; merely crossing the room is safe.", "condition": {"type": "flag", "key": "room4_disturbed", "operator": "==", "value": true}, "sourceRef": "canon.md"}
+    ],
+    "soft": [
+      {"id": "surface-detail", "rule": "Minor Brymassen residents/services may be improvised if they do not alter the chosen hook or dungeon truth.", "sourceRef": "canon.md"}
+    ],
+    "freeImprovisation": [
+      {"id": "dialogue-tactics", "rule": "Dialogue, mundane travel detail and tactical choices may be improvised while preserving room topology, actor motives and mode-specific truth.", "sourceRef": "canon.md"}
+    ]
+  },
+  "locations": [
+    {"id": "brymassen", "name": "Brymassen", "type": "town", "parentId": null, "description": "Small rural settlement above the dungeon.", "connections": ["room-1"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-1", "name": "Entrance Room", "type": "dungeon", "parentId": null, "description": "Tunnel entry with ceiling spear trap.", "connections": [], "secrets": ["Trap marker can be noticed by careful characters."], "sourceRefs": ["locations.md"]},
+    {"id": "room-2", "name": "Hidden Shrine", "type": "dungeon", "parentId": null, "description": "Protected sanctuary with location-bound healing chalice.", "connections": [], "secrets": ["Requires hidden access/key or lock skill."], "sourceRefs": ["locations.md"]},
+    {"id": "room-3", "name": "The Pits", "type": "dungeon", "parentId": null, "description": "Open pit plus concealed spiked pit containing shrine key.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-4", "name": "Centipede Room", "type": "dungeon", "parentId": null, "description": "Sludge room that is safe to cross unless disturbed.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-5", "name": "Octagonal Room", "type": "dungeon", "parentId": null, "description": "Hub whose east passage reaches a concealed outside exit.", "connections": [], "secrets": ["Hidden outside route."], "sourceRefs": ["locations.md"]},
+    {"id": "room-6", "name": "Battle Axe Trap", "type": "dungeon", "parentId": null, "description": "Bedroom-like room protected by a door-triggered swinging axe.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-7", "name": "Empty / False Clue Room", "type": "dungeon", "parentId": null, "description": "Graffiti and fake secret-door bait; genuinely empty.", "connections": [], "secrets": ["There is no secret door."], "sourceRefs": ["locations.md"]},
+    {"id": "room-8", "name": "Kobolds on the Run", "type": "dungeon", "parentId": null, "description": "Splinter kobolds hiding with stolen tribal coin.", "connections": [], "secrets": ["They are hiding from their own chieftain."], "sourceRefs": ["locations.md"]},
+    {"id": "room-9", "name": "Storeroom", "type": "dungeon", "parentId": null, "description": "Mostly empty storeroom with ceiling Green Slime.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-10", "name": "Catacomb", "type": "dungeon", "parentId": null, "description": "Bone-lined room with risky random search outcomes.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-11", "name": "Hobgoblin's Room", "type": "dungeon", "parentId": null, "description": "Neutral information broker's chamber.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-12", "name": "Room of Glowing Skulls", "type": "dungeon", "parentId": null, "description": "Five orcs work at removing permanently glowing skulls.", "connections": [], "secrets": ["Rescue-mode slaver connection."], "sourceRefs": ["locations.md"]},
+    {"id": "room-13", "name": "Sarcophagus Room", "type": "dungeon", "parentId": null, "description": "Sarcophagus guarded by conditionally inert skeletons.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-14", "name": "Mode-Dependent Finale", "type": "dungeon", "parentId": null, "description": "Jail-cell rescue scene or stirge/bird-cage room depending on campaign mode.", "connections": [], "secrets": [], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "forsythe", "name": "Forsythe", "role": "Mayor / crawl-mode patron", "locationId": "brymassen", "factionId": "brymassen", "publicGoal": "Stop humanoid raids beneath the mill.", "privateGoal": null, "knowledge": ["Raiders have breached the mill basement."], "secrets": [], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "father", "name": "Kidnapped children's father", "role": "Rescue-mode patron", "locationId": "brymassen", "factionId": "family", "publicGoal": "Recover his four children alive.", "privateGoal": null, "knowledge": ["The children were dragged through the cellar breach."], "secrets": [], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "broker", "name": "Grizzled hobgoblin", "role": "Information broker", "locationId": "room-11", "factionId": null, "publicGoal": "Trade information for coin and remain comfortable.", "privateGoal": null, "knowledge": ["Some dungeon information", "Reads minds with his medallion"], "secrets": ["Often mixes lies with useful hints."], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "chieftain", "name": "Kobold chieftain", "role": "Rescue-mode captor leader", "locationId": "room-14", "factionId": "kobold-tribe", "publicGoal": "Control the captives and recover value after tribal theft.", "privateGoal": null, "knowledge": ["Room 8 splinter kobolds stole tribal treasure", "Orc slavers may buy the children"], "secrets": [], "sourceRefs": ["npcs-factions.md"]}
+  ],
+  "factions": [
+    {"id": "brymassen", "name": "Brymassen townspeople", "goals": ["Stop raids", "Protect the settlement"], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "family", "name": "Kidnapped children's family", "goals": ["Recover all four children alive"], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "kobold-tribe", "name": "Kobold tribe", "goals": ["Control its remaining treasure", "Resolve the captive situation"], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "kobold-splinter", "name": "Room 8 kobold splinter group", "goals": ["Avoid their chieftain", "Escape with stolen treasure"], "sourceRefs": ["npcs-factions.md"]},
+    {"id": "orc-slavers", "name": "Room 12 orcs", "goals": ["Obtain value from the dungeon and, in rescue mode, potentially acquire captives"], "sourceRefs": ["npcs-factions.md"]}
+  ],
+  "items": [
+    {"id": "shrine-key", "name": "Hidden shrine key", "plotCritical": true, "locationId": "room-3", "sourceRef": "items-rewards.md"},
+    {"id": "healing-chalice", "name": "Golden healing chalice", "plotCritical": false, "locationId": "room-2", "sourceRef": "items-rewards.md"},
+    {"id": "esp-medallion", "name": "Medallion of ESP", "plotCritical": false, "initialHolderNpcId": "broker", "sourceRef": "items-rewards.md"}
+  ],
+  "clocks": [],
+  "scenes": [
+    {
+      "id": "select-mode",
+      "title": "Trouble Beneath Brymassen",
+      "locationId": "brymassen",
+      "entryConditions": [],
+      "requiredFacts": ["The source supports two different hooks and two different Room 14 variants."],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Take the mayor's bounty"},
+        {"label": "Take the kidnapped-children rescue"},
+        {"label": "Investigate before accepting a job"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Establish one campaign mode before Room 14 is instantiated; never merge variants.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    },
+    {
+      "id": "explore-dungeon",
+      "title": "The Dungeon Beneath Brymassen",
+      "locationId": "room-1",
+      "entryConditions": [],
+      "requiredFacts": ["Rooms, traps, neutral actors and alternate exit obey source topology and triggers."],
+      "hiddenFacts": ["Room 7's fake door is genuinely false", "Room 11 broker is neutral until attacked"],
+      "choices": [
+        {"label": "Explore a connected passage"},
+        {"label": "Search carefully for traps/secrets"},
+        {"label": "Backtrack or leave through a known exit"},
+        {"label": "Parley with a speaking inhabitant"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Resolve any reasonable action through native rules while preserving map, trigger and faction state.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json", "locations.md"]
+    },
+    {
+      "id": "room14-rescue",
+      "title": "The Captive Children",
+      "locationId": "room-14",
+      "entryConditions": [{"type": "custom", "key": "campaignMode", "operator": "==", "value": "rescue"}],
+      "requiredFacts": ["Four children remain captive until physically freed", "Kobolds may ransom or sell them", "Room 12 orcs are the prospective slavers"],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Negotiate or ransom"},
+        {"label": "Attack the captors"},
+        {"label": "Use stealth/distraction to lower the cage"},
+        {"label": "Listen and gather information first"}
+      ],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Support creative rescue tactics without teleporting the children free or changing who holds them.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    },
+    {
+      "id": "room14-crawl",
+      "title": "The Fallen Bird Cage",
+      "locationId": "room-14",
+      "entryConditions": [{"type": "custom", "key": "campaignMode", "operator": "==", "value": "crawl"}],
+      "requiredFacts": ["This version contains stirges and a crushed goblin, not kidnapped children or a chieftain."],
+      "hiddenFacts": [],
+      "choices": [
+        {"label": "Deal with the stirges"},
+        {"label": "Withdraw"},
+        {"label": "Search after the threat is controlled"}
+      ],
+      "suggestedChoiceCount": 3,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use crawl-mode room truth only.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    }
+  ],
+  "endings": [
+    {"id": "rescue-success", "title": "Children Returned", "conditions": [{"type": "flag", "key": "children_rescued", "operator": "==", "value": true}], "summary": "The four children are returned alive and the family reward resolves according to the agreed rescue hook.", "sourceRefs": ["story-graph.json"]},
+    {"id": "crawl-success", "title": "Bounty Claimed", "conditions": [{"type": "flag", "key": "bounty_resolved", "operator": "==", "value": true}], "summary": "The party returns under the crawl-mode contract and receives payment only for proof covered by the mayor's terms.", "sourceRefs": ["story-graph.json"]},
+    {"id": "partial-withdrawal", "title": "The Dungeon Remains", "conditions": [], "summary": "The party withdraws before resolving its objective; all discovered routes, actor outcomes and hazards persist for a later return.", "sourceRefs": ["story-graph.json"]}
+  ],
+  "communityIntelligence": [
+    {"source": "Felbrigg actual play", "finding": "Beginning characters may retreat/re-enter, attack the information broker despite attempted parley, and focus strongly on bounty/loot incentives."},
+    {"source": "The 3 Toadstools", "finding": "Used successfully as an introductory Basic Fantasy adventure and as a springboard into a continuing campaign."}
+  ],
+  "adaptationNotes": [
+    "Keep crawl/rescue modes distinct through a runtime discriminator.",
+    "Persist trap, route, negotiation and creature state after retreat.",
+    "Never create a secret door in Room 7.",
+    "Production distribution requires complete OGL/Copyright Notice packaging and must exclude source artwork unless separately licensed."
+  ],
+  "researchSources": [
+    {"url": "https://www.basicfantasy.org/", "type": "publisher", "supports": "Primary publisher/project authority"},
+    {"url": "https://anyflip.com/lbapq/cowt/basic", "type": "indexed-release-21-mirror", "supports": "Line-by-line current anthology extraction; not treated as publisher authority"},
+    {"url": "https://index.rpg.net/", "type": "index", "supports": "Independent level-1 metadata"}
+  ]
+}
