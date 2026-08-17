@@ -96,3 +96,39 @@ A third full campaign structure has reached story and adversarial QA. `Born Into
 Campaign-library milestones are now being recorded in both human-readable Markdown and machine-readable JSON. These spoiler-light entries are intended to become the data source for a future DungeonMasterOS Updates / What We're Working On page, while detailed spoilers, licensing evidence and campaign canon remain in the private research layer.
 
 **Internal references:** `_index/public-updates.md`, `_index/public-updates.json`
+
+---
+
+## 2026-08-17 - Open adventure anthology pipeline discovered
+**Status:** library-expansion
+
+A new batch-research lane has opened through `Adventure Anthology One` for the Basic Fantasy Role-Playing Game. The current research edition contains fourteen short adventures with explicit party/level guidance, and the anthology's text is published as Open Game Content under its OGL declaration. We are processing these adventures one-by-one rather than treating the anthology as a bulk import.
+
+**Ruleset affected:** Basic Fantasy Role-Playing Game
+**Range represented:** beginning characters through roughly level 8 across the anthology
+**Current pipeline:** 14 adventures catalogued; Merilla's Magic Tower and Gold in the Hills have reached story/canon QA
+**Internal reference:** `_index/basic-fantasy-aa1-pipeline.md`
+
+---
+
+## 2026-08-17 - Merilla's Magic Tower reaches QA after version audit
+**Status:** qa
+
+`Merilla's Magic Tower` now has a five-level campaign graph for **3-6 Basic Fantasy characters, levels 4-7**. During research we found that the current anthology release materially changed monsters and magic-item mechanics from an older standalone release, so the template was migrated to the newer source instead of mixing versions. Rescue, guardian damage, theft and assassination consequences are tracked separately.
+
+**Native ruleset:** Basic Fantasy Role-Playing Game
+**Progression:** levels 4-7, 3-6 characters
+**Release state:** story/canon/adversarial QA complete; machine validation, final map review and OGL release packaging remain
+**Internal reference:** `campaigns/merillas-magic-tower/`
+
+---
+
+## 2026-08-17 - Gold in the Hills reaches QA
+**Status:** qa
+
+`Gold in the Hills` has been converted into a persistent-state campaign template for **2-4 Basic Fantasy characters, levels 1-3**. The mine remembers whether the party raised the alarm, whether its dwarven trap was armed, where the goblin leadership moved and how long a major battle has lasted. A damaged dwarven mining automaton and a deeper-mine expansion boundary are also tracked without inventing unwritten source levels.
+
+**Native ruleset:** Basic Fantasy Role-Playing Game
+**Progression:** levels 1-3, 2-4 characters
+**Release state:** story/canon/adversarial QA complete; machine validation, final visual-map check and OGL release packaging remain
+**Internal reference:** `campaigns/gold-in-the-hills/`
