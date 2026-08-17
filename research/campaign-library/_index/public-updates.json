@@ -54,6 +54,22 @@
       "approvedCount": 2,
       "nearApproval": ["The Old Blood", "Leviathan"],
       "focusGenres": ["post-apocalyptic survival", "sci-fi horror", "gothic horror", "open-licensed full-text adventures"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Born Into Black Nights reaches campaign QA",
+      "status": "qa",
+      "summary": "The Cairn gothic-horror adventure now has source-verified canon, ten-room tomb topology, NPC knowledge, encounters, items, multiple investigation routes, failure states and an executable DMOS template. Automated schema validation remains before approval.",
+      "rulesets": ["Cairn", "Other fantasy systems via conversion"],
+      "campaignSlug": "born-into-black-nights",
+      "internalReferences": ["research/campaign-library/campaigns/born-into-black-nights/"]
+    },
+    {
+      "date": "2026-08-17",
+      "headline": "Campaign research now has an Updates feed",
+      "status": "library-expansion",
+      "summary": "Spoiler-light campaign-development milestones are now stored in Markdown and JSON for a future DungeonMasterOS Updates / What We're Working On interface, while detailed research and spoilers remain separate.",
+      "internalReferences": ["research/campaign-library/_index/public-updates.md", "research/campaign-library/_index/public-updates.json"]
     }
   ]
 }
