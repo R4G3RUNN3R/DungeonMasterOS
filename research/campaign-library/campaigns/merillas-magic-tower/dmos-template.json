@@ -1,0 +1,99 @@
+{
+  "$schema": "../../_templates/campaign-template-v2.schema.json",
+  "id": "merillas-magic-tower",
+  "title": "Merilla's Magic Tower",
+  "version": "1.0-dmos",
+  "status": "qa",
+  "rules": {
+    "nativeRuleset": "Basic Fantasy Role-Playing Game",
+    "nativeEdition": "Adventure Anthology One / Release 3",
+    "rulesFamily": "B/X-compatible old-school d20 fantasy",
+    "progressionModel": "levels",
+    "startingProgression": 4,
+    "endingProgression": 7,
+    "recommendedGroupMin": 3,
+    "recommendedGroupMax": 6,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {"ruleset": "Basic Fantasy Role-Playing Game", "edition": null, "supportLevel": "native", "progressionRecommendation": "Levels 4-7", "groupRecommendation": "3-6 characters", "conversionNotes": null, "validationSource": "Source introduction"}
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "Merilla's Magic Tower",
+    "author": "Rob Pinnell",
+    "publisher": "Adventure Anthology One",
+    "primaryUrl": "https://www.scribd.com/document/52350608/AA1-2-Merillas-Magic-Tower-r3",
+    "sourceIcon": "OGL",
+    "licence": "Open Game License v1.0a",
+    "licenceUrl": "https://bfsrd.opengamingnetwork.com/legal-information/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": null,
+    "attributionText": "Merilla's Magic Tower Copyright 2007 Rob Pinnell; OGL v1.0a Copyright Notice chain required.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "A famous magic-user's tower is silent. Cross its magical guardians, then discover an assassination attempt unfolding above you.",
+    "genres": ["fantasy", "tower crawl", "rescue"],
+    "themes": ["greed", "intrusion", "consequences", "assassination"],
+    "tone": ["dangerous", "mysterious"],
+    "setting": "Merilla's five-level tower",
+    "structure": "branching",
+    "contentWarnings": ["assassination attempt", "explosive magical traps"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "owner", "rule": "Merilla is a lawful retired hero and begins alive but semi-comatose after making a new magic sword.", "sourceRef": "canon.md"},
+      {"id": "assassins", "rule": "Two external assassins follow the party and exploit its distraction to enter Level 5 through the only windows.", "sourceRef": "canon.md"},
+      {"id": "reward", "rule": "Saving Merilla earns the source reward and forgiveness for rescue-related guardian damage; unrelated theft remains separate.", "sourceRef": "items-rewards.md"}
+    ],
+    "conditional": [
+      {"id": "runes", "rule": "Reading the east-door runes triggers the fireball trap.", "condition": {"type": "flag", "key": "entry_runes_read", "operator": "==", "value": true}, "sourceRef": "encounters.md"},
+      {"id": "golem", "rule": "The Bronze Golem attacks when an intruder enters its protected radius.", "condition": {"type": "flag", "key": "golem_radius_entered", "operator": "==", "value": true}, "sourceRef": "encounters.md"}
+    ],
+    "soft": [{"id": "hook", "rule": "The GM may choose another source-appropriate investigation/assault hook.", "sourceRef": "canon.md"}],
+    "freeImprovisation": [{"id": "minor", "rule": "Minor patron/travel detail may vary without altering tower canon.", "sourceRef": "factions.md"}]
+  },
+  "locations": [
+    {"id": "exterior", "name": "Tower Exterior", "type": "exterior", "parentId": null, "description": "Runic double-door entrance; only windows are on Level 5.", "connections": ["ground", "level5"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "ground", "name": "Ground Level", "type": "tower-floor", "parentId": "exterior", "description": "Research workshop with golem, carpet trapper, rust monsters and stairs.", "connections": ["exterior", "level2"], "secrets": ["Ring of Wonder in golem."], "sourceRefs": ["locations.md"]},
+    {"id": "level2", "name": "Level 2", "type": "tower-floor", "parentId": "exterior", "description": "Two trapped treasure chests and a Morphganger chest.", "connections": ["ground", "level3"], "secrets": ["Southeast chest is creature."], "sourceRefs": ["locations.md"]},
+    {"id": "level3", "name": "Level 3", "type": "tower-floor", "parentId": "exterior", "description": "Faerie Dragon and life-energy armour.", "connections": ["level2", "level4"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "level4", "name": "Level 4", "type": "tower-floor", "parentId": "exterior", "description": "Three Blast Spores.", "connections": ["level3", "level5"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "level5", "name": "Level 5", "type": "tower-floor", "parentId": "exterior", "description": "Merilla's chamber, assassins, new sword and personal effects.", "connections": ["level4", "exterior"], "secrets": [], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "merilla", "name": "Merilla", "role": "Owner / rescue target", "locationId": "level5", "factionId": "merilla", "publicGoal": "Survive and protect her work once conscious.", "privateGoal": null, "knowledge": [], "secrets": ["Starts semi-comatose."], "sourceRefs": ["npcs.md"]},
+    {"id": "dragon", "name": "Faerie Dragon", "role": "Watchdog", "locationId": "level3", "factionId": "merilla", "publicGoal": "Protect/wake Merilla.", "privateGoal": null, "knowledge": ["Mentally linked to Merilla."], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "assassin7", "name": "Unnamed Level 7 Assassin", "role": "Assassin", "locationId": "level5", "factionId": "assassins", "publicGoal": "Kill Merilla.", "privateGoal": null, "knowledge": [], "secrets": ["Employer unspecified."], "sourceRefs": ["npcs.md"]},
+    {"id": "assassin4", "name": "Unnamed Level 4 Assassin", "role": "Assassin", "locationId": "level5", "factionId": "assassins", "publicGoal": "Kill Merilla.", "privateGoal": null, "knowledge": [], "secrets": ["Employer unspecified."], "sourceRefs": ["npcs.md"]}
+  ],
+  "factions": [
+    {"id": "merilla", "name": "Merilla / lawful interests", "goals": ["Protect Merilla and her property"], "sourceRefs": ["factions.md"]},
+    {"id": "assassins", "name": "External assassins", "goals": ["Kill Merilla"], "sourceRefs": ["factions.md"]}
+  ],
+  "items": [],
+  "clocks": [{"id": "assassins", "name": "Assassin Infiltration", "segments": 3, "current": 0, "advanceRule": "Advance with significant tower disruption/ascent, not invented minutes.", "effects": ["follow", "use distraction", "climb windows", "enter chamber"]}],
+  "scenes": [
+    {"id": "hook", "title": "Mission", "locationId": "exterior", "entryConditions": [], "requiredFacts": ["Tower silent; Merilla famous/lawful."], "hiddenFacts": ["She is alive/vulnerable."], "choices": [{"label": "Lawful investigation"}, {"label": "Private assault"}, {"label": "Self-directed investigation"}], "suggestedChoiceCount": 3, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Record motive/authority.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "entry", "title": "Runic Doors", "locationId": "exterior", "entryConditions": [], "requiredFacts": ["Reading runes triggers fireball."], "hiddenFacts": [], "choices": [{"label": "Inspect"}, {"label": "Read"}, {"label": "Bypass"}, {"label": "Exterior route"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Reading is trigger; use source geometry.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "ground", "title": "Workshop", "locationId": "ground", "entryConditions": [], "requiredFacts": ["Source guardian triggers and stairs."], "hiddenFacts": [], "choices": [{"label": "Avoid and ascend"}, {"label": "Search"}, {"label": "Fight/disable"}, {"label": "Loot"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Record disruption/theft separately.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "level2", "title": "Three Chests", "locationId": "level2", "entryConditions": [], "requiredFacts": ["Two trapped treasure chests; one Morphganger."], "hiddenFacts": [], "choices": [{"label": "Ascend"}, {"label": "Disarm/loot"}, {"label": "Open southeast chest"}, {"label": "Investigate"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Preserve exact identities/traps.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "level3", "title": "Watchdog", "locationId": "level3", "entryConditions": [], "requiredFacts": ["Faerie Dragon wants to wake/protect Merilla."], "hiddenFacts": [], "choices": [{"label": "Show rescue intent"}, {"label": "Fight"}, {"label": "Let it wake Merilla"}, {"label": "Take armour"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Persist wake state and source reaction." , "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "level4", "title": "Blast Spores", "locationId": "level4", "entryConditions": [], "requiredFacts": ["Three source Blast Spores."], "hiddenFacts": [], "choices": [{"label": "Bypass"}, {"label": "Control/range"}, {"label": "Strike"}], "suggestedChoiceCount": 3, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source creature mechanics.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "level5", "title": "Assassination", "locationId": "level5", "entryConditions": [], "requiredFacts": ["External assassins intend to kill Merilla."], "hiddenFacts": [], "choices": [{"label": "Stop assassins"}, {"label": "Protect/wake Merilla"}, {"label": "Join/bargain"}, {"label": "Loot/ignore"}], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use current Merilla state; employer remains unknown.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]},
+    {"id": "aftermath", "title": "Consequences", "locationId": "level5", "entryConditions": [], "requiredFacts": ["Rescue, theft and death are separate states."], "hiddenFacts": [], "choices": [{"label": "Return property/accept reward"}, {"label": "Negotiate"}, {"label": "Keep loot/flee"}], "suggestedChoiceCount": 3, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Apply actual state and source consequences.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}
+  ],
+  "endings": [
+    {"id": "rescue", "title": "Merilla Rescued", "conditions": [{"type": "flag", "key": "merilla_saved", "operator": "==", "value": true}], "summary": "Merilla survives; source reward and rescue forgiveness apply.", "sourceRefs": ["items-rewards.md"]},
+    {"id": "mixed", "title": "Rescue with Theft", "conditions": [{"type": "flag", "key": "theft_unresolved", "operator": "==", "value": true}], "summary": "Rescue can coexist with unresolved property/legal consequences.", "sourceRefs": ["factions.md"]},
+    {"id": "dead", "title": "Merilla Assassinated", "conditions": [{"type": "flag", "key": "merilla_killed", "operator": "==", "value": true}], "summary": "No rescue reward; lawful/political consequences remain.", "sourceRefs": ["canon.md"]}
+  ],
+  "communityIntelligence": [],
+  "adaptationNotes": ["Detailed runtime transitions are in story-graph.json.", "Production requires OGL packaging and full Copyright Notice."],
+  "researchSources": [{"url": "https://www.scribd.com/document/52350608/AA1-2-Merillas-Magic-Tower-r3", "type": "mirror", "supports": "Full adventure and OGL designation", "accessedAt": "2026-08-17"}]
+}
