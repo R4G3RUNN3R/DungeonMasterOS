@@ -1,33 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
-import { cn } from "@/lib/utils";
 
-import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
-import ShopPanel from "@/components/ShopPanel";
 import CharacterSheetView from "@/components/CharacterSheetView";
+import CampaignGameShell from "@/components/game/CampaignGameShell";
+import "@/styles/game-shell.css";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-import {
-  Loader2,
-  Send,
-  ScrollText,
-  Coins,
-  Sparkles,
-  Sword,
-  ShieldAlert,
-  Store,
-  ArrowLeft,
-  UserPlus,
-} from "lucide-react";
+import { Loader2, ShieldAlert, ArrowLeft, UserPlus } from "lucide-react";
 
 type Campaign = {
   id: number;
@@ -163,15 +149,6 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-function renderMessageContent(content: string) {
-  const parts = content.split(/\n/g);
-  return parts.map((line, index) => (
-    <p key={index} className="whitespace-pre-wrap leading-relaxed">
-      {line}
-    </p>
-  ));
-}
-
 export default function CampaignPage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/campaign/:id");
@@ -181,7 +158,6 @@ export default function CampaignPage() {
   const [actionInput, setActionInput] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
   const [dmThinking, setDmThinking] = useState(false);
-  const [shopOpen, setShopOpen] = useState(true);
 
   // Character creation state
   const [name, setName] = useState("");
@@ -427,13 +403,6 @@ export default function CampaignPage() {
   const items = itemsQuery.data || [];
   const currencies = currenciesQuery.data || [];
   const balances = characterCurrenciesQuery.data || [];
-
-  const shopVisible = !!shopQuery.data?.shop && shopOpen;
-
-  const primaryCurrency = useMemo(() => {
-    if (!currencies.length) return null;
-    return currencies.find((c) => c.isPrimary) || currencies[0];
-  }, [currencies]);
 
   const loading =
     campaignQuery.isLoading ||
@@ -684,200 +653,34 @@ export default function CampaignPage() {
     );
   }
 
+  const party = (charactersQuery.data || []).filter((c) => c.id !== myCharacter.id);
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
-      <aside className="hidden xl:flex xl:w-[420px] shrink-0 border-r border-border bg-card/40">
-        <div className="w-full h-screen overflow-hidden">
-          <SidebarCharacterSheet
-            character={myCharacter}
-            items={items}
-            currencies={balances}
-            campaignCurrencies={currencies}
-            connected={wsConnected}
-          />
-        </div>
-      </aside>
-
-      <main className="flex-1 min-w-0 flex flex-col h-screen">
-        <div className="border-b border-border bg-background/90 backdrop-blur px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-semibold">{campaign.name}</h1>
-                <Badge variant="secondary">{campaign.tone}</Badge>
-                <Badge variant="outline">{campaign.combatStyle}</Badge>
-                {campaign.storyMode && <Badge>Story Mode</Badge>}
-                {campaign.epicMode && <Badge className="bg-amber-600 text-white">Epic</Badge>}
-              </div>
-              <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
-                <span>Invite: {campaign.inviteCode}</span>
-                <span>World: {campaign.worldType}</span>
-                <span>Rules: {campaign.rulesWeight}</span>
-                {primaryCurrency && (
-                  <span className="inline-flex items-center gap-1">
-                    <Coins className="w-3 h-3" />
-                    Primary currency: {primaryCurrency.name}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {shopQuery.data?.shop && (
-                <Button variant="outline" size="sm" onClick={() => setShopOpen((v) => !v)}>
-                  <Store className="w-4 h-4 mr-2" />
-                  {shopVisible ? "Hide shop" : "Show shop"}
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => navigate("/dashboard")}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Dashboard
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0 flex">
-          <section className={cn("flex-1 min-w-0 flex flex-col", shopVisible && "border-r border-border")}>
-            <ScrollArea className="flex-1 px-5 py-5">
-              <div ref={scrollRef} className="space-y-4 pr-2">
-                {messages.length === 0 && (
-                  <Card className="p-5 border-dashed">
-                    <div className="flex items-start gap-3">
-                      <ScrollText className="w-5 h-5 mt-0.5 text-muted-foreground" />
-                      <div className="space-y-2">
-                        <div className="font-medium">Your campaign is ready.</div>
-                        <p className="text-sm text-muted-foreground">
-                          Click <strong>Begin Adventure</strong> to start. Ideally software would
-                          not make this dramatic, but here we are.
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-
-                {messages.map((msg) => (
-                  <Card
-                    key={msg.id}
-                    className={cn(
-                      "p-4 max-w-4xl",
-                      msg.senderType === "player" && "ml-auto bg-primary/5",
-                      msg.senderType === "dm" && "border-amber-500/20",
-                      msg.senderType === "system" && "bg-muted/40 text-sm"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2 gap-3">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {msg.senderType === "dm" && <Sparkles className="w-4 h-4 text-amber-500" />}
-                        {msg.senderType === "player" && <Sword className="w-4 h-4 text-primary" />}
-                        {msg.sender}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                        {msg.messageType}
-                      </div>
-                    </div>
-                    <div className="text-sm space-y-2">{renderMessageContent(msg.content)}</div>
-                  </Card>
-                ))}
-
-                {dmThinking && (
-                  <Card className="p-4 max-w-md border-amber-500/20">
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      The Dungeon Master is thinking...
-                    </div>
-                  </Card>
-                )}
-              </div>
-            </ScrollArea>
-
-            <div className="border-t border-border p-4 space-y-3 bg-background/95">
-              {messages.length === 0 ? (
-                <Button
-                  onClick={() => startMutation.mutate()}
-                  disabled={startDisabled}
-                  className="w-full h-11"
-                >
-                  {startMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Beginning...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Begin Adventure
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Describe what you do..."
-                      value={actionInput}
-                      onChange={(e) => setActionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          !e.shiftKey &&
-                          actionInput.trim() &&
-                          !actionMutation.isPending
-                        ) {
-                          e.preventDefault();
-                          actionMutation.mutate(actionInput.trim());
-                        }
-                      }}
-                      className="h-11"
-                    />
-                    <Button
-                      className="h-11 px-4"
-                      disabled={!actionInput.trim() || actionMutation.isPending}
-                      onClick={() => actionMutation.mutate(actionInput.trim())}
-                    >
-                      {actionMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-
-                  <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-3">
-                    <span>
-                      Playing as <strong>{myCharacter.name}</strong>
-                    </span>
-                    {primaryCurrency && (
-                      <span className="inline-flex items-center gap-1">
-                        <Coins className="w-3 h-3" />
-                        {primaryCurrency.name}
-                      </span>
-                    )}
-                    {wsConnected ? (
-                      <span className="text-emerald-500">Live</span>
-                    ) : (
-                      <span className="text-yellow-500">Reconnecting</span>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          {shopVisible && shopQuery.data?.shop && (
-            <aside className="w-[420px] shrink-0 bg-card/40">
-              <ShopPanel
-                shop={shopQuery.data.shop}
-                items={shopQuery.data.items}
-                balances={balances}
-                currencies={currencies}
-                buying={buyMutation.isPending}
-                onBuy={(shopItemId, quantity) => buyMutation.mutate({ shopItemId, quantity })}
-              />
-            </aside>
-          )}
-        </div>
-      </main>
-    </div>
+    <CampaignGameShell
+      campaignId={campaignId}
+      campaignName={campaign.name}
+      worldType={campaign.worldType}
+      character={myCharacter}
+      party={party}
+      messages={messages}
+      items={items}
+      campaignCurrencies={currencies}
+      balances={balances}
+      shop={shopQuery.data?.shop ? shopQuery.data : null}
+      connected={wsConnected}
+      dmThinking={dmThinking}
+      actionInput={actionInput}
+      onActionInputChange={setActionInput}
+      onSubmitAction={() => actionMutation.mutate(actionInput.trim())}
+      actionPending={actionMutation.isPending}
+      showBeginAdventure={messages.length === 0}
+      onBeginAdventure={() => startMutation.mutate()}
+      beginAdventurePending={startMutation.isPending}
+      beginAdventureDisabled={startDisabled}
+      onBuy={(shopItemId, quantity) => buyMutation.mutate({ shopItemId, quantity })}
+      buyPending={buyMutation.isPending}
+      onBack={() => navigate("/dashboard")}
+      scrollRef={scrollRef}
+    />
   );
 }
