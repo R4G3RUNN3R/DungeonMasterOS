@@ -1,83 +1,85 @@
 # Merilla's Magic Tower - Items, Treasure and Rewards
 
-## Plot-relevant magical items
+Authoritative gameplay version: **Adventure Anthology One Release 21**.
 
-### Sword of Smiting +1
+## Sword of Smiting +1
+
 Location: Level 5, table south of Merilla's bed.
+Story role: Merilla has just finished creating it, causing her current exhaustion/semi-comatose state.
 
-Source role:
-- Merilla has just finished creating this item, causing her current exhaustion/semi-comatose vulnerability.
-- This is therefore both treasure and causal story evidence.
+Release 21 mechanics:
+- on a successful hit against a creature capable of energy drain, the sword adds one charge to worn Armor of Life Protection;
+- armour cannot exceed its normal maximum charge capacity;
+- if the wielder is not wearing Armor of Life Protection, the charging effect is lost;
+- otherwise functions as a normal magical sword.
 
-Native source mechanics:
-- functions as a magical sword;
-- grants assassination capability equivalent to the possessor's level;
-- on a natural attack roll of 20, drains one Hit Die/experience level from the victim and transfers that life energy to a receptacle capable of storing it;
-- otherwise behaves as a normal sword under the source text.
+This **supersedes the older standalone Release 3 mechanic** that gave an assassination/level-drain function. DMOS must use Release 21 when current anthology play is selected.
 
-DMOS guard:
-Do not separate the sword from Merilla's exhaustion causality. Stealing it after saving her is still theft unless she gives/permits it.
+## Platemail of Life Protection +3
 
-### Stores Life Energy armour
-Location: Level 3, south wall.
-Source example: chainmail +2 with the `Stores Life Energy` property.
+Location: Level 2, armour rack on south wall.
+Initial state: **6 charges**.
 
-Mechanics:
-- magic armour can store life-energy levels;
-- when the wearer suffers energy drain, stored levels are lost before the wearer loses levels;
-- maximum source capacity: 6 life-energy levels;
-- recharged by Sword of Smiting transferring drained life energy into the armour.
+Release 21 mechanics:
+- protects against energy drain;
+- when the wearer would lose a level from an energy-draining attack, a charge from the armour is lost first;
+- can hold up to 6 charges;
+- Sword of Smiting can recharge it when the wearer strikes an energy-draining creature successfully.
 
-### Ring of Wonder
-Location: inside the Bronze Golem's head on ground level.
+This replaces the older Release 3 `chainmail +2, Stores Life Energy` version in current DMOS canon.
 
-Mechanics:
-- each time it is put on, its function for that entire day is determined randomly from the native rules' magical ring chart;
-- GM keeps the result secret as appropriate.
+## Ring of Wonder
 
-DMOS guard:
-Because the effect depends on a native rules table, a non-native conversion must map the ring to an explicitly approved equivalent random-effect table rather than inventing a permanent power.
+Location: inside the Bronze Golem's head on the ground floor.
 
-## Ground-level magical-resource library
+Release 21 mechanics:
+- function changes randomly **every day at dawn**;
+- GM secretly rolls on the native magical Rings table;
+- re-roll any Ring of Spell Storing result.
 
-The tower contains an enormous research collection rather than a hand-picked treasure pile:
+This supersedes the older Release 3 wording where the function changed when the ring was put on.
 
-- ~600 scrolls, with approximately 2% being actual spell scrolls penned by Merilla;
-- ~200 tomes, approximately 1% magical;
-- >500 magical-component containers, approximately 2% actual potions.
+## Level 2 treasury
 
-The source leaves exact spell/potion identities for the GM to detail. DMOS may resolve finds using the native rules tables/approved item compendium while preserving these probabilities and the fact that searching the entire collection is time-consuming.
+- North chest: 15,000 gp; fireball trapped.
+- Southwest chest: 15,000 gp; fireball trapped.
+- Southeast chest: Morphganger creature, not treasure.
+- Platemail of Life Protection +3 with 6 charges on south-wall armour rack.
 
-## Level 2 treasure
+The 30,000 gp and armour are Merilla's property. Taking them sets theft/property state even if the party later rescues her.
 
-- North chest: 15,000 gp, fireball trapped.
-- Southwest chest: 15,000 gp, fireball trapped.
-- Southeast 'chest': Morphganger creature, not treasure.
+## Ground-floor research collection
 
-These two enormous monetary hoards are Merilla's property. Taking them is looting and should affect later Merilla/lawful-authority state.
+Release 21 describes:
+- two large bookcases of scrolls/tomes, mostly instructional magical ceremonies/rituals;
+- potentially important works are in codes/languages nobody but Merilla can read;
+- deciphering them is very time-consuming with little chance of success;
+- shelves of jars/bottles with components, liquids, solids and gases;
+- detect magic on these containers shows **no magical aura**.
+
+Do not use the older Release 3 percentage-based spell-scroll/potion search mechanics in Release 21 play.
 
 ## Level 5 personal property
 
 - small chest east of bed: personal jewellery and fine clothing;
 - desk west of bed: unfinished scrolls and writing tools;
-- Sword of Smiting +1 on south table.
+- newly-created Sword of Smiting +1 on south table.
 
-These remain Merilla's property unless the story changes ownership legitimately.
+These remain Merilla's property unless ownership changes through actual play.
 
 ## Rescue reward
 
-If the party saves Merilla from assassination:
+If Merilla is saved from assassination:
+- 2,500 gp per rescuer/party member;
+- one minor magic item (exact item left to GM/native rules).
 
-- 2,500 gp **per rescuer/party member** as source reward;
-- one minor magical item (source does not prescribe the exact item).
-
-Merilla forgives destruction of guardians committed during her rescue. This forgiveness does not automatically legalise unrelated theft of her treasury/personal possessions.
+Source also says she forgives intruders for guardians slain during her rescue. This is not blanket forgiveness for unrelated theft.
 
 ## Compendium integration
 
-Adventure-created items should receive source-aware compendium definitions/aliases:
+Campaign/source-aware definitions should use Release 21 mechanics:
 - `ogl-aa1:merilla-sword-of-smiting`
-- `ogl-aa1:stores-life-energy-armour`
+- `ogl-aa1:platemail-of-life-protection`
 - `ogl-aa1:ring-of-wonder`
 
-Any implementation must preserve OGL source attribution and exact rights scope.
+Provenance must preserve OGL source notices, including the separate Pipe Beast notice where relevant to campaign content.
