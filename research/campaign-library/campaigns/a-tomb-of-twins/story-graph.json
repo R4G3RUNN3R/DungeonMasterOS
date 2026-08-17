@@ -1,0 +1,325 @@
+{
+  "id": "a-tomb-of-twins",
+  "title": "A Tomb of Twins",
+  "graphVersion": "1.0.0",
+  "status": "approved",
+  "initialState": {
+    "employer": null,
+    "bellRung": false,
+    "eastDisguisePieces": [],
+    "westDisguisePieces": [],
+    "moonAmulet": false,
+    "sunAmulet": false,
+    "antiMagicRitualKnown": false,
+    "portableAntiMagicActive": false,
+    "drezisVialState": "contained-room11",
+    "woxisVialState": "contained-room11",
+    "drezisState": "suspended",
+    "woxisState": "suspended",
+    "swampkinRelation": 0,
+    "ghostPlayerIds": [],
+    "roomVisits": {},
+    "knownRumours": [],
+    "knownFacts": []
+  },
+  "globalRules": [
+    "East and west paths may be explored in either order.",
+    "Player death inside the tomb can transition that PC into a playable ghost.",
+    "Rumours remain beliefs until verified.",
+    "Room 1 bell alters Room 7 swampkin preparedness.",
+    "Soul vial custody and anti-magic protection persist after the dungeon ends.",
+    "Removing unprotected vials awakens corresponding lich-state consequences.",
+    "Suggested choices never prohibit free-text alternatives."
+  ],
+  "scenes": [
+    {
+      "id": "dreklow-moot-hall",
+      "title": "Rumours in Dreklow",
+      "locationId": "moot-hall",
+      "requiredFacts": ["The tomb overshadows Dreklow and several people want what is inside."],
+      "hiddenFacts": ["Galduz wants the twins released; Marzena wants safe containment; Bogumila wants to sell the vials."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "bogumila", "label": "Hear Bogumila's offer", "nextSceneId": "tomb-exterior", "stateChanges": [{"target": "campaign", "op": "set", "field": "employer", "value": "bogumila"}]},
+        {"id": "marzena", "label": "Hear Marzena's offer", "nextSceneId": "tomb-exterior", "stateChanges": [{"target": "campaign", "op": "set", "field": "employer", "value": "marzena"}]},
+        {"id": "galduz", "label": "Hear Galduz's immortality claim", "nextSceneId": "tomb-exterior", "stateChanges": [{"target": "campaign", "op": "set", "field": "employer", "value": "galduz"}]},
+        {"id": "rumours", "label": "Buy drinks and collect rumours first", "nextSceneId": "dreklow-moot-hall"},
+        {"id": "independent", "label": "Ignore the offers and investigate the tomb for yourself", "nextSceneId": "tomb-exterior"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow bargaining and interviewing. Do not label any employer as trustworthy/correct in UI."}
+    },
+    {
+      "id": "tomb-exterior",
+      "title": "The Black Dome",
+      "locationId": "tomb-exterior",
+      "requiredFacts": ["The tomb is a polished black dome with unlocked silver doors."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "enter", "label": "Enter the tomb", "nextSceneId": "room-1"},
+        {"id": "inspect", "label": "Inspect the exterior for another entrance", "nextSceneId": "tomb-exterior"},
+        {"id": "return", "label": "Return to Dreklow", "nextSceneId": "dreklow-moot-hall"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "False rumours such as a roof door do not become real because players search for them."}
+    },
+    {
+      "id": "room-1",
+      "title": "Entrance and Alarm",
+      "locationId": "room-1",
+      "requiredFacts": ["Poor tripwire/cowbell crosses the entrance; glyph sequence is hidden above inner doorway."],
+      "hiddenFacts": ["Bell alerts swampkins in Room 7; glyphs solve Rooms 5/8."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "disarm", "label": "Disarm or step over the tripwire", "nextSceneId": "room-2"},
+        {"id": "glyphs", "label": "Study the marks above the doorway", "nextSceneId": "room-2", "stateChanges": [{"target": "campaign", "op": "add", "field": "knownFacts", "value": "entrance-glyph-sequence"}]},
+        {"id": "trigger", "label": "Ignore the tripwire and push through", "nextSceneId": "room-2", "stateChanges": [{"target": "campaign", "op": "set", "field": "bellRung", "value": true}]},
+        {"id": "withdraw", "label": "Leave the tomb", "nextSceneId": "tomb-exterior"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Trap is telegraphed and may be bypassed creatively. If bell rings, persist alert state."}
+    },
+    {
+      "id": "room-2",
+      "title": "Painted Twins",
+      "locationId": "room-2",
+      "requiredFacts": ["No obvious route deeper; carvings depict mirrored twin sequences."],
+      "hiddenFacts": ["Gold sconces open east/west secret doors; carvings encode disguise/amulet pattern."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "search-east", "label": "Inspect the eastern wall and sconce", "nextSceneId": "room-3"},
+        {"id": "search-west", "label": "Inspect the western wall and sconce", "nextSceneId": "room-6"},
+        {"id": "study", "label": "Study the carved scenes carefully", "nextSceneId": "room-2", "stateChanges": [{"target": "campaign", "op": "add", "field": "knownFacts", "value": "twin-disguise-and-amulet-clue"}]},
+        {"id": "knock", "label": "Test the walls and echoes for hidden doors", "nextSceneId": "room-2", "stateChanges": [{"target": "campaign", "op": "add", "field": "knownFacts", "value": "secret-doors-room2"}]},
+        {"id": "back", "label": "Return to the entrance", "nextSceneId": "room-1"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Either secret route can be discovered first. Do not require both before entering one."}
+    },
+    {
+      "id": "room-3",
+      "title": "Drezis's Treasury",
+      "locationId": "room-3",
+      "requiredFacts": ["Three trapped chests and icy basin occupy the room."],
+      "hiddenFacts": ["Body heat triggers trap; basin water disables it and aids ghost combat."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "inspect-chests", "label": "Inspect the chest handles/trap before touching", "nextSceneId": "room-3"},
+        {"id": "use-water", "label": "Use the icy basin water on the chests", "nextSceneId": "room-3"},
+        {"id": "loot", "label": "Open the treasuries and collect Drezis's belongings", "nextSceneId": "room-4", "stateChanges": [{"target": "campaign", "op": "set", "field": "eastDisguisePieces", "value": ["hat", "robe", "shoes"]}, {"target": "campaign", "op": "add", "field": "knownFacts", "value": "drezis-journal-betrayal"}]},
+        {"id": "ghost-water", "label": "Prepare a weapon with the basin water", "nextSceneId": "room-3"},
+        {"id": "back", "label": "Return to Room 2", "nextSceneId": "room-2"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Respect trap telegraphing and alternative cold-object bypass."}
+    },
+    {
+      "id": "room-4",
+      "title": "Faceless Banquet",
+      "locationId": "room-4",
+      "requiredFacts": ["Seven faceless guardians sit at table; central figure wears moon amulet."],
+      "hiddenFacts": ["Full Drezis outfit avoids attack; central amulet/figure controls group state."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "disguise", "label": "Enter wearing Drezis's full outfit", "nextSceneId": "room-4"},
+        {"id": "take-amulet", "label": "Try to remove the moon amulet from the central figure", "nextSceneId": "room-5", "stateChanges": [{"target": "campaign", "op": "set", "field": "moonAmulet", "value": true}]},
+        {"id": "fight-central", "label": "Focus on the necklace-bearing central figure", "nextSceneId": "room-5"},
+        {"id": "fight-all", "label": "Fight the guardians", "nextSceneId": "room-4"},
+        {"id": "retreat", "label": "Retreat to the treasury", "nextSceneId": "room-3"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Guardians do not pursue outside room; disguise and amulet solutions remain available."}
+    },
+    {
+      "id": "room-5",
+      "title": "Eastern Glyph Floor",
+      "locationId": "room-5",
+      "requiredFacts": ["Nine glowing glyph tiles cover floor."],
+      "hiddenFacts": ["Room 1 sequence is safe; wrong step lowers ceiling."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "known-sequence", "label": "Use the entrance glyph sequence", "nextSceneId": "room-9", "conditions": [{"type": "custom", "key": "knownFacts", "operator": "contains", "value": "entrance-glyph-sequence"}]},
+        {"id": "test", "label": "Experiment with the glyphs", "nextSceneId": "room-5"},
+        {"id": "bypass", "label": "Attempt a physical/magical bypass", "nextSceneId": "room-9"},
+        {"id": "back", "label": "Return to the banquet room", "nextSceneId": "room-4"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Wrong sequence starts timed crushing ceiling; plausible bypasses may work under selected rules."}
+    },
+    {
+      "id": "room-6",
+      "title": "Woxis's Floating Treasury",
+      "locationId": "room-6",
+      "requiredFacts": ["Treasury trap is already active; entrants begin floating; trapped swampkin grunt is at ceiling."],
+      "hiddenFacts": ["Basin water disables trap; grunt trades information for help."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "rescue-grunt", "label": "Help the floating swampkin", "nextSceneId": "room-6", "stateChanges": [{"target": "campaign", "op": "increment", "field": "swampkinRelation", "value": 1}, {"target": "campaign", "op": "add", "field": "knownFacts", "value": "swampkin-room7-room12"}]},
+        {"id": "water", "label": "Reach/use the icy basin to stop the trap", "nextSceneId": "room-6"},
+        {"id": "loot", "label": "Open the chests and collect Woxis's belongings", "nextSceneId": "room-7", "stateChanges": [{"target": "campaign", "op": "set", "field": "westDisguisePieces", "value": ["hat", "robe", "shoes"]}, {"target": "campaign", "op": "add", "field": "knownFacts", "value": "woxis-journal-betrayal"}]},
+        {"id": "ghost-water", "label": "Prepare a weapon with basin water", "nextSceneId": "room-6"},
+        {"id": "back", "label": "Return to Room 2", "nextSceneId": "room-2"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Low gravity changes movement; do not ignore the current trap state."}
+    },
+    {
+      "id": "room-7",
+      "title": "The Swampkins' Ruined Banquet",
+      "locationId": "room-7",
+      "requiredFacts": ["Swampkins destroyed the original guardian encounter and breached the tomb from Room 12."],
+      "hiddenFacts": ["Pristina can negotiate; ambush preparation depends on bell."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "parley", "label": "Parley with Pristina", "nextSceneId": "room-12", "stateChanges": [{"target": "campaign", "op": "increment", "field": "swampkinRelation", "value": 1}]},
+        {"id": "sun-amulet", "label": "Search the looted banquet remains for the western amulet trail", "nextSceneId": "room-12"},
+        {"id": "fight", "label": "Fight the swampkins", "nextSceneId": "room-7"},
+        {"id": "glyphs", "label": "Continue toward the western glyph room", "nextSceneId": "room-8"},
+        {"id": "cave", "label": "Follow the breach into the swampkin cave", "nextSceneId": "room-12"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "If bellRung, begin from ambush-prepared posture, but surrender/parley remains possible."}
+    },
+    {
+      "id": "room-12",
+      "title": "The Swampkin Cave",
+      "locationId": "room-12",
+      "requiredFacts": ["Juris, Cestina and swampkin force occupy cave and possess loot from Room 7."],
+      "hiddenFacts": ["Leadership goals conflict; Juris can betray; Pristina favours cooperation; Cestina prefers violence/exit."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "deal", "label": "Negotiate a treasure-sharing alliance", "nextSceneId": "room-8", "stateChanges": [{"target": "campaign", "op": "increment", "field": "swampkinRelation", "value": 2}, {"target": "campaign", "op": "set", "field": "sunAmulet", "value": true}]},
+        {"id": "ask-pristina", "label": "Work through Pristina instead of Juris", "nextSceneId": "room-12"},
+        {"id": "fight", "label": "Fight the swampkin leadership", "nextSceneId": "room-12"},
+        {"id": "tunnels", "label": "Explore the swampkin tunnel maze", "nextSceneId": "swampkin-maze"},
+        {"id": "back", "label": "Return to the ruined banquet", "nextSceneId": "room-7"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Sun amulet custody depends on actual source loot/search/negotiation. Do not auto-award it solely for entering Room 12."}
+    },
+    {
+      "id": "swampkin-maze",
+      "title": "Lost in the Tunnels",
+      "locationId": "swampkin-maze",
+      "requiredFacts": ["The rough tunnels can loop, dead-end, emerge in marsh or lead to more swampkins."],
+      "hiddenFacts": ["Endless red string is a strong source navigation solution."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "string", "label": "Use endless red string to mark a return route", "nextSceneId": "room-12"},
+        {"id": "explore", "label": "Keep exploring the maze", "nextSceneId": "swampkin-maze"},
+        {"id": "marsh", "label": "Try to reach the marsh outside Dreklow", "nextSceneId": "dreklow-moot-hall"},
+        {"id": "back", "label": "Return toward the cave", "nextSceneId": "room-12"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source maze outcomes; navigation magic/tools can change odds."}
+    },
+    {
+      "id": "room-8",
+      "title": "Western Glyph Floor",
+      "locationId": "room-8",
+      "requiredFacts": ["Mirrored glyph-floor challenge; a crushed swampkin shows danger."],
+      "hiddenFacts": ["Same Room 1 glyph sequence solves it."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "known-sequence", "label": "Use the entrance glyph sequence", "nextSceneId": "room-9", "conditions": [{"type": "custom", "key": "knownFacts", "operator": "contains", "value": "entrance-glyph-sequence"}]},
+        {"id": "inspect-corpse", "label": "Study what happened to the crushed swampkin", "nextSceneId": "room-8"},
+        {"id": "bypass", "label": "Attempt a physical/magical bypass", "nextSceneId": "room-9"},
+        {"id": "back", "label": "Return to Room 7", "nextSceneId": "room-7"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Same trap logic as Room 5; preserve reset behavior."}
+    },
+    {
+      "id": "room-9",
+      "title": "Respite",
+      "locationId": "room-9",
+      "requiredFacts": ["Paths reunite; healing basin and removable light orb are available."],
+      "hiddenFacts": ["Purple liquid is an anti-magic ritual ingredient and ghost-weapon aid."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "heal", "label": "Use the healing basin", "nextSceneId": "room-9"},
+        {"id": "bottle", "label": "Take some purple liquid with you", "nextSceneId": "room-9"},
+        {"id": "orb", "label": "Remove the glowing orb for portable light", "nextSceneId": "room-9"},
+        {"id": "forward", "label": "Continue to the antechamber", "nextSceneId": "room-10"},
+        {"id": "other-path", "label": "Go back and explore the other branch", "nextSceneId": "room-2"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Track basin daily-use state and removed-liquid expiration."}
+    },
+    {
+      "id": "room-10",
+      "title": "The Bronze Doors",
+      "locationId": "room-10",
+      "requiredFacts": ["Final doors have moon/sun recesses and a dangerous magical-fire response to forcing."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "amulets", "label": "Place the moon and sun amulets in the doors", "nextSceneId": "room-11", "conditions": [{"type": "custom", "key": "bothAmulets", "value": true}]},
+        {"id": "force", "label": "Force the doors open", "nextSceneId": "room-10"},
+        {"id": "bypass", "label": "Try another physical or magical bypass", "nextSceneId": "room-11"},
+        {"id": "back", "label": "Return to Room 9", "nextSceneId": "room-9"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Correct amulets are safe source solution; other approaches face source trap/mechanics but are not automatically impossible."}
+    },
+    {
+      "id": "room-11",
+      "title": "The Soul Vials",
+      "locationId": "room-11",
+      "requiredFacts": ["Twin sarcophagi and anti-magic-contained soul vials are present."],
+      "hiddenFacts": ["Hidden ritual scroll explains safe containment/movement."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "search-pedestal", "label": "Search the pedestal and chamber before touching the vials", "nextSceneId": "room-11", "stateChanges": [{"target": "campaign", "op": "set", "field": "antiMagicRitualKnown", "value": true}]},
+        {"id": "ritual", "label": "Perform the movable anti-magic ritual", "nextSceneId": "vial-custody", "conditions": [{"type": "custom", "key": "antiMagicRitualKnown", "value": true}], "stateChanges": [{"target": "campaign", "op": "set", "field": "portableAntiMagicActive", "value": true}]},
+        {"id": "remove", "label": "Take the soul vials without changing the field", "nextSceneId": "lich-awakening"},
+        {"id": "empty", "label": "Empty one or both soul vials", "nextSceneId": "vial-custody"},
+        {"id": "leave", "label": "Leave the vials contained and withdraw", "nextSceneId": "ending-contained"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Any action affecting vial containment must update each twin independently."}
+    },
+    {
+      "id": "lich-awakening",
+      "title": "The Twins Rise",
+      "locationId": "room-11",
+      "requiredFacts": ["Unprotected soul-vial removal permits lich awakening; twins immediately quarrel."],
+      "hiddenFacts": ["They will eventually call a truce and pursue conquest if left unresolved."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "use-journals", "label": "Exploit what their journals reveal about mutual betrayal", "nextSceneId": "lich-conflict"},
+        {"id": "attack", "label": "Attack while they are distracted", "nextSceneId": "lich-conflict"},
+        {"id": "vials", "label": "Target or empty the soul vials", "nextSceneId": "lich-conflict"},
+        {"id": "flee", "label": "Flee the tomb", "nextSceneId": "ending-twins-escape"},
+        {"id": "bargain", "label": "Try to bargain with one twin against the other", "nextSceneId": "lich-conflict"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Twins are powerful but distracted by mutual hatred. Allow exploitation and independent vial destruction."}
+    },
+    {
+      "id": "lich-conflict",
+      "title": "Brother Against Brother",
+      "locationId": "room-11",
+      "requiredFacts": ["Drezis and Woxis are willing to fight each other temporarily."],
+      "hiddenFacts": ["If both survive long enough they call a truce."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "side-drezis", "label": "Help Drezis against Woxis", "nextSceneId": "vial-custody"},
+        {"id": "side-woxis", "label": "Help Woxis against Drezis", "nextSceneId": "vial-custody"},
+        {"id": "destroy-both", "label": "Use the distraction to destroy both soul vials", "nextSceneId": "ending-twins-destroyed"},
+        {"id": "leave", "label": "Let them fight and escape", "nextSceneId": "ending-twins-escape"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Track each lich/vial separately. A surviving twin remains dangerous."}
+    },
+    {
+      "id": "vial-custody",
+      "title": "Who Gets the Vials?",
+      "locationId": "dreklow",
+      "requiredFacts": ["Vial custody and protection determine aftermath."],
+      "hiddenFacts": ["Galduz releases them; Bogumila eventually loses safe containment; Marzena secures Academy containment."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "marzena", "label": "Give protected vials to Marzena", "nextSceneId": "ending-academy-safe"},
+        {"id": "bogumila", "label": "Sell the vials to Bogumila", "nextSceneId": "ending-delayed-release"},
+        {"id": "galduz", "label": "Bring the vials to Galduz's promised immortality ritual", "nextSceneId": "ending-galduz-release"},
+        {"id": "keep", "label": "Keep the vials and maintain containment yourself", "nextSceneId": "ending-keeper"},
+        {"id": "destroy", "label": "Empty/destroy the remaining soul vials", "nextSceneId": "ending-twins-destroyed"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Other custody plans are valid but must establish credible long-term anti-magic containment or face awakening risk."}
+    }
+  ],
+  "endings": [
+    {"id": "ending-contained", "title": "Leave the Dead Where They Are", "summary": "The vials remain under tomb containment and the Priesthood can continue its monthly ritual. Treasure/information obtained elsewhere remains with the party."},
+    {"id": "ending-academy-safe", "title": "Safe in the Academy", "summary": "Marzena delivers protected vials to the Arcane Academy, which recognises their danger and maintains anti-magic containment."},
+    {"id": "ending-delayed-release", "title": "Sold to the Highest Bidder", "summary": "Bogumila sells the vials. Without permanent ritual knowledge, the temporary protection eventually expires and the twins rise later."},
+    {"id": "ending-galduz-release", "title": "The Corrupt Priest's Plan", "summary": "Galduz deliberately removes protection, releases the twins and kills himself. The lich threat becomes immediate."},
+    {"id": "ending-keeper", "title": "Custodians of Two Souls", "summary": "The party keeps the vials and inherits the obligation to renew anti-magic containment monthly or develop an equivalent permanent solution."},
+    {"id": "ending-twins-destroyed", "title": "No Liches Left to Rise", "summary": "Both soul vials are emptied/destroyed and both twins are permanently ended."},
+    {"id": "ending-twins-escape", "title": "The Tower Rises Again", "summary": "Escaped twins destroy Dreklow's priestly containment order, enslave the village, rebuild their tower and begin raising a wider undead army."}
+  ]
+}
