@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "loot-policy-v1",
+  "campaignId": "the-old-blood",
+  "campaignScale": "multi-session",
+  "nativeRuleset": "Shadowdark RPG",
+  "status": "verified",
+  "coverage": {
+    "sourceLootPresent": true,
+    "sourceLootPreserved": true,
+    "tangibleRewardBeats": 6,
+    "usefulRewardBeats": 4,
+    "signatureRewardBeats": 2,
+    "sourceEvidence": ["items-rewards.md", "source-verification.md", "dmos-template.json"],
+    "examples": ["Whispering Blade of Blood", "Ceremonial Chalice of Saint Arlen", "Victor's ritual dagger and notes", "Sealed Ledger faction reward", "Blood Rite instructions", "ordinary Ruins/Sewer/crypt treasure through native treasure procedures"]
+  },
+  "supplemental": {
+    "enabled": true,
+    "mode": "native-table",
+    "provenance": "mixed",
+    "rulesAdapterRequired": true,
+    "compendiumUse": "native-only",
+    "antiFarmPersistent": true,
+    "rerollOnReload": false,
+    "artifactsRandomlyAllowed": false,
+    "notes": ["Source explicitly leaves ordinary Ruins, Sewer and crypt loot to appropriate native treasure generation.", "Do not substitute 5e compendium rarity/mechanics for Shadowdark treasure procedures."]
+  },
+  "placementPolicy": {
+    "intelligentEnemiesMayCarryLoot": true,
+    "ordinaryBeastsHavePocketLoot": false,
+    "undeadMayRetainPossessions": true,
+    "constructsMayYieldSalvage": true,
+    "hiddenCachesAllowed": true,
+    "namedEnemiesPreferDistinctivePossession": true
+  },
+  "approval": {"passesLootGate": true, "blockers": []}
+}
