@@ -1,7 +1,7 @@
 # Beneath Brymassen - DungeonMasterOS QA
 
 ## Current verdict
-`QA COMPLETE AT STORY/CANON LEVEL - RELEASE GATES REMAIN`
+`QA COMPLETE - RELEASE GATES REMAIN`
 
 Native ruleset: **Basic Fantasy Role-Playing Game**.
 Recommended source progression: **3-6 beginning / level-1 characters**.
@@ -12,6 +12,7 @@ Source: `Adventure Anthology One`, 1st Edition Release 21.
 - Two-hook/two-Room-14 structure verified: PASS.
 - Entire anthology text designated Open Game Content under OGL v1.0a: PASS at research level.
 - Artwork/branding excluded from reusable content: PASS.
+- `dmos-template.json` v2 schema validation on exact campaign branch head: PASS, Campaign Library CI run #16.
 - Production OGL/Copyright Notice package: PENDING.
 
 ## Adversarial campaign tests
@@ -82,8 +83,7 @@ PASS WITH BOUNDARY. Any new region/continuation must be explicitly labelled DMOS
 - Converted/renamed later campaign material excluded from canon: PASS.
 
 ## Remaining blockers before `APPROVED`
-1. CI/schema validation of `dmos-template.json` after this commit.
-2. Production OGL v1.0a / complete Copyright Notice release package.
-3. Direct visual check of the source dungeon map before DMOS generates exact map coordinates or navigation graphics.
+1. Production OGL v1.0a / complete Copyright Notice release package.
+2. Direct visual check of the source dungeon map before DMOS generates exact map coordinates or navigation graphics.
 
-Story, canon and adversarial AI-DM QA are complete.
+Story, canon, adversarial AI-DM QA and machine schema validation are complete. Status remains `qa` until the release-specific gates clear.
