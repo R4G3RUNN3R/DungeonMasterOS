@@ -1,0 +1,50 @@
+{
+  "id": "monkey-isle",
+  "title": "Monkey Isle",
+  "researchStatus": "current-edition-metadata-only",
+  "targetEdition": "3rd Edition",
+  "sourceRuleset": "Basic Fantasy RPG",
+  "sourceLevels": { "min": 4, "max": 6 },
+  "campaignForm": "revisitable-wilderness-and-dungeon-sandbox",
+  "hardCanon": [
+    "The campaign environment is a lush ocean island containing ancient beasts, strange creatures and scattered ancient ruins.",
+    "The current edition includes an island map and multiple wilderness and dungeon adventure locations.",
+    "The current edition includes an extensive section of new monsters.",
+    "The intended source character tier is levels 4 through 6.",
+    "DungeonMasterOS must not import detailed locations or scenarios from older editions until they are confirmed in the current 3rd Edition."
+  ],
+  "persistentWorldState": {
+    "discoveredLocations": [],
+    "visitedLocations": [],
+    "clearedOrChangedLocations": [],
+    "knownRoutes": [],
+    "livingCreatureStates": {},
+    "factionStates": {},
+    "depletedOrMovedTreasure": {},
+    "playerEstablishedBases": [],
+    "expeditionHistory": []
+  },
+  "scenes": [],
+  "map": {
+    "status": "pending-current-3rd-edition-pdf",
+    "permanentTopologyMayBeImprovised": false
+  },
+  "freeTextPolicy": {
+    "allowed": true,
+    "mustPreserveHardCanon": true,
+    "sandboxExplorationAllowed": true,
+    "mayCreatePermanentNamedLocationsBeforeMapExtraction": false,
+    "generatedPersistentAdditions": "allowed only after current source leaves a genuine blank and the new element is labelled campaign-generated"
+  },
+  "blockingUnknowns": [
+    "Current 3rd Edition PDF and internal licence notice",
+    "Island hex map and keyed locations",
+    "Current-edition dungeon maps",
+    "New-monster roster",
+    "Current-edition adventure hooks/scenarios",
+    "NPCs/factions/settlements",
+    "Treasure and secrets",
+    "5e conversion QA"
+  ],
+  "endings": []
+}
