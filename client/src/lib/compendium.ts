@@ -100,6 +100,20 @@ export function itemPath(definitionKey: string): string {
   return `/compendium/items/${encodeURIComponent(definitionKey)}`;
 }
 
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+export function sourceHref(item: Pick<CompendiumItem, "sourceReference" | "sourceUrl">): string {
+  if (item.sourceReference && isHttpUrl(item.sourceReference)) return item.sourceReference;
+  if (item.sourceUrl && isHttpUrl(item.sourceUrl)) return item.sourceUrl;
+  return "";
+}
+
+export function sourceLabel(item: Pick<CompendiumItem, "sourceTitle" | "sourceKind">): string {
+  return item.sourceTitle || sourceKindLabel(item.sourceKind);
+}
+
 export function categoryLabel(category: string): string {
   const labels: Record<string, string> = {
     armor: "Armour",
