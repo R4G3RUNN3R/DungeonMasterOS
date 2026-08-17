@@ -1,55 +1,62 @@
 # The Old Blood - DungeonMasterOS Campaign Dossier
 
 ## Status
-`templated` - high-confidence campaign structure and executable story graph drafted from the creator's CC0 release plus indexed source text. Final room-by-room/stat QA remains before `approved`.
+`APPROVED` - source, licence, ruleset/progression, keyed locations, named NPCs, canon/state graph, adversarial AI-DM QA and v2 import structure have passed the DungeonMasterOS central campaign gate. Final exact-head CI confirmation is performed after the approval/log commits.
 
 ## Identity
 - Title: The Old Blood
 - Creator / publisher: Doomed Zone
 - Primary source: https://doomedzone.itch.io/the-old-blood
 - Creator module page: https://doomed.zone/modules/old_blood/old_blood/
-- Native ruleset: Shadowdark RPG
-- Creator-stated compatibility: any OSR-style system
-- Progression: levels 1-2
+- Native ruleset: **Shadowdark RPG**
+- Creator-stated compatibility: OSR-style systems
+- Progression: **levels 1-2**
 - Genre: gothic horror, vampire horror, mystery, investigative city crawl, decaying urban sandbox
 - Scope: 88-page modular adventure
 - Core setting: Brannam, a dying former trade city on the Aulach River
 
 ## Rights
-The creator explicitly releases all original writing, layout and design under CC0/public-domain dedication. Referenced Shadowdark mechanics and third-party materials remain under their own licences. DungeonMasterOS may adapt the original campaign fiction and structure, but should source rules mechanics from an authorised Shadowdark rules integration rather than treating the campaign's use of Shadowdark as a licence to republish the whole game system.
+The creator releases original writing, layout and design under CC0/public-domain dedication. Referenced Shadowdark mechanics and third-party materials remain under their own licences. DungeonMasterOS may adapt the original campaign fiction and structure, while exact Shadowdark mechanics/stat blocks must come from an authorised rules integration.
 
 ## Player-facing pitch
 Brannam is dying beneath the shadow of a ruined tyrant's keep. Two residents have been found drained of blood, and the city whispers that its long-dead vampire lord has returned. The truth is worse, older and buried deeper. Investigate the murders while fear spreads through the streets, decide whom to trust, and determine whether Brannam should be saved at all.
 
 ## Campaign architecture
-The adventure is deliberately non-linear. DungeonMasterOS must run it as a living state machine rather than a chapter script.
+The adventure is deliberately non-linear. DungeonMasterOS runs it as a living state machine rather than a chapter script.
 
 Primary dynamic states:
 1. Victor Marlowe active / exposed / captured / dead / escaped.
 2. Edric von Braech dormant / awakened / feeding / restored / defeated.
-3. Flooded Shrine intact / discovered / destroyed / blood rite restored.
+3. Flooded Shrine hidden / discovered / intact / destroyed / blood-rite restoration state.
 4. Brannam collapse stage and public panic.
 5. Nightly murder counter and active murderer pool.
-6. Discovery states for Victor's apothecary, secret laboratory, sewer escape route, Sealed Crypt, Catacombs and Flooded Shrine.
+6. Discovery states for Victor's apothecary, Secret Laboratory, sewer routes, Sealed Crypt, Catacombs, Ruins and Flooded Shrine.
 
 ## Principal truths
-- The initial blood-drained murders are committed by Victor Marlowe, not Edric.
-- Victor is a grieving alchemist being psychically manipulated by the Flooded Shrine.
-- Victor believes blood experiments can restore his dead wife Evelyn.
-- Edric remains dormant until Victor or the PCs breach the Sealed Crypt.
-- If awakened, Edric seeks refuge in the Catacombs beneath Saint Arlen's Chapel and feeds until restored.
-- The Flooded Shrine is an ancient alien biological device associated with the King Below; it corrupted Edric and now manipulates Victor.
-- Defeating Victor or even Edric does not permanently resolve Brannam. Long-term resolution requires destroying the Flooded Shrine or resuming the annual Sacrificial Blood Rite.
+- Victor Marlowe committed the initial blood-drained murders, not Edric.
+- Victor is a grieving alchemist being psychically influenced by the deeper Shrine.
+- Edric remains dormant until the Sealed Crypt is breached.
+- If awakened and not immediately stopped, Edric seeks refuge in Saint Arlen's Catacombs and feeds until restored.
+- The Flooded Shrine is the deeper alien biological influence associated with the King Below.
+- Defeating Victor or Edric does not permanently resolve Brannam.
+- Long-term outcomes include destroying the Shrine or restoring prosperity through the Sacrificial Blood Rite, whose recurring annual human cost and alien consequences remain hard canon.
+
+## Source-completeness records
+- `source-verification.md`: final source audit and rights/rules boundary.
+- `keyed-location-register.json`: all Sewer sectors, three Catacomb levels, both Ruins floors, Secret Dungeon rooms and Flooded Shrine.
+- `named-npc-register.json`: full 20-name source resident table.
+- `approval-review.md`: central gate decision.
+- `approval-manifest.json`: machine-readable release/approval record.
 
 ## Ending space
-At minimum the graph supports:
-- Victor stopped early; Edric remains dormant; Brannam remains cursed and stagnant.
-- Victor escapes into the crypt and awakens Edric; PCs later defeat Edric.
-- PCs awaken Edric themselves.
-- PCs leave Brannam; Edric eventually restores himself and becomes a regional threat.
-- Flooded Shrine destroyed; alien influence ends but Brannam remains a decaying city with no magical restoration.
-- Sacrificial Blood Rite restored; Brannam regains prosperity at the recurring moral cost of annual sacrifice, and the ritual leader becomes marked by the alien power.
-- Catastrophic failure where Victor/Edric/the Shrine remain unresolved and Brannam collapses.
+The campaign supports, among other outcomes:
+- Victor stopped early while Edric remains dormant.
+- Victor or the PCs awaken Edric.
+- Edric is defeated while the deeper Shrine remains unresolved.
+- The players leave Brannam and Edric eventually becomes a regional threat.
+- The Flooded Shrine is destroyed, ending its local influence without magically restoring the city.
+- The Blood Rite is restored, allowing Brannam to recover at the recurring cost of human sacrifice and alien attention.
+- Brannam collapses while one or more threats remain unresolved.
 
 ## DMOS implementation rule
-The AI must never assume a single correct investigation path. Clues can be discovered in different districts and NPC conversations. Player refusal, premature descent into the sewers, killing Victor, helping Victor, waking Edric early, leaving the city, destroying the shrine or embracing the blood rite are all valid state transitions. Consequences, not rails, preserve the campaign.
+The AI must never assume a single correct investigation path. Clues can be discovered through different districts, NPCs, physical evidence and dungeon routes. Player refusal, premature sewer exploration, killing or arresting Victor, waking Edric early, abandoning the city, destroying the Shrine or embracing the Blood Rite are all valid state transitions. Consequences, not rails, preserve the campaign.
