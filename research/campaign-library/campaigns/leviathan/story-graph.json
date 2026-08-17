@@ -1,0 +1,239 @@
+{
+  "id": "leviathan",
+  "title": "Leviathan",
+  "graphVersion": "0.8.0",
+  "status": "qa",
+  "nativeRuleset": {
+    "name": "System-neutral",
+    "progressionModel": "none",
+    "creatorCompatibility": ["Any sci-fi RPG", "Mothership", "Monolith"]
+  },
+  "initialState": {
+    "messageIndex": 0,
+    "solarThreat": 1,
+    "stationIntegrity": 5,
+    "aiState": "functional",
+    "truthRevealed": false,
+    "timerMode": "paced",
+    "unresolvedProblems": [],
+    "resolvedProblems": [],
+    "playerTheories": []
+  },
+  "globalRules": [
+    "The central apparent threat is benign; never invent a hostile monster to reward a player theory.",
+    "The coronal mass ejection and station failures remain objective threats.",
+    "Messages escalate according to the source sequence, with timing controlled by real-time, paced or accelerating mode.",
+    "Station problems may be ignored; consequences continue without forcing repair.",
+    "The central AI can be damaged or destroyed if the fiction/rules permit it.",
+    "Free-text actions are always valid.",
+    "Player theories are tracked as beliefs, never truth flags."
+  ],
+  "clocks": [
+    {"id": "message-clock", "segments": 8, "current": 0, "note": "Exact source message count/order must be replaced with PDF-verified values."},
+    {"id": "solar-threat", "segments": 6, "current": 1, "note": "Represents intensifying coronal mass ejection/environmental danger."},
+    {"id": "station-integrity", "segments": 5, "current": 5, "note": "Degrades when source station problems are ignored or worsen."}
+  ],
+  "scenes": [
+    {
+      "id": "wake",
+      "title": "Wake Without Memory",
+      "locationId": "station",
+      "requiredFacts": ["The characters wake on a space station without memories.", "Something is wrong with the station and nearby star."],
+      "hiddenFacts": ["The apparent central creature/threat is benign."],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "computer", "label": "Check the central computer for logs or identity data", "nextSceneId": "ai-contact"},
+        {"id": "status", "label": "Check station alarms and system status", "nextSceneId": "station-status"},
+        {"id": "viewport", "label": "Look outside and inspect the star", "nextSceneId": "stellar-observation"},
+        {"id": "gear", "label": "Inspect your equipment and immediate surroundings", "nextSceneId": "self-investigation"},
+        {"id": "explore", "label": "Explore the station manually", "nextSceneId": "station-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Route any plausible investigation to station systems/features without adding a hostile creature or fabricated backstory."}
+    },
+    {
+      "id": "ai-contact",
+      "title": "The Central Computer",
+      "locationId": "ai-interface",
+      "requiredFacts": ["The central AI is a major information/malfunction channel."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "ask-identities", "label": "Ask who you are and why you are here", "nextSceneId": "message-escalation"},
+        {"id": "ask-emergency", "label": "Ask what emergency is in progress", "nextSceneId": "station-status"},
+        {"id": "diagnose", "label": "Diagnose the AI for errors", "nextSceneId": "ai-malfunction"},
+        {"id": "disable", "label": "Disconnect or disable the AI", "nextSceneId": "ai-damaged"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow interrogation, hacking, repair or violence according to chosen ruleset. The AI is not protected from consequences."}
+    },
+    {
+      "id": "station-status",
+      "title": "Systems Are Failing",
+      "locationId": "station",
+      "requiredFacts": ["Electrical/mechanical problems are developing.", "The stellar event is intensifying."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "repair", "label": "Prioritise the most urgent station failure", "nextSceneId": "problem-resolution"},
+        {"id": "ignore", "label": "Ignore repairs and keep investigating", "nextSceneId": "station-exploration"},
+        {"id": "ai", "label": "Ask the AI to explain or assist", "nextSceneId": "ai-malfunction"},
+        {"id": "outside", "label": "Inspect the star and exterior systems", "nextSceneId": "stellar-observation"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Players set priorities. Unaddressed source problems remain active and generate their natural consequences."}
+    },
+    {
+      "id": "stellar-observation",
+      "title": "Something Is Happening to the Star",
+      "locationId": "viewports",
+      "requiredFacts": ["The nearby star is producing an intensifying coronal mass ejection."],
+      "hiddenFacts": ["The frightening interpretation of the messages/phenomenon is not a literal hostile monster."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "measure", "label": "Measure the stellar event", "nextSceneId": "message-escalation"},
+        {"id": "shield", "label": "Prepare the station against the solar event", "nextSceneId": "problem-resolution"},
+        {"id": "theory", "label": "Compare what you see with the cryptic messages", "nextSceneId": "theory-check"},
+        {"id": "leave", "label": "Move away from the viewports and inspect the station", "nextSceneId": "station-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Give real environmental observations only. Do not validate hallucinated creatures through description."}
+    },
+    {
+      "id": "self-investigation",
+      "title": "Who Were We?",
+      "locationId": "station",
+      "requiredFacts": ["Characters have amnesia but may inspect possessions, bodies and surroundings for clues."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "search-gear", "label": "Search clothing and equipment for identity clues", "nextSceneId": "station-exploration"},
+        {"id": "medical", "label": "Check for signs explaining the memory loss", "nextSceneId": "station-exploration"},
+        {"id": "computer", "label": "Compare what you find with station records", "nextSceneId": "ai-contact"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use source identity/amnesia clues once PDF-verified. Do not invent a human-experiment conspiracy."}
+    },
+    {
+      "id": "station-exploration",
+      "title": "Search the Station",
+      "locationId": "station",
+      "requiredFacts": ["The station contains clues and increasingly disruptive problems."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 5,
+      "choices": [
+        {"id": "source-clue", "label": "Follow the strongest clue you've found", "nextSceneId": "message-escalation"},
+        {"id": "airlock", "label": "Inspect the airlock and pressure systems", "nextSceneId": "problem-resolution"},
+        {"id": "sleep-pods", "label": "Inspect the sleep/cryogenic pods", "nextSceneId": "theory-check"},
+        {"id": "power", "label": "Inspect external power/solar systems", "nextSceneId": "problem-resolution"},
+        {"id": "ai", "label": "Return to the central computer", "nextSceneId": "ai-contact"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use the PDF map/key once available. Until then, only verified functional station areas may be treated as canon."}
+    },
+    {
+      "id": "problem-resolution",
+      "title": "Keep the Station Together",
+      "locationId": "dynamic-station-system",
+      "requiredFacts": ["A station problem can be fixed, failed or ignored."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "fix", "label": "Attempt a proper repair", "nextSceneId": "message-escalation"},
+        {"id": "patch", "label": "Make a temporary workaround", "nextSceneId": "message-escalation"},
+        {"id": "abandon", "label": "Leave it and focus elsewhere", "nextSceneId": "message-escalation"},
+        {"id": "ai-help", "label": "Use the AI or station automation to assist", "nextSceneId": "ai-malfunction"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use selected ruleset only when failure has meaningful consequences. Routine competent work may simply succeed."}
+    },
+    {
+      "id": "ai-malfunction",
+      "title": "The AI Is Not Helping",
+      "locationId": "ai-interface",
+      "requiredFacts": ["AI malfunctions become part of the escalating scenario."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "diagnose", "label": "Try to diagnose or repair the AI", "nextSceneId": "message-escalation"},
+        {"id": "ignore", "label": "Ignore the AI and work manually", "nextSceneId": "station-exploration"},
+        {"id": "disable", "label": "Shut the AI down", "nextSceneId": "ai-damaged"},
+        {"id": "listen", "label": "Let the AI continue and look for useful information", "nextSceneId": "message-escalation"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "AI behaviour uses source malfunction table once verified. Do not make every malfunction actively malicious."}
+    },
+    {
+      "id": "ai-damaged",
+      "title": "Silence the Machine",
+      "locationId": "ai-interface",
+      "requiredFacts": ["Players can damage/destroy the central AI."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 3,
+      "choices": [
+        {"id": "manual", "label": "Continue using manual station systems", "nextSceneId": "station-exploration"},
+        {"id": "salvage", "label": "Try to recover logs/data from the damaged system", "nextSceneId": "message-escalation"},
+        {"id": "wait", "label": "Wait and see whether the feared threat arrives", "nextSceneId": "bunker-state"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Do not resurrect the AI simply to deliver exposition. Continue only through surviving source-consistent channels."}
+    },
+    {
+      "id": "theory-check",
+      "title": "What Do You Think Is Happening?",
+      "locationId": "station",
+      "requiredFacts": ["Players are expected to form competing theories from incomplete evidence."],
+      "hiddenFacts": ["The central apparent threat is benign."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "hostile-creature", "label": "Act as if something hostile is approaching", "nextSceneId": "bunker-state"},
+        {"id": "experiment", "label": "Search for evidence of an experiment or manipulation", "nextSceneId": "station-exploration"},
+        {"id": "ai-conspiracy", "label": "Treat the AI as the main threat", "nextSceneId": "ai-contact"},
+        {"id": "physical-event", "label": "Assume the stellar event is the real danger and focus on survival", "nextSceneId": "problem-resolution"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Record theory as player belief and let actions follow. Never promote theory to truth without source evidence."}
+    },
+    {
+      "id": "bunker-state",
+      "title": "Wait for the Thing That Might Not Exist",
+      "locationId": "station",
+      "requiredFacts": ["Players may bunker down rather than continue exploration."],
+      "hiddenFacts": ["No invented attack should occur merely to punish waiting."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "wait", "label": "Stay hidden and wait", "nextSceneId": "message-escalation"},
+        {"id": "pod", "label": "Use a sleep/cryogenic pod as shelter", "nextSceneId": "message-escalation"},
+        {"id": "fortify", "label": "Fortify against a possible breach", "nextSceneId": "message-escalation"},
+        {"id": "resume", "label": "Resume investigating before conditions worsen", "nextSceneId": "station-exploration"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Advance paced/accelerating clocks and natural station consequences. Do not spawn a fake attacker."}
+    },
+    {
+      "id": "message-escalation",
+      "title": "Another Message",
+      "locationId": "station",
+      "requiredFacts": ["The next source message/event advances mystery and pressure."],
+      "hiddenFacts": ["The final sequence leads to the benign reveal."],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "investigate", "label": "Follow the new clue", "nextSceneId": "station-exploration"},
+        {"id": "repair", "label": "Prioritise worsening station systems", "nextSceneId": "problem-resolution"},
+        {"id": "ai", "label": "Challenge the AI about the message", "nextSceneId": "ai-malfunction"},
+        {"id": "wait", "label": "Hold position and wait for the next development", "nextSceneId": "bunker-state"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Insert exact PDF-verified message/problem beat at runtime. When source final-message/reveal condition is reached, transition to reveal."}
+    },
+    {
+      "id": "reveal",
+      "title": "What Leviathan Really Was",
+      "locationId": "station",
+      "requiredFacts": ["The source's final information reveals that the central feared threat is benign."],
+      "hiddenFacts": [],
+      "suggestedChoiceCount": 4,
+      "choices": [
+        {"id": "survive-solar", "label": "Focus on surviving the remaining stellar danger", "nextSceneId": "ending-survival"},
+        {"id": "repair", "label": "Stabilise the station after the panic", "nextSceneId": "ending-survival"},
+        {"id": "reflect", "label": "Work out which clues you misunderstood", "nextSceneId": "ending-revelation"},
+        {"id": "escape", "label": "Leave the station if an escape option remains", "nextSceneId": "ending-survival"}
+      ],
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "The reveal ends the paranoia mystery but does not erase objective damage from the coronal mass ejection or ignored station failures."}
+    }
+  ],
+  "endings": [
+    {"id": "ending-revelation", "title": "The Monster Was in the Explanation", "summary": "The characters reach the benign truth behind the apparent central threat and understand how ambiguous evidence and fear shaped their interpretation. Remaining station damage is resolved separately."},
+    {"id": "ending-survival", "title": "Survive the Station", "summary": "The characters survive or escape the stellar/station crisis after the core mystery resolves, with consequences determined by the systems they repaired, ignored or destroyed."},
+    {"id": "ending-system-failure", "title": "Too Much Left Broken", "summary": "Objective station/environment failures become fatal or force abandonment even though the feared central creature was never the real threat."},
+    {"id": "ending-paranoid-bunker", "title": "Waiting for an Attack", "summary": "The characters spend critical time defending against a threat that does not arrive while station/solar conditions continue to worsen; eventual outcome depends on remaining integrity and source final message."}
+  ]
+}
