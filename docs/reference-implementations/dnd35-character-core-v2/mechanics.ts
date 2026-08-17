@@ -2,7 +2,6 @@
 // Pure D&D 3.5e mechanics. No React, Express, database or AI dependencies.
 
 import type {
-  Dnd35Ability,
   Dnd35AbilityScores,
   Dnd35CharacterState,
   Dnd35ClassTotals,
@@ -28,7 +27,11 @@ export function classTotals(levels: Dnd35LevelRecord[]): Dnd35ClassTotals {
   return totals;
 }
 
-export function classLevelAtCharacterLevel(levels: Dnd35LevelRecord[], classId: string, throughCharacterLevel?: number): number {
+export function classLevelAtCharacterLevel(
+  levels: Dnd35LevelRecord[],
+  classId: string,
+  throughCharacterLevel?: number,
+): number {
   const cutoff = throughCharacterLevel ?? levels.length;
   return levels.filter((level) => level.characterLevel <= cutoff && level.classId === classId).length;
 }
@@ -45,7 +48,7 @@ export function baseSaveForClassLevel(progression: "good" | "poor", level: numbe
   return progression === "good" ? 2 + Math.floor(level / 2) : Math.floor(level / 3);
 }
 
-/** Core multiclass rules: calculate each class table separately, then add. */
+/** Calculate each class table separately, then add the results. */
 export function multiclassBaseAttack(levels: Dnd35LevelRecord[]): number {
   return Object.entries(classTotals(levels)).reduce((total, [classId, level]) => {
     const cls = getCoreClass(classId);
@@ -55,7 +58,6 @@ export function multiclassBaseAttack(levels: Dnd35LevelRecord[]): number {
 
 export function multiclassBaseSaves(levels: Dnd35LevelRecord[]): Record<Dnd35Save, number> {
   const result: Record<Dnd35Save, number> = { fortitude: 0, reflex: 0, will: 0 };
-
   for (const [classId, level] of Object.entries(classTotals(levels))) {
     const cls = getCoreClass(classId);
     if (!cls) continue;
@@ -63,11 +65,10 @@ export function multiclassBaseSaves(levels: Dnd35LevelRecord[]): Record<Dnd35Sav
       result[save] += baseSaveForClassLevel(cls.saves[save], level);
     }
   }
-
   return result;
 }
 
-/** Full-attack iterative BAB values, before ability/item/situational attack modifiers. */
+/** Full-attack BAB sequence before ability, weapon and situational modifiers. */
 export function iterativeBaseAttacks(baseAttackBonus: number): number[] {
   if (baseAttackBonus <= 0) return [baseAttackBonus];
   const attacks: number[] = [];
@@ -75,15 +76,13 @@ export function iterativeBaseAttacks(baseAttackBonus: number): number[] {
   return attacks;
 }
 
-export function nextLevelExperience(currentCharacterLevel: number): number {
-  if (currentCharacterLevel < 1) return 0;
-  const nextLevel = currentCharacterLevel + 1;
-  return 500 * nextLevel * (nextLevel - 1);
-}
-
 export function experienceRequiredForLevel(level: number): number {
   if (level <= 1) return 0;
   return 500 * level * (level - 1);
+}
+
+export function nextLevelExperience(currentCharacterLevel: number): number {
+  return experienceRequiredForLevel(currentCharacterLevel + 1);
 }
 
 export function canGainAnotherLevel(state: Pick<Dnd35CharacterState, "experiencePoints" | "levels">): boolean {
@@ -101,13 +100,10 @@ export function getsAbilityIncreaseAtCharacterLevel(level: number): boolean {
 export function effectivePermanentAbilities(state: Dnd35CharacterState): Dnd35AbilityScores {
   const race = getCoreRace(state.race.raceId);
   let scores: Dnd35AbilityScores = { ...state.baseAbilityScores };
-
   if (race) scores = applyRacialAbilityAdjustments(scores, race);
-
   for (const level of state.levels) {
     if (level.abilityIncrease) scores[level.abilityIncrease] += 1;
   }
-
   return scores;
 }
 
@@ -138,36 +134,21 @@ export function permanentSize(state: Dnd35CharacterState): Dnd35Size {
   return getCoreRace(state.race.raceId)?.size ?? "medium";
 }
 
-// Strength 1..29 core table. Tremendous Strength repeats the matching 20..29 row x4 per +10 Strength.
 const CARRYING: Record<number, { light: number; medium: number; heavy: number }> = {
-  1: { light: 3, medium: 6, heavy: 10 },
-  2: { light: 6, medium: 13, heavy: 20 },
-  3: { light: 10, medium: 20, heavy: 30 },
-  4: { light: 13, medium: 26, heavy: 40 },
-  5: { light: 16, medium: 33, heavy: 50 },
-  6: { light: 20, medium: 40, heavy: 60 },
-  7: { light: 23, medium: 46, heavy: 70 },
-  8: { light: 26, medium: 53, heavy: 80 },
-  9: { light: 30, medium: 60, heavy: 90 },
-  10: { light: 33, medium: 66, heavy: 100 },
-  11: { light: 38, medium: 76, heavy: 115 },
-  12: { light: 43, medium: 86, heavy: 130 },
-  13: { light: 50, medium: 100, heavy: 150 },
-  14: { light: 58, medium: 116, heavy: 175 },
-  15: { light: 66, medium: 133, heavy: 200 },
-  16: { light: 76, medium: 153, heavy: 230 },
-  17: { light: 86, medium: 173, heavy: 260 },
-  18: { light: 100, medium: 200, heavy: 300 },
-  19: { light: 116, medium: 233, heavy: 350 },
-  20: { light: 133, medium: 266, heavy: 400 },
-  21: { light: 153, medium: 306, heavy: 460 },
-  22: { light: 173, medium: 346, heavy: 520 },
-  23: { light: 200, medium: 400, heavy: 600 },
-  24: { light: 233, medium: 466, heavy: 700 },
-  25: { light: 266, medium: 533, heavy: 800 },
-  26: { light: 306, medium: 613, heavy: 920 },
-  27: { light: 346, medium: 693, heavy: 1040 },
-  28: { light: 400, medium: 800, heavy: 1200 },
+  1: { light: 3, medium: 6, heavy: 10 }, 2: { light: 6, medium: 13, heavy: 20 },
+  3: { light: 10, medium: 20, heavy: 30 }, 4: { light: 13, medium: 26, heavy: 40 },
+  5: { light: 16, medium: 33, heavy: 50 }, 6: { light: 20, medium: 40, heavy: 60 },
+  7: { light: 23, medium: 46, heavy: 70 }, 8: { light: 26, medium: 53, heavy: 80 },
+  9: { light: 30, medium: 60, heavy: 90 }, 10: { light: 33, medium: 66, heavy: 100 },
+  11: { light: 38, medium: 76, heavy: 115 }, 12: { light: 43, medium: 86, heavy: 130 },
+  13: { light: 50, medium: 100, heavy: 150 }, 14: { light: 58, medium: 116, heavy: 175 },
+  15: { light: 66, medium: 133, heavy: 200 }, 16: { light: 76, medium: 153, heavy: 230 },
+  17: { light: 86, medium: 173, heavy: 260 }, 18: { light: 100, medium: 200, heavy: 300 },
+  19: { light: 116, medium: 233, heavy: 350 }, 20: { light: 133, medium: 266, heavy: 400 },
+  21: { light: 153, medium: 306, heavy: 460 }, 22: { light: 173, medium: 346, heavy: 520 },
+  23: { light: 200, medium: 400, heavy: 600 }, 24: { light: 233, medium: 466, heavy: 700 },
+  25: { light: 266, medium: 533, heavy: 800 }, 26: { light: 306, medium: 613, heavy: 920 },
+  27: { light: 346, medium: 693, heavy: 1040 }, 28: { light: 400, medium: 800, heavy: 1200 },
   29: { light: 466, medium: 933, heavy: 1400 },
 };
 
@@ -182,44 +163,27 @@ export type CarryingCapacity = {
 export function carryingCapacity(strength: number, size: Dnd35Size, quadruped = false): CarryingCapacity {
   if (strength < 1) return { light: 0, medium: 0, heavy: 0, liftOffGround: 0, pushOrDrag: 0 };
 
-  let baseStrength = Math.min(strength, 29);
+  let tableStrength = Math.min(strength, 29);
   let tremendousMultiplier = 1;
-
   if (strength > 29) {
-    const tensAbove = Math.floor((strength - 20) / 10);
-    baseStrength = 20 + ((strength - 20) % 10);
-    tremendousMultiplier = Math.pow(4, tensAbove);
+    const tensAboveTwenty = Math.floor((strength - 20) / 10);
+    tableStrength = 20 + ((strength - 20) % 10);
+    tremendousMultiplier = Math.pow(4, tensAboveTwenty);
   }
 
-  const row = CARRYING[baseStrength];
+  const row = CARRYING[tableStrength];
   if (!row) throw new Error(`No carrying-capacity row for Strength ${strength}`);
 
-  const bipedMultiplier = SIZE_MODIFIERS[size].carryingMultiplier;
   const quadrupedMultiplier: Record<Dnd35Size, number> = {
-    fine: 1 / 4,
-    diminutive: 1 / 2,
-    tiny: 3 / 4,
-    small: 1,
-    medium: 1.5,
-    large: 3,
-    huge: 6,
-    gargantuan: 12,
-    colossal: 24,
+    fine: 1 / 4, diminutive: 1 / 2, tiny: 3 / 4, small: 1, medium: 1.5,
+    large: 3, huge: 6, gargantuan: 12, colossal: 24,
   };
-  const sizeMultiplier = quadruped ? quadrupedMultiplier[size] : bipedMultiplier;
+  const sizeMultiplier = quadruped ? quadrupedMultiplier[size] : SIZE_MODIFIERS[size].carryingMultiplier;
   const multiplier = tremendousMultiplier * sizeMultiplier;
-
   const light = row.light * multiplier;
   const medium = row.medium * multiplier;
   const heavy = row.heavy * multiplier;
-
-  return {
-    light,
-    medium,
-    heavy,
-    liftOffGround: heavy * 2,
-    pushOrDrag: heavy * 5,
-  };
+  return { light, medium, heavy, liftOffGround: heavy * 2, pushOrDrag: heavy * 5 };
 }
 
 export type LoadCategory = "light" | "medium" | "heavy" | "overloaded";
@@ -245,29 +209,19 @@ export function loadArmorCheckPenalty(category: LoadCategory): number {
 }
 
 const ENCUMBERED_SPEED: Record<number, number> = {
-  20: 15,
-  30: 20,
-  40: 30,
-  50: 35,
-  60: 40,
-  70: 50,
-  80: 55,
-  90: 60,
-  100: 70,
+  20: 15, 30: 20, 40: 30, 50: 35, 60: 40, 70: 50, 80: 55, 90: 60, 100: 70,
 };
 
 export function reduceSpeedForArmorOrLoad(speed: number): number {
   if (speed <= 5) return speed;
   const exact = ENCUMBERED_SPEED[speed];
   if (exact !== undefined) return exact;
-  // Fallback for unusual speeds: preserve the 3.5 pattern without pretending it is a published table row.
   return Math.max(5, Math.floor((speed * 2) / 3 / 5) * 5);
 }
 
 export type SpeedContext = {
   armorCategory?: "none" | "light" | "medium" | "heavy";
   loadCategory?: LoadCategory;
-  /** Total additive speed bonuses that are legal before armor/load adjustment. */
   speedBonus?: number;
   unarmored?: boolean;
 };
@@ -276,38 +230,41 @@ export function derivedLandSpeed(state: Dnd35CharacterState, context: SpeedConte
   const race = getCoreRace(state.race.raceId);
   const raceBase = race?.baseLandSpeed ?? 30;
   const totals = classTotals(state.levels);
+  const armor = context.armorCategory ?? "none";
+  const load = context.loadCategory ?? "light";
+  const heavyArmor = armor === "heavy";
+  const mediumOrHeavyLoad = load === "medium" || load === "heavy" || load === "overloaded";
+  const heavyLoad = load === "heavy" || load === "overloaded";
 
   let bonus = context.speedBonus ?? 0;
 
-  const barbarianLevel = totals.barbarian ?? 0;
-  const heavyArmor = context.armorCategory === "heavy";
-  const heavyLoad = context.loadCategory === "heavy" || context.loadCategory === "overloaded";
-  if (barbarianLevel >= 1 && !heavyArmor && !heavyLoad) bonus += 10;
+  // Barbarian Fast Movement: +10 while not in heavy armor and not carrying a heavy load.
+  if ((totals.barbarian ?? 0) >= 1 && !heavyArmor && !heavyLoad) bonus += 10;
 
+  // Monk Fast Movement is an enhancement bonus and requires no armor and no medium/heavy load.
   const monkLevel = totals.monk ?? 0;
-  const monkUnarmored = context.unarmored ?? context.armorCategory === "none" || context.armorCategory === undefined;
-  if (monkLevel >= 3 && monkUnarmored && !heavyLoad) {
+  const monkUnarmored = context.unarmored ?? armor === "none";
+  if (monkLevel >= 3 && monkUnarmored && !mediumOrHeavyLoad) {
     bonus += Math.min(60, Math.floor(monkLevel / 3) * 10);
   }
 
   const modifiedBase = raceBase + bonus;
+  if (load === "overloaded") return 5;
 
-  if (context.loadCategory === "overloaded") return 5;
+  const armorWouldReduce = armor === "medium" || armor === "heavy";
+  const loadWouldReduce = load === "medium" || load === "heavy";
+  if (!armorWouldReduce && !loadWouldReduce) return modifiedBase;
 
-  const encumberedByArmor = context.armorCategory === "medium" || context.armorCategory === "heavy";
-  const encumberedByLoad = context.loadCategory === "medium" || context.loadCategory === "heavy";
-
-  if (!encumberedByArmor && !encumberedByLoad) return modifiedBase;
-
-  if (race?.rules.armorDoesNotReduceLandSpeed && encumberedByArmor && !encumberedByLoad) return modifiedBase;
-  if (race?.rules.loadDoesNotReduceLandSpeed && encumberedByLoad) return modifiedBase;
+  // Dwarves retain their base land speed under armor and medium/heavy encumbrance.
+  if (race?.rules.armorDoesNotReduceLandSpeed && race.rules.loadDoesNotReduceLandSpeed) return modifiedBase;
+  if (race?.rules.armorDoesNotReduceLandSpeed && armorWouldReduce && !loadWouldReduce) return modifiedBase;
+  if (race?.rules.loadDoesNotReduceLandSpeed && loadWouldReduce && !armorWouldReduce) return modifiedBase;
 
   return reduceSpeedForArmorOrLoad(modifiedBase);
 }
 
 export function maximumHitPoints(state: Dnd35CharacterState): number {
-  const abilities = effectivePermanentAbilities(state);
-  const conMod = abilityModifier(abilities.con);
+  const conMod = abilityModifier(effectivePermanentAbilities(state).con);
   return state.levels.reduce((total, level) => total + Math.max(1, level.hitPointRoll + conMod), 0);
 }
 
@@ -345,10 +302,9 @@ export function skillPointBudgetForLevel(
 ): number {
   const cls = getCoreClass(classId);
   if (!cls) throw new Error(`Unknown class: ${classId}`);
-
-  const basePerLevel = Math.max(1, cls.skillPointsPerLevel + abilityModifier(intelligenceScoreAtThatLevel));
+  const perLevel = Math.max(1, cls.skillPointsPerLevel + abilityModifier(intelligenceScoreAtThatLevel));
   const humanBonus = raceId === "human" ? (characterLevelValue === 1 ? 4 : 1) : 0;
-  return (characterLevelValue === 1 ? basePerLevel * 4 : basePerLevel) + humanBonus;
+  return (characterLevelValue === 1 ? perLevel * 4 : perLevel) + humanBonus;
 }
 
 export function validateSkillPurchases(state: Dnd35CharacterState, level: Dnd35LevelRecord): string[] {
@@ -356,14 +312,13 @@ export function validateSkillPurchases(state: Dnd35CharacterState, level: Dnd35L
   const cls = getCoreClass(level.classId);
   if (!cls) return [`Unknown class ${level.classId}`];
 
-  const pointsSpent = level.skillPurchases.reduce((sum, purchase) => sum + purchase.pointsSpent, 0);
-  if (pointsSpent !== level.skillPointBudget) {
-    errors.push(`Skill points spent ${pointsSpent} do not match budget ${level.skillPointBudget}.`);
-  }
+  const spent = level.skillPurchases.reduce((sum, purchase) => sum + purchase.pointsSpent, 0);
+  if (spent !== level.skillPointBudget) errors.push(`Skill points spent ${spent} do not match budget ${level.skillPointBudget}.`);
 
-  const previousRanks = aggregateSkillRanks({ ...state, levels: state.levels.filter((entry) => entry.characterLevel < level.characterLevel) });
-  const prospectiveClasses = new Set(state.levels.filter((entry) => entry.characterLevel < level.characterLevel).map((entry) => entry.classId));
-  prospectiveClasses.add(level.classId);
+  const priorLevels = state.levels.filter((entry) => entry.characterLevel < level.characterLevel);
+  const previousRanks = aggregateSkillRanks({ ...state, levels: priorLevels });
+  const classesHeld = new Set(priorLevels.map((entry) => entry.classId));
+  classesHeld.add(level.classId);
 
   for (const purchase of level.skillPurchases) {
     const expectedClassSkill = isClassSkill(cls.classSkills, purchase.skillId);
@@ -373,18 +328,16 @@ export function validateSkillPurchases(state: Dnd35CharacterState, level: Dnd35L
 
     const expectedCost = skillPointCostForRanks(purchase.ranksPurchased, expectedClassSkill);
     if (Math.abs(expectedCost - purchase.pointsSpent) > 0.0001) {
-      errors.push(`${purchase.skillId}: expected ${expectedCost} skill points, received ${purchase.pointsSpent}.`);
+      errors.push(`${purchase.skillId}: expected ${expectedCost} points, got ${purchase.pointsSpent}.`);
     }
 
-    const anyClassSkill = [...prospectiveClasses].some((id) => {
-      const candidate = getCoreClass(id);
-      return !!candidate && isClassSkill(candidate.classSkills, purchase.skillId);
+    const everClassSkill = [...classesHeld].some((id) => {
+      const heldClass = getCoreClass(id);
+      return !!heldClass && isClassSkill(heldClass.classSkills, purchase.skillId);
     });
-    const max = maxSkillRanks(level.characterLevel, anyClassSkill);
+    const cap = maxSkillRanks(level.characterLevel, everClassSkill);
     const totalRanks = (previousRanks[purchase.skillId] ?? 0) + purchase.ranksPurchased;
-    if (totalRanks > max + 0.0001) {
-      errors.push(`${purchase.skillId}: ${totalRanks} ranks exceeds maximum ${max}.`);
-    }
+    if (totalRanks > cap + 0.0001) errors.push(`${purchase.skillId}: ${totalRanks} ranks exceeds maximum ${cap}.`);
   }
 
   return errors;
@@ -402,33 +355,28 @@ export function spellSaveDc(spellLevel: number, castingAbilityScore: number, mis
 
 export function baseGrappleBonus(state: Dnd35CharacterState): number {
   const abilities = effectivePermanentAbilities(state);
-  const size = sizeModifiers(permanentSize(state));
-  return multiclassBaseAttack(state.levels) + abilityModifier(abilities.str) + size.grapple;
+  return multiclassBaseAttack(state.levels) + abilityModifier(abilities.str) + sizeModifiers(permanentSize(state)).grapple;
 }
 
 export function firstLevelHitPoints(hitDie: number): number {
   return hitDie;
 }
 
-export function expectedHitDieForLevel(levels: Dnd35LevelRecord[], classId: string): number | undefined {
+export function expectedHitDieForLevel(_levels: Dnd35LevelRecord[], classId: string): number | undefined {
   return getCoreClass(classId)?.hitDie;
 }
 
 export function validateLevelRecordBasics(state: Dnd35CharacterState, level: Dnd35LevelRecord): string[] {
   const errors: string[] = [];
-  const expectedCharacterLevel = state.levels.length + 1;
-  if (level.characterLevel !== expectedCharacterLevel) errors.push(`Expected character level ${expectedCharacterLevel}.`);
+  const expectedLevel = state.levels.length + 1;
+  if (level.characterLevel !== expectedLevel) errors.push(`Expected character level ${expectedLevel}.`);
 
   const cls = getCoreClass(level.classId);
-  if (!cls) errors.push(`Unknown class ${level.classId}.`);
-  else if (level.hitDie !== cls.hitDie) errors.push(`Expected d${cls.hitDie} hit die for ${cls.displayName}.`);
-
-  if (level.characterLevel === 1 && cls && level.hitPointRoll !== cls.hitDie) {
-    errors.push(`First character level uses the full d${cls.hitDie} Hit Die value.`);
-  }
-  if (level.characterLevel > 1 && cls && (level.hitPointRoll < 1 || level.hitPointRoll > cls.hitDie)) {
+  if (!cls) return [...errors, `Unknown class ${level.classId}.`];
+  if (level.hitDie !== cls.hitDie) errors.push(`Expected d${cls.hitDie} Hit Die for ${cls.displayName}.`);
+  if (level.characterLevel === 1 && level.hitPointRoll !== cls.hitDie) errors.push(`First character level uses the full d${cls.hitDie} Hit Die value.`);
+  if (level.characterLevel > 1 && (level.hitPointRoll < 1 || level.hitPointRoll > cls.hitDie)) {
     errors.push(`HP roll ${level.hitPointRoll} is outside 1..${cls.hitDie}.`);
   }
-
   return errors;
 }
