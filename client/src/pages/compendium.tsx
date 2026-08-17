@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { BookMarked, Search, SlidersHorizontal, X } from "lucide-react";
+import { BookMarked, Search, X } from "lucide-react";
 import CompendiumBook from "@/components/CompendiumBook";
+import CompendiumSourceLink from "@/components/CompendiumSourceLink";
 import {
   type CompendiumFacets,
   type CompendiumItem,
@@ -43,6 +44,18 @@ async function getJson<T>(url: string): Promise<T> {
 function activeFilterCount(filters: Filters): number {
   return [filters.q, filters.category, filters.rarity, filters.edition, filters.source, filters.interaction]
     .filter(Boolean).length + (filters.sort !== "name" ? 1 : 0);
+}
+
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return isMobile;
 }
 
 function FiltersPanel({
@@ -171,17 +184,20 @@ function CataloguePage({ items, side, total, loading }: { items: CompendiumItem[
       ) : items.length ? (
         <div className="compendium-index-list">
           {items.map((item) => (
-            <Link key={item.definitionKey} href={itemPath(item.definitionKey)} className="compendium-index-entry">
+            <article key={item.definitionKey} className="compendium-index-entry">
               <span className="compendium-entry-glyph">{item.name.trim().charAt(0).toUpperCase() || "•"}</span>
-              <span>
-                <span className="compendium-entry-name">{item.name}</span>
-                <span className="compendium-entry-meta">
-                  {categoryLabel(item.category)}{item.subcategory ? ` · ${humanize(item.subcategory)}` : ""}<br />
-                  {rulesetLabel(item)} · {sourceKindLabel(item.sourceKind)}
-                </span>
+              <span style={{ minWidth: 0 }}>
+                <Link href={itemPath(item.definitionKey)} className="compendium-entry-mainlink">
+                  <span className="compendium-entry-name">{item.name}</span>
+                  <span className="compendium-entry-meta">
+                    {categoryLabel(item.category)}{item.subcategory ? ` · ${humanize(item.subcategory)}` : ""}<br />
+                    {rulesetLabel(item)} · {sourceKindLabel(item.sourceKind)}
+                  </span>
+                </Link>
+                <CompendiumSourceLink item={item} compact />
               </span>
               <span className="compendium-rarity">{item.rarity}</span>
-            </Link>
+            </article>
           ))}
         </div>
       ) : (
@@ -197,6 +213,11 @@ function CataloguePage({ items, side, total, loading }: { items: CompendiumItem[
 }
 
 export default function CompendiumPage() {
+  const isMobile = useIsMobile();
+  const [opened, setOpened] = useState(() => {
+    try { return window.sessionStorage.getItem("dmos-compendium-opened") === "1"; }
+    catch { return false; }
+  });
   const [spread, setSpread] = useState(0);
   const [mobileSide, setMobileSide] = useState<0 | 1>(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -220,7 +241,7 @@ export default function CompendiumPage() {
   const listQuery = useQuery({
     queryKey: ["compendium-items", listUrl],
     queryFn: () => getJson<CompendiumListResponse>(listUrl),
-    enabled: spread > 0,
+    enabled: opened && spread > 0,
     placeholderData: (previous) => previous,
   });
 
@@ -229,6 +250,13 @@ export default function CompendiumPage() {
   const rightItems = data?.items.slice(6, 12) || [];
   const pageCount = data?.pageCount || 1;
   const total = data?.total || 0;
+
+  const openBook = () => {
+    setOpened(true);
+    setSpread(0);
+    setMobileSide(0);
+    try { window.sessionStorage.setItem("dmos-compendium-opened", "1"); } catch { /* optional */ }
+  };
 
   const applyFilters = () => {
     setFilters({ ...draftFilters });
@@ -246,15 +274,16 @@ export default function CompendiumPage() {
   };
 
   const turn = (direction: "next" | "prev") => {
-    const mobile = window.matchMedia("(max-width: 900px)").matches;
-    if (mobile) {
+    if (isMobile) {
       if (direction === "next") {
         if (mobileSide === 0) {
           setMobileSide(1);
           return;
         }
-        setMobileSide(0);
-        setSpread((current) => current === 0 ? 1 : Math.min(pageCount, current + 1));
+        if (spread === 0 || spread < pageCount) {
+          setMobileSide(0);
+          setSpread((current) => current === 0 ? 1 : Math.min(pageCount, current + 1));
+        }
         return;
       }
 
@@ -274,17 +303,19 @@ export default function CompendiumPage() {
       return;
     }
 
-    if (direction === "next") setSpread((current) => current === 0 ? 1 : Math.min(pageCount, current + 1));
-    else setSpread((current) => Math.max(0, current - 1));
+    if (direction === "next" && (spread === 0 || spread < pageCount)) {
+      setSpread((current) => current === 0 ? 1 : current + 1);
+    }
+    if (direction === "prev" && spread > 0) setSpread((current) => Math.max(0, current - 1));
   };
 
-  const canPrevious = spread > 0 || mobileSide === 1;
+  const canPrevious = opened && (spread > 0 || (isMobile && mobileSide === 1));
   const rightPageHasContent = spread === 0 || rightItems.length > 0;
-  const canNext = spread === 0
-    ? true
-    : mobileSide === 0
-      ? rightPageHasContent
-      : spread < pageCount;
+  const canNext = opened && (
+    isMobile
+      ? (mobileSide === 0 ? rightPageHasContent : spread === 0 || spread < pageCount)
+      : spread === 0 || spread < pageCount
+  );
 
   const leftPage = spread === 0 ? (
     <>
@@ -346,10 +377,12 @@ export default function CompendiumPage() {
       canPrevious={canPrevious}
       canNext={canNext}
       onTurn={turn}
-      onFilters={() => { setDraftFilters({ ...filters }); setFiltersOpen(true); }}
+      closed={!opened}
+      onOpen={openBook}
+      onFilters={opened ? () => { setDraftFilters({ ...filters }); setFiltersOpen(true); } : undefined}
       filterLabel={activeFilterCount(filters) ? `Filters (${activeFilterCount(filters)})` : "Search & Filters"}
     >
-      {filtersOpen && (
+      {opened && filtersOpen && (
         <div className="compendium-filter-overlay" onMouseDown={(event) => { if (event.currentTarget === event.target) setFiltersOpen(false); }}>
           <div className="compendium-filter-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
