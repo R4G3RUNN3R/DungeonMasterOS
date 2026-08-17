@@ -1,0 +1,91 @@
+{
+  "id": "well-what-now",
+  "title": "Well, what now?",
+  "researchStatus": "partial-source-extraction",
+  "sourceRuleset": "system-neutral",
+  "dmosLevelConversion": {
+    "status": "pending",
+    "reason": "The source listing specifies no D&D level. Full encounter extraction and conversion QA are required first."
+  },
+  "hardCanon": [
+    "The party begins while escorting a merchant and the merchant's goods.",
+    "At night the merchant is dragged into a mysterious well.",
+    "The party descends into the well to rescue the merchant.",
+    "The dungeon below is a twisting maze of caves containing strange creatures.",
+    "The AI DM must not invent permanent cave topology before the source map is extracted."
+  ],
+  "scenes": [
+    {
+      "id": "opening-merchant-abduction",
+      "title": "The Merchant Vanishes",
+      "location": "surface-well",
+      "status": "source-supported",
+      "requiredFacts": [
+        "The party is travelling with a merchant and goods.",
+        "The event occurs at night.",
+        "The merchant is dragged into the well.",
+        "The rescue objective leads into the cave maze."
+      ],
+      "suggestedChoices": [
+        {
+          "id": "choice-descend",
+          "label": "Descend into the well immediately",
+          "classification": "Direct source-supported progression",
+          "outcome": "Proceed toward the cave complex; exact descent node pending map extraction."
+        },
+        {
+          "id": "choice-investigate-well",
+          "label": "Inspect the well for clues before descending",
+          "classification": "DMOS free-form-compatible investigation",
+          "outcome": "Allow plausible observation without inventing source clues; full clue list pending."
+        },
+        {
+          "id": "choice-secure-goods",
+          "label": "Secure the merchant's goods first",
+          "classification": "DMOS sensible-action suggestion based on confirmed goods",
+          "outcome": "Resolve logistics without assigning source-defined treasure or changing the rescue objective."
+        },
+        {
+          "id": "choice-call-out",
+          "label": "Call down into the well and listen for a response",
+          "classification": "DMOS free-form-compatible action",
+          "outcome": "Do not reveal the merchant's location/captor unless supported by the extracted source."
+        }
+      ],
+      "freeTextPolicy": {
+        "allowed": true,
+        "mustPreserveHardCanon": true,
+        "mayCreateMinorDescriptiveDetails": true,
+        "mayCreatePermanentLocations": false,
+        "mayCreateMajorNPCs": false,
+        "adjudicationRule": "Permit plausible actions around the abduction and descent, but do not invent the captor, cave route, merchant fate, treasure or hidden clues."
+      }
+    }
+  ],
+  "knownEnvironmentNodes": [
+    {
+      "id": "surface-well",
+      "label": "Journey site and mysterious well",
+      "sourceResolution": "partial"
+    },
+    {
+      "id": "cave-maze",
+      "label": "Twisting cave maze",
+      "sourceResolution": "pending-full-pdf-map"
+    }
+  ],
+  "communityObservedExtractionTargets": [
+    "Maria",
+    "apron-wearing pig-man",
+    "frogs"
+  ],
+  "endings": [],
+  "blockingUnknowns": [
+    "Complete source map and cave nodes",
+    "Captors/antagonists and creature roster",
+    "Source-defined choices and consequences",
+    "Merchant state and rescue outcomes",
+    "Treasure/rewards",
+    "D&D conversion level and party-size recommendation"
+  ]
+}
