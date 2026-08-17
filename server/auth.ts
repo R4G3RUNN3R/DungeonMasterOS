@@ -128,6 +128,34 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// ── Middleware: require DungeonMaster role ──────────────────────────────────
+export function requireDungeonMaster(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({
+      message: "Sign in to continue.",
+      code: "UNAUTHENTICATED",
+    });
+  }
+  if (req.user.role !== "dungeon_master") {
+    return res.status(403).json({
+      message: "DungeonMaster access required.",
+      code: "FORBIDDEN",
+    });
+  }
+  next();
+}
+
+// ── Grant / revoke DungeonMaster role ───────────────────────────────────────
+export function grantDungeonMasterAccess(userId: number): User | undefined {
+  storage.updateUser(userId, { role: "dungeon_master" });
+  return storage.getUser(userId);
+}
+
+export function revokeDungeonMasterAccess(userId: number): User | undefined {
+  storage.updateUser(userId, { role: "player" });
+  return storage.getUser(userId);
+}
+
 // ── Middleware: require active subscription or trial ───────────────────────
 export function requireCanPlay(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
