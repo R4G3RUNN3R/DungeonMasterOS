@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-08-17
+- In-game UI redesign: added the approved immersive live-play design specification on `feature/immersive-ingame-ui-redesign`, covering the warm tavern visual system, responsive desktop/mobile shell, compact Character HUD, hybrid story chronicle, adaptive Context Panel, typing-first contextual actions, hybrid tactical combat UX, fantasy overlays, scene-background asset architecture, and licensing requirements.
+- Implementation safety: the redesign is explicitly staged so Phase 1 can replace the current gameplay shell without inventing missing rules data or conflicting with the concurrent master item compendium/inventory work.
 - Character sheet: added a dedicated read-only D&D 3.5e character sheet popup page that opens separately from the live campaign and leaves all existing campaign bars untouched.
 - Character sheet data: added `shared/dnd35-character-sheet.ts` as the canonical structured sheet contract for identity, class levels, ability scores, HP, movement, AC/touch/flat-footed AC, initiative, BAB, grapple, saves, skills, feats, special abilities, proficiencies, languages, weapons, armor, equipment, wealth, encumbrance, spellcasting, physical details, XP, backstory, contacts, enemies, and campaign notes.
 - Character sheet projection: existing preset `rulesProfile` data is used as a safe fallback while future character-creation and level-up flows can progressively fill `characterData.dnd35Sheet`; missing values remain visibly unknown instead of being invented.
