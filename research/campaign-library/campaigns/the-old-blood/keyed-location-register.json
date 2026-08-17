@@ -1,0 +1,28 @@
+{
+  "campaignId": "the-old-blood",
+  "registerVersion": 1,
+  "areas": [
+    {"id":"moorgate-sewers","name":"Moorgate Sewers","type":"sewer-sector","keys":["Overflow Gate Interior","Feral Dog Lair","Dead Smuggler","Rats Nest"]},
+    {"id":"eastward-sewers","name":"Eastward Sewers","type":"sewer-sector","keys":["Access Storage Room"]},
+    {"id":"old-docks-sewers","name":"Old Docks Sewers","type":"sewer-sector","keys":["Old Sewer Access Room","Inner Retention Basin","Aulauch Runoff Retention Basin","Alligator Lair"]},
+    {"id":"crowmarket-sewers","name":"Crowmarket Sewers","type":"sewer-sector","keys":["Victor Marlowe's Apothecary Escape Hatch","Shop Secret Door","Flooded Gateworks"]},
+    {"id":"tradesmans-sewers","name":"Tradesman's Ward Sewers","type":"sewer-sector","keys":["Tradesman Retention Basin","Blocked Passage","Tradesman Access Room","Broken Crossing"]},
+    {"id":"northgate-sewers","name":"Northgate Sewers","type":"sewer-sector","keys":["Northgate Access Room","Collapsed Sewer Cavern","Deep Pool"]},
+    {"id":"annex-sewers","name":"Annex Sewers","type":"sewer-sector","keys":["Secret Laboratory Access Hatch","Ruined Outflow Passage","Eroded Passage","Sealed Crypt","Collapsed Stair"]},
+    {"id":"catacombs-level-1","name":"Saint Arlen's Catacombs - First Level","type":"crypt-level","keys":["Spiral Staircase","Northwest Alcove","Southwest Alcove","Hallway","Locked Grate","Northeast Alcove","Southeast Alcove"]},
+    {"id":"catacombs-level-2","name":"Saint Arlen's Catacombs - Second Level","type":"crypt-level","keys":["Spiral Staircase End","Northwest Chamber","Northeast Chamber","Crowded Vault","Southern Tomb","Collapsed Hall","Ancient Stairs"]},
+    {"id":"catacombs-level-3","name":"Saint Arlen's Catacombs - Third Level","type":"crypt-level","keys":["Ancient Hallway","Large Pool","Chitinous Structure","Bleeding Stones","Ghoul Nest","Tunnel End"]},
+    {"id":"ruins-floor-1","name":"Ruins of Edric von Braech's Keep - First Floor","type":"ruin-floor","keys":["Entryway","Throne Room","Larder","Kitchen","Collapsed Priests Quarters","Chapel","Storeroom","Servants Quarters","Armory","Hidden Stairway","Guardroom","Tower Stairwell"]},
+    {"id":"ruins-floor-2","name":"Ruins of Edric von Braech's Keep - Second Floor","type":"ruin-floor","keys":["Tower Stairwell","Guest Room","Parlor","Library","Bat Roost","Noble Quarters","Wardrobe","Collapsed Strongroom"]},
+    {"id":"secret-dungeon","name":"Secret Dungeon beneath the Ruins","type":"dungeon","keys":["Stairway","Prisoner Cell 2","Prisoner Cell 3","Prisoner Cell 4","Partially Collapsed Cell","Torture Chamber","Holding Cell","Collapsed Ritual Chamber","Collapsed Hall","Prisoner Cell 10","Prisoner Cell 11","Prisoner Cell 12","The Forgotten's Cell","Prisoner Cell 14","Unused Cell","Shrine Stairway"],"specialRules":["The hidden door in the Unused Cell is source-triggered through a wall-manacle/lever mechanism."]},
+    {"id":"flooded-shrine","name":"Flooded Shrine","type":"alien-depths","keys":["Flooded Corridor","Flooded Shrine"],"specialRules":["Submerged access and water state matter.","This is the deeper causal location and remains unresolved if Victor/Edric alone are defeated."]}
+  ],
+  "criticalSourceLinks": {
+    "bloodRiteLocation": "Ruins second-floor Library",
+    "edricInitialLocation": "Sealed Crypt",
+    "victorEscapeTarget": "Ruined Outflow Passage",
+    "victorWrongTurn": "Eroded Passage -> Sealed Crypt",
+    "edricPostAwakeningRefuge": "Saint Arlen's Catacombs"
+  },
+  "policy": "This register fixes source topology/key identities for AI-DM use. Exact map coordinates, corridor geometry and native creature mechanics remain separate concerns and may not be invented from this register alone."
+}
