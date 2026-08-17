@@ -1,14 +1,15 @@
 {
+  "$schema": "../../_templates/campaign-template-v2.schema.json",
   "id": "the-old-blood",
   "title": "The Old Blood",
-  "version": "0.9.0",
+  "version": "1.0-dmos",
   "status": "qa",
   "rules": {
     "nativeRuleset": "Shadowdark RPG",
     "nativeEdition": null,
     "rulesFamily": "OSR",
     "progressionModel": "levels",
-    "startingProgression": "1-2",
+    "startingProgression": "Levels 1-2",
     "endingProgression": null,
     "recommendedGroupMin": null,
     "recommendedGroupMax": null,
@@ -19,19 +20,19 @@
         "ruleset": "Shadowdark RPG",
         "edition": null,
         "supportLevel": "native",
-        "progressionRecommendation": "Experienced characters at levels 1-2 as specified by the creator.",
+        "progressionRecommendation": "Experienced characters at levels 1-2, as stated by the creator.",
         "groupRecommendation": null,
-        "conversionNotes": "Use an authorised Shadowdark rules source/adapter for system mechanics and stat blocks.",
-        "validationSource": "https://doomedzone.itch.io/the-old-blood"
+        "conversionNotes": "Use an authorised Shadowdark rules adapter for native mechanics and stat blocks.",
+        "validationSource": "Doomed Zone creator release"
       },
       {
         "ruleset": "OSR-style fantasy systems",
         "edition": null,
         "supportLevel": "direct-compatible",
-        "progressionRecommendation": "Low-level party equivalent to Shadowdark levels 1-2; exact conversion must be supplied by the selected rules adapter.",
+        "progressionRecommendation": "Low-level equivalent to Shadowdark levels 1-2; exact numerical conversion remains rules-adapter specific.",
         "groupRecommendation": null,
-        "conversionNotes": "Creator explicitly states compatibility with any OSR-style system, but creature/stat translation remains ruleset-specific.",
-        "validationSource": "https://doomedzone.itch.io/the-old-blood"
+        "conversionNotes": "Creator explicitly supports OSR-style systems; DMOS must not silently treat Shadowdark mechanics as system-neutral.",
+        "validationSource": "Doomed Zone creator release"
       }
     ]
   },
@@ -41,120 +42,167 @@
     "author": "Doomed Zone",
     "publisher": "Doomed Zone",
     "primaryUrl": "https://doomedzone.itch.io/the-old-blood",
-    "sourceIcon": "external-source",
-    "licence": "CC0 1.0 for original writing, layout and design; referenced mechanics/third-party material separately licensed",
+    "sourceIcon": "itch.io",
+    "licence": "CC0 1.0 for original writing, layout and design; referenced Shadowdark mechanics and third-party material separately licensed",
     "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
     "adaptationAllowed": true,
     "commercialUseAllowed": true,
     "redistributionAllowed": true,
     "shareAlike": false,
-    "attributionText": "The Old Blood by Doomed Zone. Original campaign content released under CC0; DungeonMasterOS credits the creator for provenance even though attribution is not legally required.",
+    "attributionText": "The Old Blood by Doomed Zone. Original campaign content released under CC0; DungeonMasterOS credits the creator for provenance.",
     "disposition": "built-in",
     "verifiedAt": "2026-08-17"
   },
   "playerMetadata": {
-    "pitch": "Two blood-drained bodies revive the legend of Brannam's dead vampire tyrant. Investigate a dying city where the obvious monster may not be the killer, and where solving the murders may still leave something far older beneath your feet.",
-    "genres": ["gothic horror", "vampire horror", "mystery", "investigation", "dark fantasy"],
+    "pitch": "Two blood-drained bodies revive the legend of Brannam's dead vampire tyrant. Investigate a collapsing city where the obvious monster may not be the killer, and where solving the murders may still leave something older beneath the streets.",
+    "genres": ["gothic horror", "vampire horror", "mystery", "investigation", "dark fantasy", "city sandbox"],
     "themes": ["grief", "decay", "misdirection", "civic collapse", "sacrifice", "alien corruption", "consequence"],
     "tone": ["bleak", "investigative", "oppressive", "morally difficult"],
     "setting": "Brannam, a decaying former trade city on the Aulach River",
     "structure": "sandbox",
-    "contentWarnings": ["murder", "blood", "undead", "grief and corpse exhumation", "human sacrifice", "body/alien horror", "civic violence"]
+    "contentWarnings": ["murder", "blood", "undead", "corpse exhumation", "human sacrifice", "body horror", "civic violence"]
   },
   "canon": {
     "hard": [
-      {"id": "killer", "rule": "Victor Marlowe committed the initial murders of Marya Dolen and Harrin Velth; Edric did not.", "sourceRef": "canon.md"},
-      {"id": "edric-start", "rule": "Edric begins dormant in the Sealed Crypt unless campaign state explicitly says otherwise.", "sourceRef": "canon.md"},
-      {"id": "evelyn", "rule": "Evelyn Marlowe died before the campaign and Victor exhumed her body for his hidden laboratory.", "sourceRef": "canon.md"},
-      {"id": "shrine", "rule": "The Flooded Shrine is an ancient alien biological device associated with the King Below and is the deeper corrupting influence.", "sourceRef": "canon.md"},
-      {"id": "no-easy-restoration", "rule": "Stopping Victor or Edric does not automatically restore Brannam.", "sourceRef": "canon.md"},
-      {"id": "blood-cost", "rule": "Restoring Brannam through the Sacrificial Blood Rite carries recurring annual human sacrifice and alien-mark consequences.", "sourceRef": "canon.md"}
+      {"id": "initial-killer", "rule": "Victor Marlowe committed the initial murders of Marya Dolen and Harrin Velth. Edric did not.", "sourceRef": "source-verification.md"},
+      {"id": "edric-dormant", "rule": "Edric von Braech begins dormant in the Sealed Crypt until that location is breached.", "sourceRef": "source-verification.md"},
+      {"id": "evelyn", "rule": "Evelyn Marlowe died before the campaign; Victor exhumed her body and moved it to his Secret Laboratory.", "sourceRef": "npcs.md"},
+      {"id": "shrine-cause", "rule": "The Flooded Shrine is the deeper alien/biological corrupting influence associated with the King Below.", "sourceRef": "source-verification.md"},
+      {"id": "partial-victory", "rule": "Stopping Victor or Edric does not automatically restore Brannam or destroy the Flooded Shrine.", "sourceRef": "canon.md"},
+      {"id": "blood-rite-cost", "rule": "The Sacrificial Blood Rite can restore Brannam's prosperity trajectory only with recurring annual sacrifice and alien consequences for the ritual leader.", "sourceRef": "source-verification.md"},
+      {"id": "blood-rite-location", "rule": "The surviving Blood Rite instructions are found in an intact book in the second-floor Library of Edric's Ruins.", "sourceRef": "source-verification.md"}
     ],
     "conditional": [
-      {"id": "wake-edric", "rule": "Breaching the Sealed Crypt wakes Edric in a weakened state.", "condition": {"type": "custom", "key": "sealedCryptBreached", "operator": "equals", "value": true}, "sourceRef": "canon.md"},
-      {"id": "edric-catacombs", "rule": "If awakened and not immediately destroyed/contained, Edric seeks refuge in Saint Arlen's Catacombs and begins feeding.", "condition": {"type": "custom", "key": "edricState", "operator": "equals", "value": "awakened-weakened"}, "sourceRef": "canon.md"},
-      {"id": "shrine-destroyed", "rule": "Destroying the Flooded Shrine ends its local influence but leaves Brannam materially decayed.", "condition": {"type": "custom", "key": "shrineState", "operator": "equals", "value": "destroyed"}, "sourceRef": "canon.md"}
+      {"id": "wake-edric", "rule": "Breaching the Sealed Crypt wakes Edric in a weakened state.", "condition": {"type": "custom", "key": "sealedCryptBreached", "operator": "==", "value": true}, "sourceRef": "story-graph.json"},
+      {"id": "edric-refuge", "rule": "If awakened and not immediately destroyed or contained, Edric seeks refuge in Saint Arlen's Catacombs and begins feeding to restore himself.", "condition": {"type": "custom", "key": "edricState", "operator": "==", "value": "awakened-weakened"}, "sourceRef": "story-graph.json"},
+      {"id": "shrine-destroyed", "rule": "Destroying the Flooded Shrine ends its local influence but does not repair Brannam's material decay.", "condition": {"type": "custom", "key": "shrineState", "operator": "==", "value": "destroyed"}, "sourceRef": "story-graph.json"}
     ],
     "soft": [
-      {"id": "city-flavour", "rule": "Minor residents, ordinary shops and street-level details may be improvised consistently within the established district character.", "sourceRef": "canon.md"}
+      {"id": "city-flavour", "rule": "Minor residents, ordinary shops, street details and incidental dialogue may be improvised within each established district without changing named NPC knowledge or keyed clues.", "sourceRef": "canon.md"}
     ],
     "freeImprovisation": [
-      {"id": "dialogue", "rule": "Exact dialogue, weather, food, minor possessions and non-plot ordinary residents may be improvised so long as knowledge boundaries and campaign state remain intact.", "sourceRef": "canon.md"}
+      {"id": "free-action", "rule": "Players may pursue any plausible investigation, traversal, social or combat action. The AI resolves it against current campaign state rather than forcing scene order.", "sourceRef": "story-graph.json"}
     ]
   },
   "locations": [
-    {"id": "brannam", "name": "Brannam", "type": "city", "parentId": null, "description": "A dying former trade city on the Aulach River.", "connections": ["eastward", "crowmarket", "tradesmans-ward", "gardenrow", "annex", "highroad", "northgate", "rivermill", "old-docks", "moorgate", "graveyard", "sewers", "edric-ruins"], "secrets": [], "sourceRefs": ["locations.md"]},
-    {"id": "eastward", "name": "Eastward", "type": "inhabited district", "parentId": "brannam", "description": "The densest remaining residential/civic district.", "connections": ["crowmarket", "gardenrow", "graveyard"], "secrets": [], "sourceRefs": ["locations.md"]},
-    {"id": "crowmarket", "name": "Crowmarket", "type": "market district", "parentId": "brannam", "description": "Brannam's last major commercial centre.", "connections": ["eastward", "tradesmans-ward", "northgate", "sewers"], "secrets": ["Victor's apothecary has concealed sewer access."], "sourceRefs": ["locations.md"]},
-    {"id": "tradesmans-ward", "name": "Tradesman's Ward", "type": "working district", "parentId": "brannam", "description": "Craftspeople and remaining guild activity provide distributed evidence about Victor's purchases.", "connections": ["crowmarket"], "secrets": [], "sourceRefs": ["locations.md"]},
-    {"id": "gardenrow", "name": "Gardenrow", "type": "decayed aristocratic district", "parentId": "brannam", "description": "Overgrown estates surrounding Saint Arlen's Chapel.", "connections": ["eastward", "saint-arlens-chapel", "catacombs"], "secrets": [], "sourceRefs": ["locations.md"]},
-    {"id": "graveyard", "name": "The Graveyard", "type": "cemetery", "parentId": "brannam", "description": "Burial ground containing the recent murder victims and Evelyn Marlowe's emptied grave.", "connections": ["eastward"], "secrets": ["Evelyn's grave is empty."], "sourceRefs": ["locations.md"]},
-    {"id": "annex", "name": "The Annex", "type": "abandoned district", "parentId": "brannam", "description": "Mostly abandoned district hiding Victor's Secret Laboratory.", "connections": ["sewers", "secret-laboratory"], "secrets": ["Victor operates a hidden laboratory here."], "sourceRefs": ["locations.md"]},
-    {"id": "secret-laboratory", "name": "Victor's Secret Laboratory", "type": "hidden laboratory", "parentId": "annex", "description": "Victor's concealed blood-research site.", "connections": ["annex", "sewers"], "secrets": ["Evelyn's body is here.", "Victor's notes mention a Voice from Below."], "sourceRefs": ["locations.md"]},
-    {"id": "highroad", "name": "Highroad", "type": "abandoned commercial district", "parentId": "brannam", "description": "Ruined former trade artery containing smuggler activity.", "connections": ["brannam", "sewers"], "secrets": [], "sourceRefs": ["locations.md"]},
-    {"id": "northgate", "name": "Northgate", "type": "abandoned district", "parentId": "brannam", "description": "Contains the derelict residence Victor used while killing/draining the initial victims.", "connections": ["crowmarket"], "secrets": ["Initial murder processing site."], "sourceRefs": ["locations.md"]},
-    {"id": "sewers", "name": "Brannam Sewers", "type": "dungeon network", "parentId": "brannam", "description": "Flooded, collapsed undercity routes connecting hidden sites and older foundations.", "connections": ["crowmarket", "secret-laboratory", "sealed-crypt", "ancient-depths"], "secrets": ["King Below carvings and older alien influence occur below later city infrastructure."], "sourceRefs": ["locations.md"]},
-    {"id": "sealed-crypt", "name": "Sealed Crypt of von Braech", "type": "crypt", "parentId": "edric-ruins", "description": "Edric's dormant resting place, later breached by sewer erosion.", "connections": ["sewers", "edric-ruins"], "secrets": ["Edric begins dormant here."], "sourceRefs": ["locations.md"]},
-    {"id": "saint-arlens-chapel", "name": "Saint Arlen's Chapel", "type": "chapel", "parentId": "gardenrow", "description": "A crumbling sanctuary and access point to the Catacombs.", "connections": ["gardenrow", "catacombs"], "secrets": ["Clergy traditions preserve hints of pre-Edric blood worship."], "sourceRefs": ["locations.md"]},
-    {"id": "catacombs", "name": "Saint Arlen's Catacombs", "type": "multi-level crypt dungeon", "parentId": "saint-arlens-chapel", "description": "Prominent burials above increasingly ancient and alien lower passages.", "connections": ["saint-arlens-chapel", "ancient-depths"], "secrets": ["Edric relocates here if awakened and not stopped."], "sourceRefs": ["locations.md"]},
-    {"id": "edric-ruins", "name": "Ruins of Edric von Braech's Keep", "type": "ruined fortress dungeon", "parentId": "brannam", "description": "Ruins preserving Edric's history, relics and hidden routes.", "connections": ["brannam", "sealed-crypt", "ancient-depths"], "secrets": ["Historical records/relics can point toward the blood rites and deeper shrine."], "sourceRefs": ["locations.md"]},
-    {"id": "ancient-depths", "name": "Ancient Depths", "type": "alien understructure", "parentId": null, "description": "Pre-human/alien passages beneath the later city and catacombs.", "connections": ["catacombs", "sewers", "edric-ruins", "flooded-shrine"], "secrets": ["The Flooded Shrine lies deeper."], "sourceRefs": ["locations.md"]},
-    {"id": "flooded-shrine", "name": "The Flooded Shrine", "type": "alien biological device", "parentId": "ancient-depths", "description": "The deeper source of psychic corruption tied to the King Below.", "connections": ["ancient-depths"], "secrets": ["Its true purpose is not humanly comprehensible."], "sourceRefs": ["locations.md"]}
+    {"id": "brannam", "name": "Brannam", "type": "city", "parentId": null, "description": "Decaying former trade city and investigation hub.", "connections": ["sewers", "graveyard", "catacombs", "edric-ruins"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "sewers", "name": "Brannam Sewers", "type": "dungeon-network", "parentId": "brannam", "description": "Six keyed sewer sectors connecting Victor's hidden routes, civic infrastructure and the Sealed Crypt.", "connections": ["sealed-crypt", "secret-laboratory"], "secrets": ["Victor uses concealed sewer access.", "King Below signs appear in older/deeper infrastructure."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "secret-laboratory", "name": "Victor's Secret Laboratory", "type": "hidden-laboratory", "parentId": "brannam", "description": "Victor's hidden blood-research site containing Evelyn's body, moved equipment and notes about the Voice from Below.", "connections": ["sewers"], "secrets": ["Victor exhumed Evelyn.", "The Voice from Below influenced his work."], "sourceRefs": ["locations.md"]},
+    {"id": "sealed-crypt", "name": "Sealed Crypt of von Braech", "type": "crypt", "parentId": "sewers", "description": "Edric's dormant resting place, exposed through erosion and collapse.", "connections": ["sewers", "edric-ruins"], "secrets": ["Breaching this location wakes Edric."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "catacombs", "name": "Saint Arlen's Catacombs", "type": "multi-level-crypt", "parentId": "brannam", "description": "Three keyed levels descending from civic religion into older alien structures.", "connections": ["ancient-depths"], "secrets": ["Edric uses the Catacombs as refuge after awakening if he survives."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "edric-ruins", "name": "Ruins of Edric von Braech's Keep", "type": "ruined-fortress", "parentId": "brannam", "description": "Two keyed ruin floors plus a sixteen-room secret dungeon preserving Edric's history and ritual knowledge.", "connections": ["secret-dungeon", "sealed-crypt"], "secrets": ["The Blood Rite instructions are in the second-floor Library."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "secret-dungeon", "name": "Secret Dungeon beneath the Ruins", "type": "dungeon", "parentId": "edric-ruins", "description": "Sixteen keyed rooms including The Forgotten's cell and the route toward the Shrine.", "connections": ["flooded-shrine"], "secrets": ["The Unused Cell contains a source-defined hidden-door mechanism."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "flooded-shrine", "name": "Flooded Shrine", "type": "alien-depths", "parentId": "secret-dungeon", "description": "Flooded corridor and alien biological shrine tied to the King Below.", "connections": [], "secrets": ["Its deeper purpose is not humanly comprehensible."], "sourceRefs": ["keyed-location-register.json"]},
+    {"id": "graveyard", "name": "Brannam Graveyard", "type": "cemetery", "parentId": "brannam", "description": "Contains the recent victims and Evelyn's secretly emptied grave.", "connections": [], "secrets": ["Evelyn's grave is empty."], "sourceRefs": ["locations.md"]}
   ],
   "npcs": [
-    {"id": "victor-marlowe", "name": "Victor Marlowe", "role": "alchemist / initial murderer", "locationId": "crowmarket", "factionId": "victor-operation", "publicGoal": "Serve the community as an apothecary and appear helpful during the vampire panic.", "privateGoal": "Use blood-based alchemy to restore Evelyn.", "knowledge": ["his murders", "his laboratory", "his sewer routes", "the Voice from Below as an experienced influence but not its true nature"], "secrets": ["killed Marya and Harrin", "exhumed Evelyn", "Secret Laboratory"], "sourceRefs": ["npcs.md"]},
-    {"id": "evelyn-marlowe", "name": "Evelyn Marlowe", "role": "deceased motive/evidence", "locationId": "secret-laboratory", "factionId": null, "publicGoal": null, "privateGoal": null, "knowledge": [], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "edric-von-braech", "name": "Edric von Braech", "role": "dormant vampire tyrant / conditional antagonist", "locationId": "sealed-crypt", "factionId": "edric-dominion", "publicGoal": null, "privateGoal": "Regain power, reclaim Brannam and rebuild his keep after awakening.", "knowledge": ["his own blood rites and reign", "Flooded Shrine experience"], "secrets": ["begins dormant", "relocates to Catacombs if awakened"], "sourceRefs": ["npcs.md"]},
-    {"id": "father-brenwick", "name": "Father Brenwick", "role": "priest / historical clue source", "locationId": "saint-arlens-chapel", "factionId": "saint-arlens", "publicGoal": "Protect residents and preserve the Chapel.", "privateGoal": null, "knowledge": ["Evelyn's funeral", "clergy tales of old blood worship", "catacomb danger"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "lisbet-harrow", "name": "Lisbet Harrow", "role": "chapel caretaker", "locationId": "gardenrow", "factionId": "saint-arlens", "publicGoal": "Maintain the Chapel and nearby property.", "privateGoal": null, "knowledge": ["caretaker holdings/relics"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "elana-fost", "name": "Elana Fost", "role": "mayor", "locationId": "eastward", "factionId": "brannam-authorities", "publicGoal": "Preserve civic order.", "privateGoal": null, "knowledge": ["civic facts and murder response"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "ren-halvard", "name": "Captain Ren Halvard", "role": "guard captain", "locationId": "eastward", "factionId": "brannam-authorities", "publicGoal": "Maintain order and investigate threats.", "privateGoal": null, "knowledge": ["guard observations and public evidence"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "feyra-lrowyn", "name": "Feyra Lrowyn", "role": "bard / historian", "locationId": "eastward", "factionId": null, "publicGoal": "Perform and share regional stories.", "privateGoal": null, "knowledge": ["Brannam history", "King Below / Flooded Shrine tale when asked from an earned lead"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "devin-crowl", "name": "Devin Crowl", "role": "smuggler contact", "locationId": "highroad", "factionId": "smugglers", "publicGoal": "Protect smuggling interests.", "privateGoal": null, "knowledge": ["smuggling routes and network"], "secrets": [], "sourceRefs": ["npcs.md"]},
-    {"id": "the-forgotten", "name": "The Forgotten", "role": "independent undead threat", "locationId": null, "factionId": null, "publicGoal": null, "privateGoal": "Feed/survive in madness.", "knowledge": [], "secrets": ["was turned by Edric but is not reliably controlled by him"], "sourceRefs": ["npcs.md"]}
+    {"id": "victor", "name": "Victor Marlowe", "role": "alchemist / initial murderer", "locationId": "brannam", "factionId": "victor-operation", "publicGoal": "Appear helpful and preserve his standing as Brannam's apothecary.", "privateGoal": "Restore Evelyn through blood-based alchemy while rationalising the Voice from Below.", "knowledge": ["his murders", "his Secret Laboratory", "his sewer routes", "his own experience of the Voice from Below"], "secrets": ["killed Marya and Harrin", "exhumed Evelyn"], "sourceRefs": ["npcs.md"]},
+    {"id": "evelyn", "name": "Evelyn Marlowe", "role": "deceased motive / evidence", "locationId": "secret-laboratory", "factionId": null, "publicGoal": null, "privateGoal": null, "knowledge": [], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "edric", "name": "Edric von Braech", "role": "dormant vampire tyrant / conditional antagonist", "locationId": "sealed-crypt", "factionId": "edric-dominion", "publicGoal": null, "privateGoal": "After awakening, survive, feed, regain power and reclaim Brannam.", "knowledge": ["his reign", "his blood rites", "his experience with the Flooded Shrine"], "secrets": ["begins dormant", "can become a regional threat if ignored"], "sourceRefs": ["npcs.md"]},
+    {"id": "forgotten", "name": "The Forgotten", "role": "independent vampire/undead threat", "locationId": "secret-dungeon", "factionId": null, "publicGoal": null, "privateGoal": "Survive/feed according to source state.", "knowledge": ["its own history with Edric"], "secrets": ["not reliably controlled by Edric"], "sourceRefs": ["npcs.md"]},
+    {"id": "brenwick", "name": "Father Brenwick", "role": "priest / historical clue source", "locationId": "brannam", "factionId": "saint-arlens", "publicGoal": "Protect frightened residents and the Chapel.", "privateGoal": null, "knowledge": ["Evelyn's funeral", "old blood-worship stories", "Catacomb danger"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "feyra", "name": "Feyra Lrowyn", "role": "bard / historian", "locationId": "brannam", "factionId": null, "publicGoal": "Preserve and share regional history.", "privateGoal": null, "knowledge": ["Brannam history", "King Below / Flooded Shrine tale when appropriately prompted"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "elana", "name": "Elana Fost", "role": "mayor", "locationId": "brannam", "factionId": "brannam-authorities", "publicGoal": "Preserve civic order.", "privateGoal": null, "knowledge": ["civic facts", "murder response"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "halvard", "name": "Captain Ren Halvard", "role": "guard captain", "locationId": "brannam", "factionId": "brannam-authorities", "publicGoal": "Maintain order with inadequate resources.", "privateGoal": null, "knowledge": ["guard activity", "public murder evidence"], "secrets": [], "sourceRefs": ["npcs.md"]}
   ],
   "factions": [
-    {"id": "brannam-residents", "name": "Brannam Residents", "goals": ["survive", "understand the murders", "protect homes or flee as panic rises"], "sourceRefs": ["factions.md"]},
-    {"id": "brannam-authorities", "name": "Brannam Authorities and Guards", "goals": ["preserve civic order", "respond to murders", "enforce curfew as panic rises"], "sourceRefs": ["factions.md"]},
-    {"id": "saint-arlens", "name": "Saint Arlen's Chapel", "goals": ["shelter residents", "preserve sacred order", "restrict unsafe lower crypt access"], "sourceRefs": ["factions.md"]},
-    {"id": "smugglers", "name": "Brannam Smugglers", "goals": ["protect illicit trade and routes", "avoid unwanted official attention"], "sourceRefs": ["factions.md"]},
-    {"id": "victor-operation", "name": "Victor's Hidden Operation", "goals": ["obtain blood", "restore Evelyn", "avoid discovery"], "sourceRefs": ["factions.md"]},
-    {"id": "edric-dominion", "name": "Edric's Returning Dominion", "goals": ["restore Edric", "reclaim Brannam", "rebuild the keep"], "sourceRefs": ["factions.md"]}
+    {"id": "brannam-authorities", "name": "Brannam authorities and guards", "goals": ["Maintain order", "Stop killings", "Prevent panic"], "sourceRefs": ["factions.md"]},
+    {"id": "victor-operation", "name": "Victor's hidden operation", "goals": ["Continue blood research", "Avoid discovery", "Restore Evelyn"], "sourceRefs": ["factions.md"]},
+    {"id": "edric-dominion", "name": "Edric's returning dominion", "goals": ["Restore Edric", "Reclaim Brannam if he survives long enough"], "sourceRefs": ["factions.md"]},
+    {"id": "saint-arlens", "name": "Saint Arlen's Chapel", "goals": ["Protect residents", "Preserve sacred order"], "sourceRefs": ["factions.md"]}
   ],
   "items": [
-    {"id": "whispering-blade-of-blood", "name": "Whispering Blade of Blood", "plotCritical": false, "sourceRef": "items-rewards.md"},
-    {"id": "ceremonial-chalice", "name": "Ceremonial Chalice of Saint Arlen", "plotCritical": false, "sourceRef": "items-rewards.md"},
-    {"id": "victor-notes", "name": "Victor Marlowe's Notes", "plotCritical": true, "sourceRef": "items-rewards.md"},
-    {"id": "distillation-coil", "name": "Victor's Distillation Coil", "plotCritical": false, "sourceRef": "items-rewards.md"},
-    {"id": "ritual-dagger", "name": "Victor's Ritual Dagger", "plotCritical": false, "sourceRef": "items-rewards.md"},
-    {"id": "sealed-ledger", "name": "Sealed Ledger", "plotCritical": false, "sourceRef": "items-rewards.md"},
-    {"id": "blood-rite-record", "name": "Sacrificial Blood Rite Record", "plotCritical": true, "sourceRef": "items-rewards.md"}
+    {"id": "victor-notes", "name": "Victor's notes", "plotCritical": true, "locationId": "secret-laboratory", "sourceRef": "items-rewards.md"},
+    {"id": "evelyn-body", "name": "Evelyn Marlowe's body", "plotCritical": true, "locationId": "secret-laboratory", "sourceRef": "items-rewards.md"},
+    {"id": "blood-rite-book", "name": "Blood Rite instructions", "plotCritical": true, "locationId": "edric-ruins", "sourceRef": "source-verification.md"},
+    {"id": "whispering-blade", "name": "Whispering Blade of Blood", "plotCritical": false, "locationId": "sealed-crypt", "sourceRef": "source-verification.md"},
+    {"id": "sealed-ledger", "name": "Sealed Ledger", "plotCritical": false, "sourceRef": "items-rewards.md"}
   ],
   "clocks": [
-    {"id": "brannam-collapse", "name": "Brannam Collapse", "segments": 6, "current": 2, "advanceRule": "Advance with source murder totals and decay events; consequences change civic behaviour.", "effects": ["rumours/patrols", "curfew/families flee", "mobs/shops close", "civic fracture", "severe decay", "collapse"]},
-    {"id": "edric-restoration", "name": "Edric's Return", "segments": 6, "current": 0, "advanceRule": "Only after awakening; successful feedings advance and trigger Heralds of Return.", "effects": ["midnight bell", "howling dogs", "cold/candles", "weeping images", "drained sleepers", "raven flocks/restoration"]}
+    {"id": "collapse", "name": "Brannam Collapse", "segments": 6, "current": 2, "advanceRule": "Advance according to source murder totals and decay events rather than simply because scenes pass.", "effects": ["panic and patrols", "curfew and departures", "mobs and closures", "civic fracture", "severe decay", "effective civic collapse"]},
+    {"id": "edric-restoration", "name": "Edric's Return", "segments": 6, "current": 0, "advanceRule": "Advance only after Edric awakens and successfully feeds.", "effects": ["increasing supernatural heralds", "greater restoration", "eventual regional tyrant state"]}
   ],
   "scenes": [
-    {"id": "graph-reference", "title": "Executable campaign scenes", "locationId": "brannam", "entryConditions": [], "requiredFacts": ["Full scene graph is stored in story-graph.json and is part of this template package."], "hiddenFacts": [], "choices": [], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use story-graph.json as the authoritative scene/choice/state-transition graph.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}
+    {
+      "id": "arrival",
+      "title": "A City Waiting to Die",
+      "locationId": "brannam",
+      "entryConditions": [],
+      "requiredFacts": ["Marya Dolen and Harrin Velth were found blood-drained with puncture-like wounds.", "Residents revive stories of Edric von Braech.", "Victor is the true initial killer but that is hidden."],
+      "hiddenFacts": ["Victor killed the victims", "Edric is dormant", "The Flooded Shrine is influencing Victor"],
+      "choices": [{"label":"Question residents and gather rumours"},{"label":"Go to the Graveyard"},{"label":"Seek the mayor or guards"},{"label":"Find someone who knows Brannam's history"}],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Allow any plausible investigation or departure. Do not reveal Victor or the Shrine without earned evidence.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    },
+    {
+      "id": "open-investigation",
+      "title": "Overlapping Clues and Bad Explanations",
+      "locationId": "brannam",
+      "entryConditions": [],
+      "requiredFacts": ["The investigation has multiple clue routes through residents, merchants, graves, Victor's sites, sewers and history."],
+      "hiddenFacts": ["Rumours may be false or partially true."],
+      "choices": [{"label":"Consult Victor Marlowe"},{"label":"Question merchants and tradespeople"},{"label":"Investigate Saint Arlen's Chapel"},{"label":"Trace the victims' movements"},{"label":"Enter the Sewers"}],
+      "suggestedChoiceCount": 5,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Route free-form investigation to the actual location/NPC implicated by the player's method. Missing one clue never rewrites campaign truth.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    },
+    {
+      "id": "victor-exposed",
+      "title": "Victor Runs or Falls",
+      "locationId": "sewers",
+      "entryConditions": [{"type": "custom", "key": "victorExposed", "operator": "==", "value": true}],
+      "requiredFacts": ["Victor can be captured or killed before reaching Edric.", "If he flees successfully he tries to escape Brannam but may take the wrong route into the Sealed Crypt."],
+      "hiddenFacts": ["Entering the Sealed Crypt awakens Edric."],
+      "choices": [{"label":"Pursue through the Sewers"},{"label":"Cut off the Ruined Outflow Passage"},{"label":"Try to capture him rather than kill him"},{"label":"Let him run and secure the evidence"}],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Do not force the source chase outcome. Victor may be stopped, escape Brannam, or wake Edric depending on actual play.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json", "keyed-location-register.json"]
+    },
+    {
+      "id": "edric-awakened",
+      "title": "The Tyrant Wakes",
+      "locationId": "sealed-crypt",
+      "entryConditions": [{"type": "custom", "key": "sealedCryptBreached", "operator": "==", "value": true}],
+      "requiredFacts": ["Edric wakes weakened, not fully restored.", "If he survives he seeks refuge in the Catacombs and feeds to regain power."],
+      "hiddenFacts": [],
+      "choices": [{"label":"Fight or contain Edric now"},{"label":"Track him toward the Catacombs"},{"label":"Retreat and warn Brannam"},{"label":"Investigate what else the Crypt reveals"}],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use current Edric state and authorised Shadowdark rules. Do not reset him to dormant after escape.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["story-graph.json"]
+    },
+    {
+      "id": "deep-truth",
+      "title": "Below the Human Ruins",
+      "locationId": "flooded-shrine",
+      "entryConditions": [],
+      "requiredFacts": ["The Shrine is the deeper alien influence.", "Destroying it and restoring Brannam through the Blood Rite are materially different choices."],
+      "hiddenFacts": ["The Blood Rite demands recurring annual sacrifice and marks the ritual leader with alien consequences."],
+      "choices": [{"label":"Destroy the Flooded Shrine"},{"label":"Withdraw and leave it intact"},{"label":"Use discovered Blood Rite knowledge"},{"label":"Study the structure before deciding"}],
+      "suggestedChoiceCount": 4,
+      "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Preserve the moral and causal distinction between destroying influence, restoring prosperity through sacrifice, and leaving the Shrine intact.", "mayCreateMinorDetails": false, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false},
+      "sourceRefs": ["source-verification.md", "story-graph.json"]
+    }
   ],
   "endings": [
-    {"id": "partial-victory", "title": "Murders End, Brannam Endures", "conditions": [], "summary": "Immediate killer/threat stopped while the deeper Shrine remains unresolved.", "sourceRefs": ["story-graph.json"]},
-    {"id": "shrine-destroyed", "title": "Cut the Root", "conditions": [], "summary": "Flooded Shrine destroyed; influence ends but Brannam remains decayed.", "sourceRefs": ["story-graph.json"]},
-    {"id": "blood-rite", "title": "Prosperity Has a Price", "conditions": [], "summary": "Annual sacrifice restores prosperity while continuing the alien bargain.", "sourceRefs": ["story-graph.json"]},
-    {"id": "edric-restored", "title": "The Tyrant Returns", "conditions": [], "summary": "Unresolved Edric restores himself and turns Brannam into a base of regional predation.", "sourceRefs": ["story-graph.json"]},
-    {"id": "brannam-collapse", "title": "A City Finally Dies", "conditions": [], "summary": "Civic collapse reaches its terminal state while major threats remain unresolved.", "sourceRefs": ["story-graph.json"]}
+    {"id": "victor-stopped", "title": "The Murders Stop, For Now", "conditions": [{"type":"custom","key":"victorState","operator":"in","value":["dead","captured"]}], "summary": "Victor's murder series ends; Edric may remain dormant and the Flooded Shrine remains unless separately confronted.", "sourceRefs": ["story-graph.json"]},
+    {"id": "edric-defeated", "title": "The Old Tyrant Falls Again", "conditions": [{"type":"custom","key":"edricState","operator":"==","value":"destroyed"}], "summary": "Edric is destroyed, but Brannam remains decayed and the Flooded Shrine remains a separate unresolved cause unless addressed.", "sourceRefs": ["story-graph.json"]},
+    {"id": "shrine-destroyed", "title": "The Influence Ends", "conditions": [{"type":"custom","key":"shrineState","operator":"==","value":"destroyed"}], "summary": "The Shrine's local influence ends through a violent destruction sequence; Brannam is not magically restored to prosperity.", "sourceRefs": ["story-graph.json"]},
+    {"id": "blood-rite-restoration", "title": "Prosperity at a Price", "conditions": [{"type":"custom","key":"bloodRiteState","operator":"==","value":"restored"}], "summary": "Brannam can recover, but annual human sacrifice remains required and the ritual leader bears alien consequences.", "sourceRefs": ["source-verification.md"]},
+    {"id": "tyrant-returns", "title": "The Tyrant Returns", "conditions": [{"type":"custom","key":"edricRestoration","operator":">=","value":6}], "summary": "Edric restores himself, enslaves surviving Brannam residents and grows into a regional threat.", "sourceRefs": ["story-graph.json"]}
   ],
-  "communityIntelligence": [],
+  "communityIntelligence": [
+    {"finding":"No community report is allowed to change source canon; any future play reports are balance/pacing evidence only."}
+  ],
   "adaptationNotes": [
-    "No campaign-specific community actual-play evidence was verified in the current research pass.",
-    "Use redundant clue paths because the source is an open investigation, but do not add omniscient exposition.",
-    "Run murders, collapse and Edric restoration as independent clocks/state, not scripted chapters.",
-    "Suggested choices are contextual affordances only; player free text remains authoritative input.",
-    "Do not force Edric to awaken if Victor is stopped early."
+    "Use keyed-location-register.json for exact source area names and source-verification.md for the final completeness audit.",
+    "Use named-npc-register.json for the full 20-resident source table; the core template only embeds campaign-critical actors.",
+    "Exact Shadowdark stat blocks and numerical item mechanics remain in an authorised rules adapter, not in CC0 campaign data.",
+    "Free-text play may alter actor/faction/world state but may not rewrite initial killer identity, Edric's initial dormancy, Shrine causality or Blood Rite cost."
   ],
   "researchSources": [
-    {"url": "https://doomedzone.itch.io/the-old-blood", "type": "primary", "supports": "rights, ruleset, level range, module scope and core premise", "accessedAt": "2026-08-17"},
-    {"url": "https://doomed.zone/modules/old_blood/old_blood/", "type": "primary", "supports": "creator overview and structural features", "accessedAt": "2026-08-17"},
-    {"url": "https://adventurelookup.com/adventures/the-old-blood", "type": "index", "supports": "independent metadata corroboration only", "accessedAt": "2026-08-17"}
+    {"url":"https://doomedzone.itch.io/the-old-blood","type":"creator-primary","supports":"title, current release, ruleset, levels, CC0 scope"},
+    {"url":"https://doomed.zone/modules/old_blood/old_blood/","type":"creator-primary","supports":"campaign overview, three-dungeon structure, open-ended design"},
+    {"url":"https://www.scribd.com/document/939238686/old-blood","type":"indexed-text-aid","supports":"full-text key cross-check only; not licence authority"}
   ]
 }
