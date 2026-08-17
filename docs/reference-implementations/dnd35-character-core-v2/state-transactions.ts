@@ -4,7 +4,15 @@
 import type { Dnd35CharacterState, Dnd35LevelRecord } from "./domain";
 import { appendValidatedLevel } from "./creation-and-levelup";
 import { assessMulticlassXpPenalty } from "./multiclass-xp";
-import { characterLevel, derivedLandSpeed, iterativeBaseAttacks, maximumHitPoints, multiclassBaseAttack } from "./mechanics";
+import {
+  canGainAnotherLevel,
+  characterLevel,
+  derivedLandSpeed,
+  iterativeBaseAttacks,
+  maximumHitPoints,
+  multiclassBaseAttack,
+  nextLevelExperience,
+} from "./mechanics";
 import { getCoreClass } from "./classes";
 import { getCoreRace } from "./races";
 
@@ -57,8 +65,9 @@ export function projectCompatibilityFields(state: Dnd35CharacterState): Characte
 }
 
 /**
- * XP should arrive here only after the calling subsystem validates the event.
- * The `eventKey` must be persisted with a unique constraint/idempotency check in production.
+ * XP arrives here only after the caller validates the underlying challenge,
+ * roleplay beat, quest or admin event. Persist `eventKey` under a unique
+ * constraint so retries cannot duplicate awards.
  */
 export function applyValidatedXpAward(
   state: Dnd35CharacterState,
@@ -106,13 +115,22 @@ export type LevelCommitEvent = {
 
 /**
  * The level record must already contain the PLAYER'S explicit choices and HP roll.
- * This function validates and commits it. It never manufactures missing choices.
+ * The first character level is creation and requires no XP. Every later level
+ * requires the canonical state to have reached the standard threshold first.
  */
 export function commitValidatedLevel(
   state: Dnd35CharacterState,
   input: { eventKey: string; level: Dnd35LevelRecord },
 ): TransactionResult<LevelCommitEvent> {
   if (!input.eventKey.trim()) throw new Error("Level-up transaction requires a stable idempotency key.");
+
+  if (state.levels.length >= 1 && !canGainAnotherLevel(state)) {
+    throw new Error(
+      `Not enough XP to gain character level ${state.levels.length + 1}. ` +
+      `Need ${nextLevelExperience(state.levels.length)}, have ${state.experiencePoints}.`,
+    );
+  }
+
   const nextState = appendValidatedLevel(state, input.level);
   const event: LevelCommitEvent = {
     eventKey: input.eventKey,
