@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "loot-policy-v1",
+  "campaignId": "gold-in-the-hills",
+  "campaignScale": "short",
+  "nativeRuleset": "Basic Fantasy Role-Playing Game",
+  "status": "verified",
+  "coverage": {
+    "sourceLootPresent": true,
+    "sourceLootPreserved": true,
+    "tangibleRewardBeats": 5,
+    "usefulRewardBeats": 4,
+    "signatureRewardBeats": 2,
+    "sourceEvidence": ["items-rewards.md", "dmos-template.json", "sources.md"],
+    "examples": ["goblin raw-gold nuggets and new weapons", "dwarven mining automaton salvage", "Xikek's Ring of Protection +1", "Yuliak's spellbook", "chief chest containing coin and two Potions of Healing"]
+  },
+  "supplemental": {
+    "enabled": false,
+    "mode": "none",
+    "provenance": "source",
+    "rulesAdapterRequired": false,
+    "compendiumUse": "disabled",
+    "antiFarmPersistent": true,
+    "rerollOnReload": false,
+    "artifactsRandomlyAllowed": false,
+    "notes": ["The compact six-area mine already has carried loot, salvage, magic items and a trapped treasure chest."]
+  },
+  "placementPolicy": {
+    "intelligentEnemiesMayCarryLoot": true,
+    "ordinaryBeastsHavePocketLoot": false,
+    "undeadMayRetainPossessions": true,
+    "constructsMayYieldSalvage": true,
+    "hiddenCachesAllowed": true,
+    "namedEnemiesPreferDistinctivePossession": true
+  },
+  "approval": {"passesLootGate": true, "blockers": []}
+}
