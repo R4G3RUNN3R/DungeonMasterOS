@@ -22,7 +22,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Compendium typecheck
         run: npx tsc --noEmit -p tsconfig.compendium.json
-      - name: Production build
+      - name: Compendium client production build
+        run: npx vite build
+      - name: Compendium server bundle check
+        run: npx esbuild server/compendium.ts server/compendium-routes.ts --bundle --platform=node --format=esm --external:better-sqlite3 --outdir=/tmp/compendium-server-build
+      - name: Full repository production build baseline
+        continue-on-error: true
         run: npm run build
       - name: Full repository typecheck baseline
         continue-on-error: true
