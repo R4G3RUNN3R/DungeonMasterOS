@@ -1,0 +1,136 @@
+{
+  "campaignId": "merillas-magic-tower",
+  "version": 1,
+  "initialState": {
+    "hook": null,
+    "merillaState": "semi-comatose",
+    "assassins": "following-party",
+    "faerieDragon": "active",
+    "theftUnresolved": false,
+    "guardianDamage": false,
+    "merillaSaved": false,
+    "merillaKilled": false,
+    "reprisalRisk": false
+  },
+  "clocks": {
+    "assassinInfiltration": {
+      "segments": 3,
+      "rule": "Advance by significant tower disruption/ascent, not by invented minutes: following party -> using distraction -> climbing Level 5 windows -> in Merilla's chamber."
+    },
+    "merillaWake": {
+      "rule": "While the Faerie Dragon can act, use the source 5% per-round chance to wake Merilla."
+    }
+  },
+  "nodes": [
+    {
+      "id": "hook",
+      "location": "tower-exterior",
+      "truth": ["Merilla is a lawful retired hero; tower is silent; powerful items are rumoured."],
+      "choices": [
+        {"label": "Lawful investigation", "set": {"hook": "lawful-investigation"}, "next": "entry"},
+        {"label": "Private assault job", "set": {"hook": "private-assault"}, "next": "entry"},
+        {"label": "Self-directed investigation", "set": {"hook": "self-directed"}, "next": "entry"}
+      ],
+      "freeText": "Allow another source-appropriate hook and record its legal/moral authority."
+    },
+    {
+      "id": "entry",
+      "location": "tower-exterior",
+      "truth": ["East door bears runic writing; reading it triggers a 10d6 fireball, save half under native rules."],
+      "choices": [
+        {"label": "Inspect without reading", "next": "ground"},
+        {"label": "Read the runes", "event": "entry-fireball", "next": "ground"},
+        {"label": "Bypass/dispel the ward", "next": "ground"},
+        {"label": "Attempt an exterior route", "next": "ground-or-level5-by-adjudication"}
+      ],
+      "freeText": "Reading is the trigger. Exceptional climbing/flight may reach the only windows at Level 5 if the native rules support it."
+    },
+    {
+      "id": "ground",
+      "location": "ground-level",
+      "truth": ["Bronze Golem protects a 30-foot radius around itself/worktable; Carpet Trapper triggers at its centre; two Rust Monsters roam; central stairs lead up."],
+      "choices": [
+        {"label": "Avoid guardians and ascend", "next": "level2"},
+        {"label": "Search library/components", "event": "time-consuming-search", "next": "level2"},
+        {"label": "Fight/disable guardians", "set": {"guardianDamage": true}, "advanceClock": "assassinInfiltration", "next": "level2"},
+        {"label": "Loot the workshop", "set": {"theftUnresolved": true}, "advanceClock": "assassinInfiltration", "next": "level2"}
+      ],
+      "freeText": "Respect specific guardian triggers; significant disruption gives assassins cover."
+    },
+    {
+      "id": "level2",
+      "location": "level-2",
+      "truth": ["North/southwest chests each hold 15,000 gp and are 10d6-fireball trapped; southeast chest is a Morphganger."],
+      "choices": [
+        {"label": "Ignore chests and ascend", "next": "level3"},
+        {"label": "Disarm/loot real chests", "set": {"theftUnresolved": true}, "advanceClock": "assassinInfiltration", "next": "level3"},
+        {"label": "Open southeast chest", "event": "morphganger", "next": "level3"},
+        {"label": "Investigate all three cautiously", "next": "level3"}
+      ],
+      "freeText": "Do not convert the Morphganger into treasure or the real chests into creatures."
+    },
+    {
+      "id": "level3",
+      "location": "level-3",
+      "truth": ["Faerie Dragon is mentally linked to Merilla and tries to wake her; life-energy chainmail hangs here."],
+      "choices": [
+        {"label": "Demonstrate rescue intent", "event": "reaction-adjudication", "next": "level4"},
+        {"label": "Fight/disable the dragon", "set": {"guardianDamage": true, "faerieDragon": "disabled"}, "advanceClock": "assassinInfiltration", "next": "level4"},
+        {"label": "Let the dragon wake Merilla", "event": "apply-5-percent-wake-rolls", "next": "level4"},
+        {"label": "Steal the chainmail", "set": {"theftUnresolved": true}, "next": "level4"}
+      ],
+      "freeText": "If Merilla wakes, persist that state through the finale; do not reset her unconscious."
+    },
+    {
+      "id": "level4",
+      "location": "level-4",
+      "truth": ["Three fragile Blast Spores block/complicate passage; striking them causes source explosion/disease danger."],
+      "choices": [
+        {"label": "Carefully bypass", "next": "level5"},
+        {"label": "Use magic/range/control", "next": "level5"},
+        {"label": "Strike them directly", "event": "blast-spore-source-effect", "next": "level5"}
+      ],
+      "freeText": "Use the source creature, not a similarly named monster from another game."
+    },
+    {
+      "id": "level5",
+      "location": "level-5",
+      "truth": ["Two external assassins used party distraction to enter through the only windows and intend to murder Merilla."],
+      "choices": [
+        {"label": "Stop the assassins", "set": {"merillaSaved": true}, "next": "saved"},
+        {"label": "Protect/wake/remove Merilla", "event": "rescue-adjudication", "next": "saved-or-failed"},
+        {"label": "Join/bargain with assassins", "event": "assassination-risk", "next": "failed"},
+        {"label": "Ignore them and loot", "set": {"theftUnresolved": true}, "event": "assassination-risk", "next": "failed"}
+      ],
+      "freeText": "Assassin employer is unknown. Use current Merilla wake state."
+    },
+    {
+      "id": "saved",
+      "location": "level-5",
+      "truth": ["Merilla survives; guardian losses incurred in rescue are forgiven; reward is 2,500 gp each plus a minor magic item."],
+      "choices": [
+        {"label": "Return stolen property and accept reward", "set": {"theftUnresolved": false}, "next": "end-rescue"},
+        {"label": "Negotiate disputed property", "next": "end-adjudicate"},
+        {"label": "Keep stolen property and flee", "set": {"reprisalRisk": true}, "next": "end-rescue-theft"}
+      ],
+      "freeText": "Rescue forgiveness covers rescue-related guardian damage, not blanket theft."
+    },
+    {
+      "id": "failed",
+      "location": "level-5",
+      "truth": ["If Merilla dies the rescue reward is gone and lawful/political consequences remain."],
+      "choices": [
+        {"label": "Fight assassins after her death", "next": "end-merilla-dead"},
+        {"label": "Loot and flee", "set": {"theftUnresolved": true, "reprisalRisk": true}, "next": "end-merilla-dead"},
+        {"label": "Report the assassination", "next": "end-merilla-dead"}
+      ],
+      "freeText": "Do not revive Merilla off-screen or award the rescue reward."
+    }
+  ],
+  "endings": [
+    {"id": "end-rescue", "summary": "Merilla survives; rescue reward paid; rescue-related guardian damage forgiven."},
+    {"id": "end-rescue-theft", "summary": "Merilla survives but theft remains unresolved and may produce reprisals."},
+    {"id": "end-merilla-dead", "summary": "Assassination succeeds; no rescue reward; legal/property/political consequences persist."},
+    {"id": "end-adjudicate", "summary": "Merilla survives and the party negotiates the mixed rescue/theft/contract outcome according to actual actions."}
+  ]
+}
