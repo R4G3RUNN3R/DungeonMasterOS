@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "tsBuildInfoFile": null
+  },
+  "include": [
+    "client/src/components/CompendiumBook.tsx",
+    "client/src/pages/compendium.tsx",
+    "client/src/pages/compendium-item.tsx",
+    "client/src/lib/compendium.ts",
+    "server/compendium.ts",
+    "server/compendium-routes.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist"
+  ]
+}
