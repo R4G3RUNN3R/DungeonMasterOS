@@ -1,0 +1,125 @@
+{
+  "id": "a-tomb-of-twins",
+  "title": "A Tomb of Twins",
+  "version": "1.0.0",
+  "status": "approved",
+  "rules": {
+    "nativeRuleset": "System-ambivalent old-school adventure",
+    "nativeEdition": null,
+    "rulesFamily": "OSR",
+    "progressionModel": "system-specific",
+    "startingProgression": "Lower-level; source example levels 1-3 for B/X-compatible games",
+    "endingProgression": null,
+    "recommendedGroupMin": null,
+    "recommendedGroupMax": null,
+    "estimatedHoursMin": null,
+    "estimatedHoursMax": null,
+    "supportedRulesets": [
+      {"ruleset": "CRACK! / B/X-compatible games", "edition": null, "supportLevel": "native", "progressionRecommendation": "Levels 1-3 in B/X-based games as stated by creator.", "groupRecommendation": null, "conversionNotes": "Use source-provided CRACK!/B/X-compatible creature statistics.", "validationSource": "https://catshavenolord.itch.io/a-tomb-of-twins-final"},
+      {"ruleset": "Cairn", "edition": null, "supportLevel": "native", "progressionRecommendation": "Use normal Cairn characters; no fake D&D level assigned.", "groupRecommendation": null, "conversionNotes": "Use source-provided Cairn stats.", "validationSource": "https://catshavenolord.itch.io/a-tomb-of-twins-final"},
+      {"ruleset": "Mörk Borg", "edition": null, "supportLevel": "native", "progressionRecommendation": "Use ordinary Mörk Borg characters; source supplies Mörk Borg creature stats.", "groupRecommendation": null, "conversionNotes": "Use source-provided Mörk Borg stats.", "validationSource": "https://catshavenolord.itch.io/a-tomb-of-twins-final"},
+      {"ruleset": "Other OSR systems", "edition": null, "supportLevel": "converted", "progressionRecommendation": "Low-level equivalent appropriate to selected OSR system.", "groupRecommendation": null, "conversionNotes": "Translate source stats while retaining exact tomb procedures, hazards and faction logic.", "validationSource": "DungeonMasterOS conversion layer"}
+    ]
+  },
+  "source": {
+    "kind": "open-licensed",
+    "title": "A Tomb of Twins",
+    "author": "Luke Simonds / Cats Have No Lord",
+    "publisher": "Cats Have No Lord",
+    "primaryUrl": "https://catshavenolord.itch.io/a-tomb-of-twins-final",
+    "sourceIcon": "external-source",
+    "licence": "CC BY-SA 4.0 (full adventure text)",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "adaptationAllowed": true,
+    "commercialUseAllowed": true,
+    "redistributionAllowed": true,
+    "shareAlike": true,
+    "attributionText": "A Tomb of Twins by Luke Simonds / Cats Have No Lord. Full adventure text licensed CC BY-SA 4.0.",
+    "disposition": "built-in",
+    "verifiedAt": "2026-08-17"
+  },
+  "playerMetadata": {
+    "pitch": "A ruined tomb above Dreklow contains the soul vessels of twin necromancers. Three locals offer competing reasons to retrieve them, ghosts trapped inside may help or hinder you, and a swampkin raiding party has broken into the western side. Treasure is easy to promise. Keeping the twins dead is harder.",
+    "genres": ["fantasy", "dungeon crawl", "ghost story", "OSR", "dark comedy"],
+    "themes": ["greed", "betrayal", "containment", "death", "unreliable employers", "consequence"],
+    "tone": ["dangerous", "clever", "weird", "occasionally comic"],
+    "setting": "Dreklow and the Tomb of Drezis and Woxis",
+    "structure": "branching",
+    "contentWarnings": ["undead", "death", "traps/crushing/fire", "necromancy", "ghosts", "betrayal"]
+  },
+  "canon": {
+    "hard": [
+      {"id": "twins", "rule": "Drezis and Woxis are suspended from completing lich transformation by anti-magic containment around their soul vials.", "sourceRef": "canon.md"},
+      {"id": "priesthood", "rule": "Priesthood of Zorander renews the containment monthly; Galduz is a corrupted exception.", "sourceRef": "canon.md"},
+      {"id": "routes", "rule": "East and west paths are mirrored alternatives that rejoin at Room 9 and can be explored in either order.", "sourceRef": "canon.md"},
+      {"id": "ghosts", "rule": "The tomb traps spirits; qualifying dead PCs may continue as ghosts.", "sourceRef": "canon.md"},
+      {"id": "vials", "rule": "Soul-vial custody and anti-magic protection determine whether the twins remain suspended, die permanently or rise later.", "sourceRef": "canon.md"}
+    ],
+    "conditional": [
+      {"id": "alarm", "rule": "If Room 1 bell rings, swampkins in Room 7 prepare an ambush.", "condition": {"type": "custom", "key": "bellRung", "operator": "equals", "value": true}, "sourceRef": "canon.md"},
+      {"id": "unsafe-removal", "rule": "If soul vials leave anti-magic containment without valid replacement, the linked lich transformation completes.", "condition": {"type": "custom", "key": "portableAntiMagicActive", "operator": "equals", "value": false}, "sourceRef": "canon.md"},
+      {"id": "pc-ghost", "rule": "A PC dying inside the tomb can continue as a ghost under the source rules.", "condition": {"type": "custom", "key": "pcDiedInsideTomb", "operator": "equals", "value": true}, "sourceRef": "canon.md"}
+    ],
+    "soft": [{"id": "dreklow-flavour", "rule": "Minor villagers and exact ghost dialogue may be improvised without changing rumour truth or NPC goals.", "sourceRef": "canon.md"}],
+    "freeImprovisation": [{"id": "minor-details", "rule": "Ambient tomb sounds, ordinary village details and non-keyed possessions may be improvised consistently.", "sourceRef": "canon.md"}]
+  },
+  "locations": [
+    {"id": "dreklow", "name": "Dreklow", "type": "village", "parentId": null, "description": "Fishing village beneath the twins' sea-cliff tomb.", "connections": ["moot-hall", "tomb-exterior"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "moot-hall", "name": "Moot Hall", "type": "social hub", "parentId": "dreklow", "description": "Village gathering hall where the three major employers can be encountered.", "connections": ["dreklow"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "tomb-exterior", "name": "Tomb Exterior", "type": "dungeon entrance", "parentId": null, "description": "Polished black dome overlooking the sea.", "connections": ["room-1", "dreklow"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-1", "name": "Entrance", "type": "dungeon room", "parentId": "tomb", "description": "Tripwire alarm and glyph-key entrance room.", "connections": ["tomb-exterior", "room-2"], "secrets": ["glyph sequence solves Rooms 5 and 8"], "sourceRefs": ["locations.md"]},
+    {"id": "room-2", "name": "Painted Scenes", "type": "branch room", "parentId": "tomb", "description": "Mirrored carvings and hidden east/west doors.", "connections": ["room-1", "room-3", "room-6"], "secrets": ["gold sconces open hidden doors"], "sourceRefs": ["locations.md"]},
+    {"id": "room-3", "name": "East Treasury", "type": "treasury", "parentId": "tomb", "description": "Drezis treasury with heat/magnetism/low-gravity trap.", "connections": ["room-2", "room-4"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-4", "name": "Faceless Banquet", "type": "guardian room", "parentId": "tomb", "description": "Seven guardians and moon amulet.", "connections": ["room-3", "room-5"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-5", "name": "East Strange Glyphs", "type": "puzzle trap", "parentId": "tomb", "description": "Glyph-floor crushing-ceiling challenge.", "connections": ["room-4", "room-9"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-6", "name": "West Treasury", "type": "treasury", "parentId": "tomb", "description": "Woxis treasury with active low-gravity trap and trapped swampkin.", "connections": ["room-2", "room-7"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-7", "name": "Ruined Banquet", "type": "faction room", "parentId": "tomb", "description": "Swampkin-breached western banquet room.", "connections": ["room-6", "room-8", "room-12"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-8", "name": "West Strange Glyphs", "type": "puzzle trap", "parentId": "tomb", "description": "Mirrored glyph-floor challenge.", "connections": ["room-7", "room-9"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-9", "name": "Respite", "type": "recovery room", "parentId": "tomb", "description": "Healing basin and portable light orb where the mirrored routes reunite.", "connections": ["room-5", "room-8", "room-10"], "secrets": ["basin liquid is anti-magic ritual ingredient"], "sourceRefs": ["locations.md"]},
+    {"id": "room-10", "name": "Antechamber", "type": "door puzzle", "parentId": "tomb", "description": "Bronze doors requiring moon/sun amulets for safe opening.", "connections": ["room-9", "room-11"], "secrets": [], "sourceRefs": ["locations.md"]},
+    {"id": "room-11", "name": "Burial Chamber", "type": "final chamber", "parentId": "tomb", "description": "Twin sarcophagi, soul vials and anti-magic ritual knowledge.", "connections": ["room-10"], "secrets": ["hidden anti-magic ritual scroll"], "sourceRefs": ["locations.md"]},
+    {"id": "room-12", "name": "Swampkin Cave", "type": "faction lair", "parentId": "tomb", "description": "Swampkin foothold connected to deeper marsh tunnels.", "connections": ["room-7", "swampkin-maze"], "secrets": [], "sourceRefs": ["locations.md"]}
+  ],
+  "npcs": [
+    {"id": "bogumila", "name": "Bogumila", "role": "retired cat burglar / fence", "locationId": "moot-hall", "factionId": null, "publicGoal": "Buy the soul vials.", "privateGoal": "Sell them to the highest bidder.", "knowledge": ["Room 2 has secret doors"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "marzena", "name": "Marzena", "role": "Priesthood novice", "locationId": "moot-hall", "factionId": "priesthood-zorander", "publicGoal": "Recover the vials safely.", "privateGoal": "Complete her unwanted annual duty without releasing the twins.", "knowledge": ["entrance glyph puzzle key", "safe containment intent"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "galduz", "name": "Galduz", "role": "corrupted priest", "locationId": "moot-hall", "factionId": "priesthood-zorander", "publicGoal": "Offer immortality ritual.", "privateGoal": "Release Drezis and Woxis.", "knowledge": ["extensive tomb knowledge"], "secrets": ["intends to release the twins"], "sourceRefs": ["npcs.md"]},
+    {"id": "drezis", "name": "Drezis", "role": "suspended necromancer / potential lich", "locationId": "room-11", "factionId": "twins", "publicGoal": null, "privateGoal": "Complete lichdom and conquer; distrust Woxis.", "knowledge": ["own tomb/magic", "betrayal plan"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "woxis", "name": "Woxis", "role": "suspended necromancer / potential lich", "locationId": "room-11", "factionId": "twins", "publicGoal": null, "privateGoal": "Complete lichdom and conquer; distrust Drezis.", "knowledge": ["own tomb/magic", "betrayal plan"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "pristina", "name": "Pristina", "role": "swampkin priestess", "locationId": "room-7", "factionId": "swampkins", "publicGoal": "Find treasure and understand humans.", "privateGoal": null, "knowledge": ["swampkin raid state"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "cestina", "name": "Cestina", "role": "swampkin priestess", "locationId": "room-12", "factionId": "swampkins", "publicGoal": "End the raid and kill dangerous intruders.", "privateGoal": null, "knowledge": ["swampkin state"], "secrets": [], "sourceRefs": ["npcs.md"]},
+    {"id": "juris", "name": "Juris", "role": "swampkin warlord", "locationId": "room-12", "factionId": "swampkins", "publicGoal": "Return with enough treasure to prove leadership.", "privateGoal": "Exploit profitable betrayal opportunities.", "knowledge": ["swampkin tunnels and loot"], "secrets": [], "sourceRefs": ["npcs.md"]}
+  ],
+  "factions": [
+    {"id": "priesthood-zorander", "name": "Priesthood of Zorander", "goals": ["maintain anti-magic containment", "keep tomb secrets controlled"], "sourceRefs": ["factions.md"]},
+    {"id": "swampkins", "name": "Swampkin Horde", "goals": ["obtain treasure", "return to marsh with status/resources"], "sourceRefs": ["factions.md"]},
+    {"id": "twins", "name": "Drezis and Woxis", "goals": ["complete lich transformation", "survive mutual hostility", "eventually pursue conquest"], "sourceRefs": ["factions.md"]}
+  ],
+  "items": [
+    {"id": "drezis-vial", "name": "Drezis Soul Vial", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "woxis-vial", "name": "Woxis Soul Vial", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "anti-magic-scroll", "name": "Anti-Magic Ritual Scroll", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "moon-amulet", "name": "Moon Amulet", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "sun-amulet", "name": "Sun Amulet", "plotCritical": true, "sourceRef": "items-rewards.md"},
+    {"id": "drezis-journal", "name": "Drezis Journal", "plotCritical": false, "sourceRef": "items-rewards.md"},
+    {"id": "woxis-journal", "name": "Woxis Journal", "plotCritical": false, "sourceRef": "items-rewards.md"}
+  ],
+  "clocks": [{"id": "portable-anti-magic", "name": "Portable Anti-Magic Duration", "segments": 1, "current": 0, "advanceRule": "If the vials are kept/sold outside permanent containment, track the source-defined monthly renewal/expiration consequence.", "effects": ["expiry can awaken remaining liches"]}],
+  "scenes": [{"id": "graph-reference", "title": "Executable Tomb Graph", "locationId": "moot-hall", "entryConditions": [], "requiredFacts": ["Full scene graph and post-dungeon vial custody logic are stored in story-graph.json."], "hiddenFacts": [], "choices": [], "suggestedChoiceCount": 4, "freeTextPolicy": {"allowed": true, "mustPreserveHardCanon": true, "adjudicationRule": "Use story-graph.json and the selected source-supported ruleset statistics.", "mayCreateMinorDetails": true, "mayCreateMajorLocations": false, "mayCreateMajorNpcs": false}, "sourceRefs": ["story-graph.json"]}],
+  "endings": [
+    {"id": "contained", "title": "Leave the Dead Where They Are", "conditions": [], "summary": "The soul vials remain safely contained in the tomb.", "sourceRefs": ["story-graph.json"]},
+    {"id": "academy-safe", "title": "Safe in the Academy", "conditions": [], "summary": "Marzena and the Arcane Academy establish permanent safe containment.", "sourceRefs": ["story-graph.json"]},
+    {"id": "delayed-release", "title": "Sold to the Highest Bidder", "conditions": [], "summary": "Bogumila sells the vials and the twins rise later when protection expires.", "sourceRefs": ["story-graph.json"]},
+    {"id": "galduz-release", "title": "The Corrupt Priest's Plan", "conditions": [], "summary": "Galduz deliberately releases the twins.", "sourceRefs": ["story-graph.json"]},
+    {"id": "keeper", "title": "Custodians of Two Souls", "conditions": [], "summary": "The party keeps the vials and inherits ongoing containment responsibility.", "sourceRefs": ["story-graph.json"]},
+    {"id": "destroyed", "title": "No Liches Left to Rise", "conditions": [], "summary": "Both soul vials are destroyed/emptied and both twins are permanently ended.", "sourceRefs": ["story-graph.json"]},
+    {"id": "twins-escape", "title": "The Tower Rises Again", "conditions": [], "summary": "Escaped twins devastate Dreklow and establish a growing undead power.", "sourceRefs": ["story-graph.json"]}
+  ],
+  "communityIntelligence": [{"platform": "Reddit / public playtest history", "summary": "Creator publicly iterated the adventure across multiple playtest drafts and systems; final release deliberately includes CRACK!/B/X, Cairn and Mörk Borg statistics.", "sourceUrl": "https://www.reddit.com/r/osr/comments/z0kaps"}],
+  "adaptationNotes": ["Ghost-PC continuation is a first-class campaign state.", "Never mark one Dreklow employer as the correct quest-giver.", "Persist soul-vial custody/protection after dungeon exit.", "ShareAlike obligations apply to this DMOS derivative template."],
+  "researchSources": [
+    {"url": "https://catshavenolord.itch.io/a-tomb-of-twins-final", "type": "primary", "supports": "final release, rulesets, intended level/length, licence", "accessedAt": "2026-08-17"},
+    {"url": "https://www.reddit.com/r/osr/comments/z0kaps", "type": "community", "supports": "public playtest development history", "accessedAt": "2026-08-17"},
+    {"url": "https://www.reddit.com/r/osr/comments/10469ku", "type": "community", "supports": "Mörk Borg playtest/stat development", "accessedAt": "2026-08-17"}
+  ]
+}
