@@ -13,6 +13,7 @@ The six-area source is fully represented with persistent alert state, pit state,
 - Current anthology source and level/party guidance: PASS.
 - OGL/Open Game Content disposition recorded: PASS at research level.
 - Community homebrew separated from source canon: PASS.
+- `dmos-template.json` v2 machine/schema validation through Campaign Library CI: PASS.
 - Production OGL package / complete Copyright Notice: PENDING.
 
 ## Adversarial tests
@@ -80,8 +81,7 @@ PASS. Xikek-dead state persists. The source does not specify a successor; a late
 - Scarlet Heroes solo and DCC-style club runs are portability evidence only, not approved rules adapters.
 
 ## Remaining blockers before `APPROVED`
-1. Machine validation of `dmos-template.json` against v2 schema.
-2. Production OGL package/complete Copyright Notice review.
-3. Final direct visual-map check before a release build if exact corridor rendering/navigation is generated from map coordinates.
+1. Production OGL package/complete Copyright Notice review.
+2. Final direct visual-map check before a release build if exact corridor rendering/navigation is generated from map coordinates.
 
-Story/canon/adversarial QA is complete; release status remains `qa` until those gates clear.
+Machine validation is complete. Story/canon/adversarial QA remains complete; release status stays `qa` until the two source/release gates above clear.
