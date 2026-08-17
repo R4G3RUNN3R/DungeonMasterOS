@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dungeonmaster-os.com/schemas/campaign-loot-profile.schema.json",
+  "title": "DungeonMasterOS Campaign Loot Profile",
+  "type": "object",
+  "required": ["schemaVersion", "policyVersion", "campaignId", "campaignScale", "nativeRuleset", "status", "coverage", "supplemental", "placementPolicy", "approval"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "policyVersion": {"const": "loot-policy-v1"},
+    "campaignId": {"type": "string", "minLength": 1},
+    "campaignScale": {"enum": ["micro", "one-shot", "short", "multi-session"]},
+    "nativeRuleset": {"type": "string", "minLength": 1},
+    "status": {"enum": ["verified", "provisional", "blocked"]},
+    "coverage": {
+      "type": "object",
+      "required": ["sourceLootPresent", "sourceLootPreserved", "tangibleRewardBeats", "usefulRewardBeats", "signatureRewardBeats", "sourceEvidence", "examples"],
+      "properties": {
+        "sourceLootPresent": {"type": "boolean"},
+        "sourceLootPreserved": {"type": "boolean"},
+        "tangibleRewardBeats": {"type": "integer", "minimum": 0},
+        "usefulRewardBeats": {"type": "integer", "minimum": 0},
+        "signatureRewardBeats": {"type": "integer", "minimum": 0},
+        "sourceEvidence": {"type": "array", "items": {"type": "string"}},
+        "examples": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "supplemental": {
+      "type": "object",
+      "required": ["enabled", "mode", "provenance", "rulesAdapterRequired", "compendiumUse", "antiFarmPersistent", "rerollOnReload", "artifactsRandomlyAllowed"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "mode": {"enum": ["none", "gap-fill", "source-authorized-random", "native-table"]},
+        "provenance": {"enum": ["source", "dmos-supplemental", "mixed"]},
+        "rulesAdapterRequired": {"type": "boolean"},
+        "compendiumUse": {"enum": ["disabled", "native-only", "native-or-approved-adapter", "only-after-native-adapter"]},
+        "antiFarmPersistent": {"const": true},
+        "rerollOnReload": {"const": false},
+        "artifactsRandomlyAllowed": {"const": false},
+        "notes": {"type": "array", "items": {"type": "string"}},
+        "weightOverride": {
+          "type": ["object", "null"],
+          "properties": {
+            "mundane": {"type": "number", "minimum": 0, "maximum": 1},
+            "consumableUtility": {"type": "number", "minimum": 0, "maximum": 1},
+            "minorSpecial": {"type": "number", "minimum": 0, "maximum": 1},
+            "notableSpecial": {"type": "number", "minimum": 0, "maximum": 1},
+            "exceptional": {"type": "number", "minimum": 0, "maximum": 0.005}
+          },
+          "required": ["mundane", "consumableUtility", "minorSpecial", "notableSpecial", "exceptional"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "placementPolicy": {
+      "type": "object",
+      "required": ["intelligentEnemiesMayCarryLoot", "ordinaryBeastsHavePocketLoot", "undeadMayRetainPossessions", "constructsMayYieldSalvage", "hiddenCachesAllowed", "namedEnemiesPreferDistinctivePossession"],
+      "properties": {
+        "intelligentEnemiesMayCarryLoot": {"const": true},
+        "ordinaryBeastsHavePocketLoot": {"const": false},
+        "undeadMayRetainPossessions": {"const": true},
+        "constructsMayYieldSalvage": {"const": true},
+        "hiddenCachesAllowed": {"const": true},
+        "namedEnemiesPreferDistinctivePossession": {"const": true}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": ["passesLootGate", "blockers"],
+      "properties": {
+        "passesLootGate": {"type": "boolean"},
+        "blockers": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "additionalProperties": false
+}
