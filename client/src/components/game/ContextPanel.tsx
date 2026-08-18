@@ -2,19 +2,22 @@
 //
 // The adaptive right-hand panel (design spec §8). Selects among the
 // contextual states that authoritative campaign state can actually drive
-// today: Merchant (an active shop record), a transient Loot flash (a real
-// item_granted event), and default Exploration (persisted worldState +
-// active effects + party). Combat/travel/quest-focus states are Phase 4+
-// (spec §8.4) — the panel is structured so adding a branch there later
-// doesn't require touching the shell around it.
+// today: Combat (a real active encounter), Merchant (an active shop
+// record), a transient Loot flash (a real item_granted event), and
+// default Exploration (persisted worldState + active effects + party).
+// Travel/quest-focus states have no backing data model yet.
 //
 // State selection is driven entirely by real data, never by string-
-// matching narration text, per spec §8.4's explicit requirement.
+// matching narration text, per spec §8.4's explicit requirement. Combat
+// takes priority over everything else once an encounter is active — the
+// spec calls this out explicitly in §8.3.
 
 import type { WorldState } from "@shared/world-state";
+import type { EncounterState } from "@shared/combat";
 import MerchantContext from "./MerchantContext";
 import LocationContext from "./LocationContext";
 import LootFlash, { type GrantedItemDisplay } from "./LootFlash";
+import CombatContext from "./CombatContext";
 import type { ActiveEffectDisplay } from "./ActiveConditions";
 
 type Shop = {
@@ -46,6 +49,7 @@ type Props = {
   activeShop: { shop: Shop; items: ShopItem[] } | null;
   onViewShop: () => void;
   shopExpanded: boolean;
+  encounter: EncounterState;
 };
 
 export default function ContextPanel({
@@ -57,8 +61,10 @@ export default function ContextPanel({
   activeShop,
   onViewShop,
   shopExpanded,
+  encounter,
 }: Props) {
-  const label = activeShop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
+  const inCombat = encounter.encounter?.status === "active";
+  const label = inCombat ? "Combat" : activeShop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
 
   return (
     <div className="h-full flex flex-col dm-surface border-l">
@@ -66,7 +72,9 @@ export default function ContextPanel({
         <span className="dm-label">{label}</span>
       </div>
       <div className="flex-1 overflow-y-auto dm-scroll">
-        {activeShop ? (
+        {inCombat ? (
+          <CombatContext state={encounter} />
+        ) : activeShop ? (
           <MerchantContext
             shop={activeShop.shop}
             items={activeShop.items}

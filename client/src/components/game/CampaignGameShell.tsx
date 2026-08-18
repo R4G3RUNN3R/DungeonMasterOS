@@ -31,6 +31,8 @@ import { resolveSceneAsset } from "@shared/scene-resolver";
 import type { WorldState } from "@shared/world-state";
 import type { ActiveEffectDisplay } from "./ActiveConditions";
 import type { GrantedItemDisplay } from "./LootFlash";
+import type { EncounterState } from "@shared/combat";
+import { activeCombatants, currentTurnCombatant } from "@shared/combat";
 
 import ShopPanel from "@/components/ShopPanel";
 
@@ -102,6 +104,11 @@ type Props = {
   onBuy: (shopItemId: number, quantity: number) => void;
   buyPending: boolean;
 
+  encounter: EncounterState;
+  onAttack: (targetCombatantId: number) => void;
+  onFlee: () => void;
+  attackPending: boolean;
+
   onBack: () => void;
   scrollRef: RefObject<HTMLDivElement>;
 };
@@ -150,6 +157,10 @@ export default function CampaignGameShell({
   beginAdventureDisabled,
   onBuy,
   buyPending,
+  encounter,
+  onAttack,
+  onFlee,
+  attackPending,
   onBack,
   scrollRef,
 }: Props) {
@@ -162,8 +173,16 @@ export default function CampaignGameShell({
   const hud = getRulesAdapter().buildCharacterHud(character);
   const currencies = currencyDisplayList(campaignCurrencies, balances);
 
-  const contextLabel = shop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
-  const deck = shop ? "merchant" : "exploration";
+  const inCombat = encounter.encounter?.status === "active";
+  const contextLabel = inCombat ? "Combat" : shop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
+  const deck = inCombat ? "combat" : shop ? "merchant" : "exploration";
+
+  const combatTargets = inCombat ? activeCombatants(encounter.combatants).filter((c) => c.kind === "npc") : [];
+  const myTurn = (() => {
+    if (!inCombat) return false;
+    const current = currentTurnCombatant(encounter);
+    return !!current && current.kind === "player" && current.characterId === character.id;
+  })();
 
   // No location/scene-classification signal exists yet (that's later
   // context-expansion work), so this always resolves to the fallback
@@ -197,6 +216,7 @@ export default function CampaignGameShell({
       activeShop={shop}
       onViewShop={() => setShopExpanded((v) => !v)}
       shopExpanded={shopExpanded}
+      encounter={encounter}
     />
   );
 
@@ -261,6 +281,11 @@ export default function CampaignGameShell({
                   onBuy={() => setShopExpanded(true)}
                   onSell={() => setShopExpanded(true)}
                   onLeaveMerchant={() => setShopExpanded(false)}
+                  combatTargets={combatTargets}
+                  onAttack={onAttack}
+                  onFlee={onFlee}
+                  myTurn={myTurn}
+                  attackPending={attackPending}
                 />
                 <ActionComposer
                   value={actionInput}

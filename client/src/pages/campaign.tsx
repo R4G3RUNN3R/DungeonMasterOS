@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
 import { parseWorldState } from "@shared/world-state";
+import type { EncounterState } from "@shared/combat";
 
 import CharacterSheetView from "@/components/CharacterSheetView";
 import CampaignGameShell from "@/components/game/CampaignGameShell";
@@ -250,6 +251,12 @@ export default function CampaignPage() {
     retry: false,
   });
 
+  const encounterQuery = useQuery({
+    queryKey: ["/api/campaigns", campaignId, "encounter"],
+    queryFn: () => api<EncounterState>(`/api/campaigns/${campaignId}/encounter`),
+    enabled: Number.isFinite(campaignId),
+  });
+
   const createCharacterMutation = useMutation({
     mutationFn: () =>
       api(`/api/campaigns/${campaignId}/characters`, {
@@ -343,6 +350,33 @@ export default function CampaignPage() {
     },
   });
 
+  const attackMutation = useMutation({
+    mutationFn: (targetCombatantId: number) =>
+      api(`/api/campaigns/${campaignId}/combat/attack`, {
+        method: "POST",
+        body: JSON.stringify({ targetCombatantId }),
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
+      ]);
+    },
+  });
+
+  const fleeMutation = useMutation({
+    mutationFn: () =>
+      api(`/api/campaigns/${campaignId}/combat/flee`, {
+        method: "POST",
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
+      ]);
+    },
+  });
+
   useEffect(() => {
     if (!campaignId) return;
 
@@ -395,6 +429,12 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] });
           break;
 
+        case "combat_started":
+        case "combat_updated":
+        case "combat_ended":
+          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] });
+          break;
+
         case "campaign_updated":
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
           break;
@@ -405,6 +445,7 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "characters"] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] });
+          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] });
           qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
           qc.invalidateQueries({
             queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
@@ -712,6 +753,10 @@ export default function CampaignPage() {
       beginAdventureDisabled={startDisabled}
       onBuy={(shopItemId, quantity) => buyMutation.mutate({ shopItemId, quantity })}
       buyPending={buyMutation.isPending}
+      encounter={encounterQuery.data ?? { encounter: null, combatants: [] }}
+      onAttack={(targetCombatantId) => attackMutation.mutate(targetCombatantId)}
+      onFlee={() => fleeMutation.mutate()}
+      attackPending={attackMutation.isPending || fleeMutation.isPending}
       onBack={() => navigate("/dashboard")}
       scrollRef={scrollRef}
     />
