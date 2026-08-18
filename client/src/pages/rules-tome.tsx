@@ -93,6 +93,11 @@ function modifierText(modifier: Record<string, unknown>) {
 }
 
 function FeatPage({ feat }: { feat: PublicDnd35Feat }) {
+  const ruleParagraphs = feat.rulesText
+    ?.split(/\n\s*\n/)
+    .map(cleanOpenRulesParagraph)
+    .filter(Boolean) ?? [];
+
   return (
     <article>
       <h2 className="rules-tome-heading">{feat.name}</h2>
@@ -106,11 +111,20 @@ function FeatPage({ feat }: { feat: PublicDnd35Feat }) {
         </>
       )}
       <div className="rules-tome-rule" />
-      <p className="rules-tome-copy">{feat.rulesSummary}</p>
-      {feat.modifiers.map((modifier, index) => <p className="rules-tome-copy" key={`${feat.id}-modifier-${index}`}>{modifierText(modifier)}</p>)}
-      {feat.metamagic?.transformations.map((modifier, index) => <p className="rules-tome-copy" key={`${feat.id}-meta-${index}`}>{modifierText(modifier)}</p>)}
-      {feat.metamagic?.restrictions?.map((rule) => <div className="rules-tome-warning" key={rule}>{rule}</div>)}
-      {feat.specialRules?.map((rule) => <div className="rules-tome-warning" key={rule}>{rule}</div>)}
+      {ruleParagraphs.length ? (
+        ruleParagraphs.map((paragraph, index) => <p className="rules-tome-copy" key={`${feat.id}-rule-${index}`}>{paragraph}</p>)
+      ) : (
+        <>
+          <p className="rules-tome-copy">{feat.rulesSummary}</p>
+          {feat.modifiers.map((modifier, index) => <p className="rules-tome-copy" key={`${feat.id}-modifier-${index}`}>{modifierText(modifier)}</p>)}
+          {feat.metamagic?.transformations.map((modifier, index) => <p className="rules-tome-copy" key={`${feat.id}-meta-${index}`}>{modifierText(modifier)}</p>)}
+          {feat.metamagic?.restrictions?.map((rule) => <div className="rules-tome-warning" key={rule}>{rule}</div>)}
+          {feat.specialRules?.map((rule) => <div className="rules-tome-warning" key={rule}>{rule}</div>)}
+        </>
+      )}
+      {feat.executionStatus === "reference" && (
+        <div className="rules-tome-warning">Canonical reference entry. Its prerequisites and rule text are catalogued, but DungeonMasterOS will not offer this feat during level-up until its character-sheet/gameplay modifiers are executable.</div>
+      )}
       <div className="rules-tome-source">Source: {sourceLine(feat.sources)}</div>
     </article>
   );
