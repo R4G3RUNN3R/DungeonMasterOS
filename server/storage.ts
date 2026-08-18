@@ -326,6 +326,8 @@ export function runMigrations() {
   addColumnIfMissing("messages", "metadata", "TEXT NOT NULL DEFAULT '{}'");
   addColumnIfMissing("items", "stat_mods", "TEXT NOT NULL DEFAULT '[]'");
   addColumnIfMissing("items", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  addColumnIfMissing("items", "weight", "REAL NOT NULL DEFAULT 0");
+  addColumnIfMissing("items", "carried", "INTEGER NOT NULL DEFAULT 1");
 }
 
 // ── Storage interface ──────────────────────────────────────────────────────
