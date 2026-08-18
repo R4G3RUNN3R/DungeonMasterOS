@@ -2,6 +2,7 @@ import type { Campaign, CampaignCurrency, Character, Message, Item, CharacterCur
 import type { Encounter } from "../shared/schema";
 import type { EncounterParticipant } from "./combat-engine";
 import { formatCampaignMemory, parseCampaignWorldState, formatCurrentSceneForPrompt } from "./campaign-memory";
+import { tagBlockPattern, stripInternalTags, extractJsonObject } from "./internal-tag-guard";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
 
 // ── Authoritative party inventory grounding ─────────────────────────────────
@@ -223,11 +224,26 @@ this) in exactly this format:
 {"currentScene": {"name": "The Rusted Anchor Tavern", "description": "A smoky dockside tavern"}, "locations": ["Port Vaelis"], "npcs": [{"name": "Old Marrow", "description": "One-eyed harbormaster", "disposition": "wary"}], "factions": ["Dockside Guild"], "flags": ["party_warned_about_smugglers"]}
 [/WORLD_STATE]
 
+Write the tags exactly as shown — plain text, never inside markdown
+emphasis and never inside a code fence. Do not write **[WORLD_STATE]**,
+do not wrap it in backticks, do not put it inside a fenced code block.
 Only include fields that actually changed or are newly relevant — omit
 fields with nothing new (e.g. send {"currentScene": {...}} alone if only
 the scene changed). Never emit this block if nothing about the world
 state changed this turn. This must be the only JSON in your response and
 must appear after all narration text.
+
+Flags must record only what has actually, objectively happened —
+never a threat, a plan, an intention, or one character's interpretation of
+another's words or actions. If a character warns someone off and an NPC
+reacts as though threatened, that reaction belongs to the NPC, not to the
+world: write it as "vance_believes_hennet_threatened_him", never
+"hennet_threatened_vance" — the second asserts the threat as fact when only
+the interpretation is established. Likewise, something a character says
+they intend to do is not yet a completed event: "she says the letter goes
+out today" earns a flag like "vance_intends_to_send_letter_north", not
+"letter_sent_north" — write the completed-action flag only once your own
+narration actually shows it happening, on whatever later turn that is.
 
 STYLE:
 - Cinematic but grounded
@@ -571,31 +587,32 @@ Do not narrate the outcome of the action, only declare the intent. Keep any pros
   });
 }
 
+// 2026-08-18 production incident: this used to be a strict
+// `\[WORLD_STATE\]([\s\S]*?)\[\/WORLD_STATE\]` match, and on ANY failure —
+// no match, or JSON.parse throwing — it fell back to `cleanContent: text`,
+// the entire raw response untouched. A real turn had the model wrap the tag
+// in markdown bold (**[WORLD_STATE]**...**[/WORLD_STATE]**); the regex
+// still matched (bracket text is a substring of the bolded version) but the
+// captured payload had a trailing "**" after the JSON's closing brace, so
+// JSON.parse threw, the catch fired, and the raw tagged block — including
+// both markers — was persisted as the player-visible message and shown in
+// their chat verbatim. See server/internal-tag-guard.ts for the actual
+// fix: markdown-tolerant tag matching, brace-matching JSON extraction (so
+// trailing junk after valid JSON no longer breaks parsing), and a fail-
+// closed guarantee that cleanContent can never contain a recognized
+// internal tag marker, however extraction goes.
 export function extractWorldState(text: string): {
   cleanContent: string;
   worldState: any | null;
 } {
-  try {
-    const match = text.match(/\[WORLD_STATE\]([\s\S]*?)\[\/WORLD_STATE\]/);
+  const match = text.match(tagBlockPattern("WORLD_STATE"));
+  const worldState = match ? extractJsonObject(match[0]) : null;
 
-    if (!match) {
-      return { cleanContent: text, worldState: null };
-    }
-
-    const json = JSON.parse(match[1].trim());
-    const clean = text.replace(match[0], "").trim();
-
-    return {
-      cleanContent: clean,
-      worldState: json,
-    };
-  } catch {
-    return { cleanContent: text, worldState: null };
-  }
+  return { cleanContent: stripInternalTags(text), worldState };
 }
 
 export function extractShopStateFromNarration(text: string) {
-  const match = text.match(/\[SHOP\]([\s\S]*?)\[\/SHOP\]/);
+  const match = text.match(tagBlockPattern("SHOP"));
 
   if (!match) return null;
 

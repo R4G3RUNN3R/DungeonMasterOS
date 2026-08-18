@@ -14,8 +14,37 @@ type Message = {
   messageType: string;
 };
 
+// Last-resort client-side guard (2026-08-18 incident: a [WORLD_STATE] block
+// reached a player's chat verbatim — see server/internal-tag-guard.ts for
+// the real, server-side fix). This is NOT the fix; it exists only so that
+// if a server regression or an AI provider quirk ever lets a recognized
+// internal protocol tag through anyway, the player still never sees it.
+// Mirrors the server's tag vocabulary and same fail-closed rule: an
+// unmatched marker truncates the message rather than ever being shown.
+const INTERNAL_TAG_NAMES = [
+  "WORLD_STATE", "CHECK", "COMBAT_START", "ATTACK", "SURRENDER",
+  "TITLE_CANDIDATE", "TITLE_WITNESS", "SHOP",
+];
+const TAG_DETECTOR = new RegExp(`\\[/?(?:${INTERNAL_TAG_NAMES.join("|")})\\]`, "i");
+
+function sanitizeForDisplay(content: string): string {
+  let result = content;
+  for (const name of INTERNAL_TAG_NAMES) {
+    result = result.replace(
+      new RegExp(`[*_]{0,2}\\[${name}\\][*_]{0,2}[\\s\\S]*?[*_]{0,2}\\[/${name}\\][*_]{0,2}`, "gi"),
+      "",
+    );
+  }
+  const leakIndex = result.search(TAG_DETECTOR);
+  if (leakIndex !== -1) {
+    console.error("[StoryMessage] internal protocol tag marker reached the client — truncating before it");
+    result = result.slice(0, leakIndex);
+  }
+  return result.trim();
+}
+
 function renderContent(content: string) {
-  return content.split(/\n/g).map((line, index) => (
+  return sanitizeForDisplay(content).split(/\n/g).map((line, index) => (
     <p key={index} className="whitespace-pre-wrap leading-relaxed">
       {line}
     </p>

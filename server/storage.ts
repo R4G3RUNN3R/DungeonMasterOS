@@ -47,6 +47,7 @@ import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
 import path from "path";
 import { calculateTurnSpend } from "@shared/tiers";
+import { containsInternalTagMarker, stripInternalTags } from "./internal-tag-guard";
 
 const dbPath = process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db");
 const sqlite = new Database(dbPath);
@@ -1017,7 +1018,24 @@ export class DatabaseStorage implements IStorage {
       .reverse();
   }
   createMessage(message: InsertMessage): Message {
-    const msg = db.insert(messages).values(message).returning().get();
+    // Persistence-layer safeguard, independent of whatever already ran in
+    // dm-engine.ts/routes.ts: every message insert is the one place all
+    // paths (including any future caller) funnel through, so it's checked
+    // here too rather than trusting every call site to have sanitized its
+    // own content. Should never fire — if it does, something upstream
+    // regressed, which is exactly why it's logged loudly. See
+    // server/internal-tag-guard.ts for the 2026-08-18 incident this
+    // guards against.
+    let toInsert = message;
+    if (containsInternalTagMarker(message.content)) {
+      console.error(
+        "[storage.createMessage] internal protocol tag marker detected in message content at persistence time — stripping before insert",
+        { campaignId: message.campaignId, senderType: message.senderType },
+      );
+      toInsert = { ...message, content: stripInternalTags(message.content) };
+    }
+
+    const msg = db.insert(messages).values(toInsert).returning().get();
     if (message.senderType === "dm" || message.senderType === "player") {
       this.incrementCampaignMessages(message.campaignId);
     }

@@ -139,3 +139,32 @@ test("extractAttackTag: returns null when attacker or target missing", () => {
   assert.equal(extractAttackTag('[ATTACK]{"target":"Goblin"}[/ATTACK]'), null);
 });
 
+// 2026-08-18: a [WORLD_STATE] leak in production traced to the model
+// wrapping a tag in markdown bold, which broke a strict JSON.parse and fell
+// back to showing the raw tagged text to the player (see
+// internal-tag-guard.test.ts). Every tag here shares that same extraction
+// pattern, so the same markdown-wrapping failure mode is worth covering for
+// each one — even though these particular tags are never themselves shown
+// to the player when they DO parse, an unparsed one still leaves raw
+// protocol text sitting in the narration for stripInternalTags to catch.
+test("extractAttackTag: still parses when the model wraps the tag in markdown bold", () => {
+  const result = extractAttackTag('The blade swings. **[ATTACK]**{"attacker":"Kira","target":"Goblin"}**[/ATTACK]**');
+  assert.ok(result);
+  assert.equal(result!.attacker, "Kira");
+  assert.equal(result!.target, "Goblin");
+});
+
+test("extractCheckTag: still parses when the model wraps the tag in markdown bold", () => {
+  const result = extractCheckTag('She tries the lock. **[CHECK]**{"character":"Kira","skill":"Sleight of Hand","dc":15}**[/CHECK]**');
+  assert.ok(result);
+  assert.equal(result!.character, "Kira");
+  assert.equal(result!.dc, 15);
+});
+
+test("extractCombatStartTag: still parses when the model wraps the tag in markdown bold", () => {
+  const text = '**[COMBAT_START]**{"npcs":[{"name":"Goblin","hp":11,"ac":13,"attackBonus":3,"damageDice":"1d6"}]}**[/COMBAT_START]**';
+  const result = extractCombatStartTag(text);
+  assert.ok(result);
+  assert.equal(result!.npcs[0].name, "Goblin");
+});
+

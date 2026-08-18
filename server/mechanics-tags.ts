@@ -6,6 +6,15 @@
 // loosely-formatted positional text. Every function here returns null on
 // anything malformed — never throws — so a bad AI proposal always falls
 // back to unmechanized narration rather than breaking a turn.
+//
+// Uses the same markdown-tolerant tag matching and brace-matching JSON
+// extraction as internal-tag-guard.ts (see that file's header for the
+// 2026-08-18 [WORLD_STATE] leak this pattern traces back to) — these tags
+// are just as capable of being wrapped in markdown emphasis by the model,
+// and whatever text isn't consumed as a valid tag here is exactly what
+// routes.ts's finalContent still needs stripInternalTags to catch.
+
+import { tagBlockPattern, extractJsonObject } from "./internal-tag-guard";
 
 const VALID_ABILITIES = new Set(["str", "dex", "con", "int", "wis", "cha"]);
 
@@ -26,15 +35,10 @@ const MAX_AI_DC = 25;
 const MAX_COMBAT_START_NPCS = 8;
 
 function extractJsonPayload(text: string, tagName: string): any | null {
-  const pattern = new RegExp(`\\[${tagName}\\]([\\s\\S]*?)\\[/${tagName}\\]`);
-  const match = text.match(pattern);
+  const match = text.match(tagBlockPattern(tagName));
   if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[1].trim());
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
+  const parsed = extractJsonObject(match[0]);
+  return parsed && typeof parsed === "object" ? parsed : null;
 }
 
 export interface CheckTag {

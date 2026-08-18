@@ -13,6 +13,7 @@ import { generateDMResponse, generateOpeningScene, extractWorldState, generateNp
 import { getNarrationServiceIssue, getNarrationServiceLabel, generateNarrationText, DM_AI_PROVIDER } from "./dm-provider";
 import { hashSnapshot, logAiContextSnapshot, logAiMutations, type AiGenerationPurpose } from "./ai-diagnostics";
 import { runDataIntegrityChecks } from "./integrity-checks";
+import { stripInternalTags } from "./internal-tag-guard";
 
 // Bump this whenever buildSystemPrompt's structure changes in a way that
 // matters for diagnosing a past generation (new grounding section, new tag,
@@ -3051,8 +3052,16 @@ Keep it to 2-4 short paragraphs.`,
 
       const attackNarration = attackResult && "narration" in attackResult ? attackResult.narration : undefined;
 
-      const finalContent =
-        attackNarration || checkResolution?.cleanContent || cleanContent?.trim() || buildFallbackActionResponse(character.name, content);
+      // stripInternalTags wraps the whole selection, not just the cleanContent
+      // branch: attackNarration/checkResolution.cleanContent are fresh AI
+      // completions from a separate narrate() call, not derived from
+      // rawResponse, so they can't contain a leftover tag from THIS
+      // response — but they're still un-vetted model output, and this is
+      // the single choke point finalContent passes through no matter which
+      // branch wins. See server/internal-tag-guard.ts.
+      const finalContent = stripInternalTags(
+        attackNarration || checkResolution?.cleanContent || cleanContent?.trim() || buildFallbackActionResponse(character.name, content),
+      );
 
       const dmMsg = storage.createMessage({
         campaignId,

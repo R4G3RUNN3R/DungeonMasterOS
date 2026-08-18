@@ -1,6 +1,7 @@
 import type { Campaign, Character, Message } from "../shared/schema";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
 import type { WorldStateScene } from "../shared/world-state";
+import { extractJsonObject } from "./internal-tag-guard";
 
 type NarrationTextGenerator = typeof generateNarrationText;
 
@@ -181,22 +182,6 @@ export function formatCampaignMemory(memory: CampaignMemory): string {
   return lines.join("\n");
 }
 
-function extractJsonObject(text: string): any | null {
-  const cleaned = text.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/m, "").trim();
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-  } catch {
-    return null;
-  }
-}
-
 // IMPORTANT: this function must NEVER return currentScene. It runs as a
 // fire-and-forget background task after the main narration has already been
 // sent to the player (see queueCampaignMemoryRefresh in routes.ts), using a
@@ -235,6 +220,8 @@ Rules:
 - Favor short, concrete notes.
 - Keep arrays lean. Prefer 1-4 strong entries per list instead of exhaustive noise.
 - You are summarizing memory ONLY. You have no authority over the party's current location or scene — do not describe, restate, reinterpret, or imply any change to where the party physically is. That is decided elsewhere, by a process with full continuity safeguards this one does not have.
+- Preserve the difference between what actually happened and what a character believes, fears, or claims happened. An NPC's interpretation of an event is not the event itself — record it as that NPC's belief, not as flat history. Example: if a character warns someone off and an NPC reacts as though threatened, write "NPC_NAME took CHARACTER_NAME's warning as a threat," never "CHARACTER_NAME threatened NPC_NAME."
+- Preserve the difference between something stated as an intention or plan and something that has actually happened. "She says the letter goes out today" is not the same as "the letter was sent" — do not record an intention as a completed event until the narration actually shows it completed.
 
 Return exactly this shape:
 {
@@ -243,7 +230,7 @@ Return exactly this shape:
     "activeThreads": ["open question or unresolved thread"],
     "discoveredFacts": ["established fact the party now knows"],
     "npcNotes": ["NPC name: current posture, fear, leverage, or secret if established"],
-    "recentConsequences": ["latest outcome now affecting the world"]
+    "recentConsequences": ["latest outcome now affecting the world — distinguish completed events from stated intentions and NPC interpretations, per the rules above"]
   }
 }`,
     maxTokens: MEMORY_MAX_TOKENS,
