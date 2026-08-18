@@ -8,6 +8,7 @@
 import { resolveD20, type Rng } from "./dice-engine";
 import { resolveCharacterModifier, type Ability } from "./character-stats";
 import { extractCheckTag } from "./mechanics-tags";
+import { dnd35RecordedSkillRanks, getDnd35Skill, type Dnd35SkillDefinition } from "@shared/dnd35-skills";
 
 export interface RollDisplayData {
   rollType: "check";
@@ -22,6 +23,7 @@ export interface RollDisplayData {
 
 interface CharacterLike {
   id: number;
+  name?: string;
   level: number;
   str: number;
   dex: number;
@@ -31,14 +33,12 @@ interface CharacterLike {
   cha: number;
   proficiencies: string;
   charClass?: string;
+  characterData?: string;
 }
 
 interface StorageLike {
   getCharacterByName(campaignId: number, name: string): CharacterLike | undefined;
   createRollLogEntry(entry: any): any;
-  // Optional: the real `storage` singleton implements these (used to apply
-  // active-effect and equipped-item modifiers). Not required by the test's
-  // minimal fake storage — when absent we simply resolve with none applied.
   getActiveEffectsByCharacter?(characterId: number): Array<{ statMods: string }>;
   getItemsByCharacter?(characterId: number): Array<{ equipped: boolean; statMods: string }>;
 }
@@ -53,6 +53,8 @@ export interface ResolveCheckParams {
   ruleset?: string;
 }
 
+export type ResolveCheckResult = { cleanContent: string; rollData: RollDisplayData | null };
+
 function buildNarratePrompt(statUsed: string, roll: ReturnType<typeof resolveD20>, dc: number): string {
   const label = roll.outcome === "success" ? "SUCCESS" : "FAILURE";
   return `${statUsed} check: rolled ${roll.diceResult} + modifier = ${roll.total} vs DC ${dc} → ${label}. Narrate this outcome in 2-4 sentences, following the established style rules. Do not restate the numbers.`;
@@ -64,21 +66,56 @@ function fallbackNarration(outcome: "success" | "failure"): string {
     : "The attempt falls short — this particular effort doesn't pay off, at least not yet.";
 }
 
-export async function resolveCheckTag(
-  params: ResolveCheckParams,
-): Promise<{ cleanContent: string; rollData: RollDisplayData } | null> {
+function buildUntrainedNarratePrompt(characterName: string, skillName: string) {
+  return `${characterName} attempted ${skillName}, but under D&D 3.5e this is a trained-only skill and the character has 0 recorded ranks. No d20 roll is made. Narrate briefly that the character lacks the trained technique or knowledge to complete this specific skilled attempt. Do not invent a roll or numeric result.`;
+}
+
+function buildInvalidDnd35SkillPrompt(characterName: string, proposedSkill: string) {
+  return `${characterName}'s action was tagged with the skill "${proposedSkill}", but that is not a canonical core D&D 3.5e skill. No d20 roll is made. Narrate the immediate fictional situation without claiming a check result and without substituting a 5e skill. The Dungeon Master must use the appropriate 3.5e skill (for example Spot/Listen/Search rather than Perception, or Hide/Move Silently rather than Stealth) when a check is actually required.`;
+}
+
+function dnd35SkillRankModifier(character: CharacterLike, definition: Dnd35SkillDefinition, skillName: string) {
+  if (!definition.ability) return null;
+  const ranks = dnd35RecordedSkillRanks(character.characterData || "{}", skillName);
+  return {
+    definition,
+    ranks,
+    effectiveRanks: Math.floor(ranks),
+  };
+}
+
+export async function resolveCheckTag(params: ResolveCheckParams): Promise<ResolveCheckResult | null> {
   const tag = extractCheckTag(params.rawResponse);
   if (!tag) return null;
 
   const character = params.storage.getCharacterByName(params.campaignId, tag.character);
   if (!character) return null;
 
-  // resolveCharacterModifier (Task 3) expects a storage with getCharacter()/
-  // getActiveEffectsByCharacter(). We've already fetched the character by name
-  // above, so adapt rather than requiring the caller's storage to separately
-  // support a by-id lookup — this keeps the minimal test fake (which only
-  // implements getCharacterByName) sufficient, and is exactly equivalent for
-  // the real storage singleton since it's the same DB row either way.
+  const isDnd35SkillCheck = params.ruleset === "dnd35e" && !!tag.skill && tag.skill !== "attack" && !tag.isSave;
+  const dnd35Definition = isDnd35SkillCheck ? getDnd35Skill(tag.skill!) : undefined;
+
+  if (isDnd35SkillCheck && !dnd35Definition) {
+    let cleanContent: string;
+    try {
+      cleanContent = await params.narrate(buildInvalidDnd35SkillPrompt(character.name || tag.character, tag.skill!));
+    } catch {
+      cleanContent = "That action cannot be resolved with the proposed skill under the campaign's D&D 3.5e rules.";
+    }
+    return { cleanContent, rollData: null };
+  }
+
+  const dnd35Skill = dnd35Definition ? dnd35SkillRankModifier(character, dnd35Definition, tag.skill!) : null;
+
+  if (dnd35Skill?.definition.trainedOnly && dnd35Skill.ranks <= 0) {
+    let cleanContent: string;
+    try {
+      cleanContent = await params.narrate(buildUntrainedNarratePrompt(character.name || tag.character, dnd35Skill.definition.name));
+    } catch {
+      cleanContent = `${tag.character} does not have the training required to attempt ${dnd35Skill.definition.name} in this way.`;
+    }
+    return { cleanContent, rollData: null };
+  }
+
   const modifierStorage = {
     getCharacter: (_id: number) => character,
     getActiveEffectsByCharacter: (characterId: number) =>
@@ -87,12 +124,19 @@ export async function resolveCheckTag(
       params.storage.getItemsByCharacter?.(characterId) ?? [],
   };
 
+  const requestedAbility = (dnd35Skill?.definition.ability || tag.ability || "str") as Ability;
   const resolved = resolveCharacterModifier(
     character.id,
-    (tag.ability || "str") as Ability,
+    requestedAbility,
     { skill: tag.skill, isSave: tag.isSave, combatStyle: params.combatStyle, ruleset: params.ruleset },
     modifierStorage,
   );
+
+  if (dnd35Skill) {
+    resolved.total = resolved.total - resolved.proficiencyBonus + dnd35Skill.effectiveRanks;
+    resolved.proficiencyBonus = dnd35Skill.effectiveRanks;
+    resolved.statUsed = `${dnd35Skill.definition.ability}.${dnd35Skill.definition.id}`;
+  }
 
   const roll = resolveD20({
     rng: params.rng,

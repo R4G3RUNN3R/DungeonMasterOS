@@ -36,25 +36,151 @@ test("resolveCheckTag: character name that doesn't resolve returns null", async 
   assert.equal(result, null);
 });
 
-test("resolveCheckTag: valid check resolves, logs the roll, and narrates the fixed outcome", async () => {
+test("resolveCheckTag: valid 5e check keeps the existing proficiency behavior", async () => {
   const storage = fakeStorage({ id: 7, level: 5, str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10, proficiencies: JSON.stringify(["Stealth"]) });
   let narratePrompt = "";
   const result = await resolveCheckTag({
     campaignId: 1,
     rawResponse: 'Before you decide: [CHECK]{"character":"Kira","skill":"Stealth","dc":14}[/CHECK]',
     storage: storage as any,
-    rng: () => 14 / 20, // rolls a 15
+    rng: () => 14 / 20,
     narrate: async (prompt: string) => { narratePrompt = prompt; return "You slip past unnoticed."; },
   });
 
   assert.ok(result);
-  assert.equal(result!.cleanContent, "You slip past unnoticed.");
-  assert.equal(result!.rollData.rollType, "check");
-  assert.equal(result!.rollData.total, 15 + 3 + 3); // dex mod +3, proficiency +3 (level 5)
-  assert.equal(result!.rollData.outcome, "success");
+  assert.ok(result.rollData);
+  assert.equal(result.cleanContent, "You slip past unnoticed.");
+  assert.equal(result.rollData.rollType, "check");
+  assert.equal(result.rollData.total, 15 + 3 + 3);
+  assert.equal(result.rollData.outcome, "success");
   assert.match(narratePrompt, /SUCCESS/);
   assert.equal(storage._logged.length, 1);
   assert.equal(storage._logged[0].statUsed, "dex.stealth");
+});
+
+test("resolveCheckTag: D&D 3.5 uses recorded Tumble ranks rather than a level-based proficiency approximation", async () => {
+  const storage = fakeStorage({
+    id: 8,
+    name: "Kira",
+    level: 5,
+    str: 10,
+    dex: 16,
+    con: 10,
+    int: 10,
+    wis: 10,
+    cha: 10,
+    charClass: "Rogue",
+    proficiencies: "[]",
+    characterData: JSON.stringify({ dnd35Sheet: { skills: [{ name: "Tumble", ranks: 5 }] } }),
+  });
+
+  const result = await resolveCheckTag({
+    campaignId: 1,
+    rawResponse: '[CHECK]{"character":"Kira","skill":"Tumble","ability":"str","dc":20}[/CHECK]',
+    storage: storage as any,
+    ruleset: "dnd35e",
+    rng: () => 14 / 20,
+    narrate: async () => "You roll beneath the blade and keep moving.",
+  });
+
+  assert.ok(result?.rollData);
+  assert.equal(result.rollData.total, 15 + 3 + 5, "Tumble must use Dex + recorded ranks; the AI-supplied Str ability is ignored");
+  assert.equal(result.rollData.statUsed, "dex.tumble");
+  assert.equal(storage._logged[0].proficiencyBonus, 5, "roll log stores ranks in the legacy proficiencyBonus audit column for 3.5 skills");
+});
+
+test("resolveCheckTag: a trained-only 3.5 skill with zero ranks is not rolled", async () => {
+  const storage = fakeStorage({
+    id: 9,
+    name: "Kira",
+    level: 5,
+    str: 10,
+    dex: 16,
+    con: 10,
+    int: 14,
+    wis: 10,
+    cha: 14,
+    charClass: "Rogue",
+    proficiencies: "[]",
+    characterData: JSON.stringify({ dnd35Sheet: { skills: [] } }),
+  });
+  let prompt = "";
+  const result = await resolveCheckTag({
+    campaignId: 1,
+    rawResponse: '[CHECK]{"character":"Kira","skill":"Use Magic Device","dc":20}[/CHECK]',
+    storage: storage as any,
+    ruleset: "dnd35e",
+    rng: () => { throw new Error("RNG must not be called for an untrained trained-only skill"); },
+    narrate: async (value: string) => { prompt = value; return "You cannot make sense of the device's activation method."; },
+  });
+
+  assert.ok(result);
+  assert.equal(result.rollData, null);
+  assert.equal(storage._logged.length, 0);
+  assert.match(prompt, /trained-only/i);
+  assert.match(prompt, /No d20 roll/i);
+});
+
+test("resolveCheckTag: an untrained-allowed 3.5 skill can roll with zero ranks", async () => {
+  const storage = fakeStorage({
+    id: 10,
+    name: "Kira",
+    level: 3,
+    str: 10,
+    dex: 10,
+    con: 10,
+    int: 10,
+    wis: 14,
+    cha: 10,
+    charClass: "Fighter",
+    proficiencies: "[]",
+    characterData: JSON.stringify({ dnd35Sheet: { skills: [] } }),
+  });
+
+  const result = await resolveCheckTag({
+    campaignId: 1,
+    rawResponse: '[CHECK]{"character":"Kira","skill":"Spot","dc":15}[/CHECK]',
+    storage: storage as any,
+    ruleset: "dnd35e",
+    rng: () => 14 / 20,
+    narrate: async () => "You notice the movement in time.",
+  });
+
+  assert.ok(result?.rollData);
+  assert.equal(result.rollData.total, 15 + 2);
+  assert.equal(result.rollData.statUsed, "wis.spot");
+});
+
+test("resolveCheckTag: a 5e-only skill cannot silently resolve in a D&D 3.5 campaign", async () => {
+  const storage = fakeStorage({
+    id: 11,
+    name: "Kira",
+    level: 5,
+    str: 10,
+    dex: 16,
+    con: 10,
+    int: 10,
+    wis: 14,
+    cha: 10,
+    charClass: "Rogue",
+    proficiencies: JSON.stringify(["Perception"]),
+    characterData: JSON.stringify({ dnd35Sheet: { skills: [{ name: "Spot", ranks: 8 }, { name: "Listen", ranks: 8 }] } }),
+  });
+  let prompt = "";
+  const result = await resolveCheckTag({
+    campaignId: 1,
+    rawResponse: '[CHECK]{"character":"Kira","skill":"Perception","dc":15}[/CHECK]',
+    storage: storage as any,
+    ruleset: "dnd35e",
+    rng: () => { throw new Error("RNG must not run for a non-3.5 skill tag"); },
+    narrate: async (value: string) => { prompt = value; return "The situation remains unresolved until the correct skill is used."; },
+  });
+
+  assert.ok(result);
+  assert.equal(result.rollData, null);
+  assert.equal(storage._logged.length, 0);
+  assert.match(prompt, /not a canonical core D&D 3\.5e skill/i);
+  assert.match(prompt, /Spot\/Listen\/Search/i);
 });
 
 test("resolveCheckTag: failed narration call falls back to a templated outcome description, not a throw", async () => {
@@ -63,10 +189,10 @@ test("resolveCheckTag: failed narration call falls back to a templated outcome d
     campaignId: 1,
     rawResponse: '[CHECK]{"character":"Kira","ability":"str","dc":25}[/CHECK]',
     storage: storage as any,
-    rng: () => 1 / 20, // rolls a 2
+    rng: () => 1 / 20,
     narrate: async () => { throw new Error("AI unavailable"); },
   });
-  assert.ok(result);
-  assert.equal(result!.rollData.outcome, "failure");
-  assert.match(result!.cleanContent, /fail|unsuccessful|falls short/i);
+  assert.ok(result?.rollData);
+  assert.equal(result.rollData.outcome, "failure");
+  assert.match(result.cleanContent, /fail|unsuccessful|falls short/i);
 });
