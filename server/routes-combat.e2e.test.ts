@@ -342,6 +342,25 @@ test("buildSystemPrompt is grounded with the authoritative party inventory (regr
   );
 });
 
+test("extractItemsFromNarration never double-books ordinary tracked currency as a separate item (regression guard)", async () => {
+  // Live regression testing on 2026-08-18 found a real bug: the item-grant
+  // extractor's old instructions told it to treat ANY mention of gold/coins
+  // as a grantable itemType "currency", so when the DM narrated a character
+  // rediscovering money it already had (tracked correctly by the separate
+  // currency ledger), this extractor ALSO created duplicate "Gold Pieces" /
+  // "Small Leather Purse" item rows for the same money. Guard against this
+  // regressing silently since extractItemsFromNarration isn't exported.
+  const routesSource = fs.readFileSync(path.join(__dirname, "routes.ts"), "utf-8");
+  assert.ok(
+    routesSource.includes("campaignCurrencies"),
+    "extractItemsFromNarration must be told the campaign's tracked currencies",
+  );
+  assert.ok(
+    routesSource.includes("NEVER extract them here"),
+    "extractItemsFromNarration's prompt must explicitly forbid double-booking ordinary tracked currency as an item",
+  );
+});
+
 test("cleanup", () => {
   // better-sqlite3 keeps its file handle open for the life of the process,
   // and on Windows an open file can't be unlinked (EPERM) — see the same

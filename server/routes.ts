@@ -538,12 +538,25 @@ async function extractItemsFromNarration(
   narration: string,
   campaignId: number,
   characterId: number,
+  campaignCurrencies: Array<{ code: string; name: string }> = [],
 ): Promise<any[]> {
   const grantKeywords =
     /\b(gives?|hands?|grants?|receives?|finds?|picks? up|obtains?|discovers?|rewards?|loot|opens? .{0,20}chest|inside .{0,20}(bag|chest|pack|pouch)|tucks? .{0,30}(into|away)|presses? .{0,20}into|slips? .{0,20}(into|to)|places? .{0,20}in your hand|passes? .{0,20}to you)\b/i;
   if (!grantKeywords.test(narration)) return [];
 
   const knownItems = getKnownItemNames(characterId);
+
+  // 2026-08-18 live regression testing found a real double-booking bug: the
+  // model can narrate a character's own already-known money as a fresh
+  // "discovery" (e.g. "your fingers find a purse you'd swear wasn't there
+  // before"), and since this function's old instructions told it to treat
+  // ANY mention of gold/coins as a grantable itemType "currency", it created
+  // a duplicate item row for money that extractCurrencyChangesFromNarration
+  // was already tracking correctly via the real currency ledger. Ordinary
+  // tracked currency must never be extracted as an item.
+  const currencyNote = campaignCurrencies.length
+    ? `\nThis campaign's tracked currencies are: ${campaignCurrencies.map((c) => `${c.name} (${c.code})`).join(", ")}. Ordinary amounts of these — coins, purses, "gold pieces" found, paid, or already carried — are handled by a SEPARATE currency system. NEVER extract them here, even as itemType "currency", even if the narration frames having or finding them as a fresh discovery. Only extract a currency-flavored ITEM here if it's a distinct, unique, named object (a single cursed coin, an ancient sigil-coin, one ceremonial doubloon) that the party would keep as a specific object rather than spend as money.\n`
+    : "";
 
   try {
     const raw = await generateNarrationText({
@@ -552,7 +565,7 @@ async function extractItemsFromNarration(
       system: `You are an item extractor for a tabletop RPG. Given DM narration, identify any items that were NEWLY GRANTED to the player character in this scene.
 
 Only extract items that were explicitly given/found/received RIGHT NOW in this narration. Do not list items the character already owns.
-${knownItems.length ? `\nThe character ALREADY owns these items — do NOT extract any of them again, even if the narration mentions or describes them:\n${knownItems.map((n) => `- ${n}`).join("\n")}\n` : ""}
+${knownItems.length ? `\nThe character ALREADY owns these items — do NOT extract any of them again, even if the narration mentions or describes them:\n${knownItems.map((n) => `- ${n}`).join("\n")}\n` : ""}${currencyNote}
 Return a JSON array (may be empty []) of objects:
 [
   {
@@ -569,7 +582,7 @@ Return a JSON array (may be empty []) of objects:
 ]
 
 Rules:
-- Currency mentioned (gold, coins, silver) = itemType "currency"
+- Ordinary campaign currency (see above) is NEVER extracted here — itemType "currency" is only for a distinct, unique, non-fungible currency-like object, never for ordinary coin amounts
 - Potions, scrolls, bombs = consumable true
 - Weapons, armor = consumable false
 - If the item seems magical but its nature is unclear = identified false
@@ -2667,7 +2680,12 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         } catch {}
       }
 
-      const newItems = await extractItemsFromNarration(cleanContent, item.campaignId, item.characterId);
+      const newItems = await extractItemsFromNarration(
+        cleanContent,
+        item.campaignId,
+        item.characterId,
+        storage.getCampaignCurrencies(item.campaignId),
+      );
       for (const newItem of newItems) {
         const created = storage.createItem(newItem);
         broadcastToCampaign(item.campaignId, { type: "item_granted", item: created });
@@ -3116,11 +3134,12 @@ Keep it to 2-4 short paragraphs.`,
         broadcastToCampaign(campaignId, { type: "message", message: xpMsg });
       }
 
+      const campaignCurrenciesForExtraction = storage.getCampaignCurrencies(campaignId);
       Promise.all([
-        extractItemsFromNarration(finalContent, campaignId, character.id),
+        extractItemsFromNarration(finalContent, campaignId, character.id, campaignCurrenciesForExtraction),
         extractAbilitiesFromNarration(finalContent, campaignId, character.id),
         extractLostItemsFromNarration(finalContent, character.id),
-        extractCurrencyChangesFromNarration(finalContent, storage.getCampaignCurrencies(campaignId)),
+        extractCurrencyChangesFromNarration(finalContent, campaignCurrenciesForExtraction),
       ]).then(([newItems, newAbilities, lostItemIds, currencyChanges]) => {
         for (const newItem of newItems) {
           const created = storage.createItem(newItem);
