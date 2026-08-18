@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-18 (Phase 2 — asset acquisition)
+- Acquired the 3 scene/texture candidates that were cleared for use with no login/account gate: OpenGameArt's "large parchment texture" (CC0, 1920x1080), OpenGameArt's "Dark Wood, Seamless Handcrafted Texture" (CC0, 2048x2048), and tile 01 of Kenney's 80-tile Pattern Pack (CC0). Each was resized/re-encoded to WebP via a new `script/process-scene-asset.ts` ingestion tool (uses `sharp`, added as a devDependency, dev/build-time only) and committed to `client/public/scene-assets/`; the corresponding `scene-asset-registry.ts` entries now carry real `localAssetPath`, confirmed dimensions, and derivative checksums.
+- The other 5 cleared candidates (all DeviantArt: Eerie background with trees and pathway fog, Forest Castle Ruins, Cades Cove Sunrise, Falls Ridge Cave Trail, Blaenavon Ironworks) remain metadata-only — DeviantArt gates native-resolution downloads behind "Log in to download," and creating an account to obtain them was out of scope for this session. Their license terms are still genuinely confirmed (`clearanceStatus: "cleared"`), but with no `localAssetPath` the resolver correctly treats them as not yet selectable.
+- The resolver still always falls through to the procedural gradient in the live shell today, since no environment-classification signal exists yet to pick a specific asset out of the pool — that remains correct, not a regression.
+- Verification: typecheck/build pass clean; confirmed the new WebP files are served correctly by the dev server at their expected dimensions and that the Credits page renders the updated registry with no errors.
+- Risk: low. No raw stock original is exposed or bundled — only the processed derivatives.
+
 ## 2026-08-18 (Phase 2)
 - In-game UI redesign: implemented Phase 2 (scene/background asset system) of the immersive live-play shell on `feature/immersive-ingame-ui-redesign`, per design spec §13-14 and the 2026-08-17 Scene Background Asset Research Report.
 - Scene asset registry: added `shared/scene-assets.ts` (the `SceneAsset` type contract — license, technical, provenance, tags, suitability, clearance status) and `shared/scene-asset-registry.ts`, seeded with metadata for the research report's ~30-item shortlist plus its DeviantArt clearance queue. Licensing is now a property of the asset record, not a comment: nothing is selectable without recorded source URL, creator, license, commercial-use/modification/redistribution permissions, and attribution text.
