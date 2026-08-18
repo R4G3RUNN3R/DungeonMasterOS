@@ -108,7 +108,7 @@ type Props = {
   buyPending: boolean;
 
   encounter: EncounterState;
-  onAttack: (targetCombatantId: number) => void;
+  onAttack: (targetParticipantId: string) => void;
   onFlee: () => void;
   attackPending: boolean;
 

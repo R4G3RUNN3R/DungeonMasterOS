@@ -1326,10 +1326,10 @@ export default function CampaignPage() {
 
       <main className="flex-1 min-w-0 flex flex-col h-screen relative">
         <SceneBackdrop
-          imageUrl={resolvedScene.imageUrl}
-          dimPercent={resolvedScene.dimPercent}
-          vignette={resolvedScene.vignette}
-          blurPx={resolvedScene.blurPx}
+          imageUrl={resolvedScene.asset?.localAssetPath ?? null}
+          dimPercent={resolvedScene.asset?.suitability.suggestedDim}
+          vignette={resolvedScene.asset?.suitability.suggestedVignette}
+          blurPx={resolvedScene.asset?.suitability.suggestedBlurPx}
         />
 
         <div className="relative border-b border-amber-900/20 dm-leather px-5 py-4">

@@ -36,6 +36,7 @@ type CreateCampaignPayload = {
   powerLevel: "low" | "standard" | "high" | "godtier";
   worldType: "custom" | "faerun" | "original";
   combatStyle: "cinematic" | "tactical" | "dice";
+  ruleset: "dnd5e" | "dnd35e";
   storyMode: boolean;
   worldGenStyle: "standard" | "isekai" | "portal" | "reincarnation" | "dreamfall";
   homebrewRules: string;

@@ -242,8 +242,8 @@ export function ensureCompendiumSchema(): void {
   }
 }
 
-let _upsertDefinition: ReturnType<typeof sqlite.prepare> | null = null;
-function getUpsertDefinition(): ReturnType<typeof sqlite.prepare> {
+let _upsertDefinition: Database.Statement | null = null;
+function getUpsertDefinition(): Database.Statement {
   if (_upsertDefinition) return _upsertDefinition;
   _upsertDefinition = sqlite.prepare(`
   INSERT INTO item_definitions (
@@ -302,8 +302,8 @@ function getUpsertDefinition(): ReturnType<typeof sqlite.prepare> {
   return _upsertDefinition;
 }
 
-let _deleteAliases: ReturnType<typeof sqlite.prepare> | null = null;
-function getDeleteAliases(): ReturnType<typeof sqlite.prepare> {
+let _deleteAliases: Database.Statement | null = null;
+function getDeleteAliases(): Database.Statement {
   if (!_deleteAliases) {
     _deleteAliases = sqlite.prepare(
       "DELETE FROM item_definition_aliases WHERE definition_key = ?",
@@ -312,8 +312,8 @@ function getDeleteAliases(): ReturnType<typeof sqlite.prepare> {
   return _deleteAliases;
 }
 
-let _insertAlias: ReturnType<typeof sqlite.prepare> | null = null;
-function getInsertAlias(): ReturnType<typeof sqlite.prepare> {
+let _insertAlias: Database.Statement | null = null;
+function getInsertAlias(): Database.Statement {
   if (!_insertAlias) {
     _insertAlias = sqlite.prepare(`
       INSERT OR IGNORE INTO item_definition_aliases
