@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, Loader2, User, Lock, AlertCircle, CheckCircle, LogOut } from "lucide-react";
+import { ChevronLeft, Loader2, User, Lock, AlertCircle, CheckCircle, LogOut, Pencil, X, Check } from "lucide-react";
 import logoImg from "@assets/logo.png";
 
 export default function Account() {
@@ -22,8 +22,28 @@ export default function Account() {
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
 
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+
   if (!isLoading && !user) { navigate("/login"); return null; }
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+
+  const changeUsernameMutation = useMutation({
+    mutationFn: async (username: string) => {
+      const res = await apiRequest("POST", "/api/auth/change-username", { username });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setIsEditingUsername(false);
+      setUsernameError("");
+      toast({ title: "Username updated", description: "Your username has been changed successfully." });
+    },
+    onError: (err: Error) => {
+      setUsernameError(err.message);
+    },
+  });
 
   const changePasswordMutation = useMutation({
     mutationFn: async () => {
@@ -74,9 +94,59 @@ export default function Account() {
           <div className="space-y-4">
             <div>
               <Label className="text-xs text-muted-foreground">Username</Label>
-              <div className="mt-1 px-3 py-2 rounded-lg bg-muted text-sm text-foreground font-mono">
-                {user?.username}
-              </div>
+              {isEditingUsername ? (
+                <div className="mt-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      className="font-mono text-sm"
+                      maxLength={30}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      disabled={changeUsernameMutation.isPending}
+                      onClick={() => {
+                        setUsernameError("");
+                        changeUsernameMutation.mutate(usernameInput.trim());
+                      }}
+                    >
+                      {changeUsernameMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 text-green-400" />}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      disabled={changeUsernameMutation.isPending}
+                      onClick={() => { setIsEditingUsername(false); setUsernameError(""); }}
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                  {usernameError && (
+                    <div className="flex items-start gap-2 text-destructive text-xs p-2 rounded-lg bg-destructive/10 border border-destructive/20">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{usernameError}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-muted text-sm text-foreground font-mono">
+                  <span className="flex-1">{user?.username}</span>
+                  <button
+                    type="button"
+                    aria-label="Edit username"
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    onClick={() => { setUsernameInput(user?.username ?? ""); setIsEditingUsername(true); }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Email Address</Label>
@@ -91,7 +161,7 @@ export default function Account() {
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-4">To change your username or email, contact support.</p>
+          <p className="text-xs text-muted-foreground mt-4">To change your email address, contact support.</p>
         </div>
 
         {/* Change password */}

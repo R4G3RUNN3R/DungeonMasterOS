@@ -14,6 +14,9 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  googleId: text("google_id").unique(),
+  googleEmail: text("google_email"),
+  avatarUrl: text("avatar_url"),
 
   // Account role
   role: text("role").notNull().default("player"),
@@ -42,6 +45,9 @@ export const users = sqliteTable("users", {
   bonusTurns: integer("bonus_turns").notNull().default(0),
   usageResetAt: text("usage_reset_at"),
 
+  // Account-wide achievement counters — see shared/achievements.ts
+  totalLevelUps: integer("total_level_ups").notNull().default(0),
+
   // Admin / internal
   onboardingComplete: integer("onboarding_complete", { mode: "boolean" }).notNull().default(false),
   unlimitedTurns: integer("unlimited_turns", { mode: "boolean" }).notNull().default(false),
@@ -57,7 +63,50 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type PublicUser = Omit<User, "passwordHash">;
+export type PublicUser = Omit<User, "passwordHash" | "googleId">;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TURN ACCOUNTING
+// Ledger rows are append-only audit records. visibleDelta affects user-facing
+// available turns; reserveDelta tracks the internal 20% buffer we fund per grant.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const turnLedger = sqliteTable("turn_ledger", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  visibleDelta: integer("visible_delta").notNull().default(0),
+  reserveDelta: integer("reserve_delta").notNull().default(0),
+  balanceAfter: integer("balance_after"),
+  reason: text("reason").notNull(),
+  source: text("source").notNull().default("manual"),
+  sourceId: text("source_id"),
+  stripeEventId: text("stripe_event_id"),
+  stripeSessionId: text("stripe_session_id"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  tier: text("tier"),
+  packId: text("pack_id"),
+  metadata: text("metadata").notNull().default("{}"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertTurnLedgerSchema = createInsertSchema(turnLedger).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTurnLedgerEntry = z.infer<typeof insertTurnLedgerSchema>;
+export type TurnLedgerEntry = typeof turnLedger.$inferSelect;
+
+export const stripeEvents = sqliteTable("stripe_events", {
+  eventId: text("event_id").primaryKey(),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("processed"),
+  userId: integer("user_id"),
+  metadata: text("metadata").notNull().default("{}"),
+  processedAt: text("processed_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export type StripeEventRecord = typeof stripeEvents.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASSWORD RESET TOKENS
@@ -94,6 +143,7 @@ export const campaigns = sqliteTable("campaigns", {
   powerLevel: text("power_level").notNull().default("standard"),
   worldType: text("world_type").notNull().default("original"),
   combatStyle: text("combat_style").notNull().default("cinematic"),
+  ruleset: text("ruleset").notNull().default("dnd5e"),
   storyMode: integer("story_mode", { mode: "boolean" }).notNull().default(false),
   worldGenStyle: text("world_gen_style").notNull().default("standard"),
   homebrewRules: text("homebrew_rules").notNull().default(""),
@@ -199,6 +249,19 @@ export const characters = sqliteTable("characters", {
   // Legacy field kept for compatibility while the rest of the project is rewritten
   inventory: text("inventory").notNull().default("[]"),
 
+  // Dice/mechanics engine — ability scores (matches client/src/lib/computedStats.ts's Ability type)
+  str: integer("str").notNull().default(10),
+  dex: integer("dex").notNull().default(10),
+  con: integer("con").notNull().default(10),
+  int: integer("int").notNull().default(10),
+  wis: integer("wis").notNull().default(10),
+  cha: integer("cha").notNull().default(10),
+  ac: integer("ac").notNull().default(10),
+  xp: integer("xp").notNull().default(0),
+  damageDice: text("damage_dice").notNull().default("1d4"),
+  attackAbility: text("attack_ability").notNull().default("str"),
+  proficiencies: text("proficiencies").notNull().default("[]"),
+
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
@@ -257,6 +320,7 @@ export const messages = sqliteTable("messages", {
   content: text("content").notNull(),
   messageType: text("message_type").notNull().default("narration"),
   metadata: text("metadata").notNull().default("{}"),
+  clientSubmissionId: text("client_submission_id"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
@@ -267,6 +331,68 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
 
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENCOUNTERS
+// The server-authoritative combat state machine. participants is a JSON
+// snapshot — see server/dice-engine.ts EncounterParticipant for its shape.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const encounters = sqliteTable("encounters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  status: text("status").notNull().default("active"), // active | ended
+  round: integer("round").notNull().default(1),
+  turnIndex: integer("turn_index").notNull().default(0),
+  participants: text("participants").notNull().default("[]"),
+  lastResolvedTurnKey: text("last_resolved_turn_key"),
+  outcome: text("outcome"), // victory | defeat | all_fled | aborted, set when status becomes "ended"
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  endedAt: text("ended_at"),
+});
+
+export const insertEncounterSchema = createInsertSchema(encounters).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEncounter = z.infer<typeof insertEncounterSchema>;
+export type Encounter = typeof encounters.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROLL LOG
+// Every roll the server executes, with the real stat values used. This is the
+// audit trail proving the AI never supplied its own numbers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const rollLog = sqliteTable("roll_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  encounterId: integer("encounter_id"),
+  characterId: integer("character_id"),
+  participantId: text("participant_id"),
+  rollType: text("roll_type").notNull(), // check | attack | save | initiative
+  statUsed: text("stat_used").notNull(),
+  baseModifier: integer("base_modifier").notNull(),
+  effectModifier: integer("effect_modifier").notNull().default(0),
+  proficiencyBonus: integer("proficiency_bonus").notNull().default(0),
+  diceResult: integer("dice_result").notNull(),
+  total: integer("total").notNull(),
+  targetValue: integer("target_value").notNull(),
+  isCritical: integer("is_critical", { mode: "boolean" }).notNull().default(false),
+  isFumble: integer("is_fumble", { mode: "boolean" }).notNull().default(false),
+  outcome: text("outcome").notNull(), // success | failure | hit | miss
+  turnKey: text("turn_key"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertRollLogSchema = createInsertSchema(rollLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertRollLogEntry = z.infer<typeof insertRollLogSchema>;
+export type RollLogEntry = typeof rollLog.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ITEMS
@@ -295,6 +421,12 @@ export const items = sqliteTable("items", {
   identified: integer("identified", { mode: "boolean" }).notNull().default(true),
   consumable: integer("consumable", { mode: "boolean" }).notNull().default(false),
   equipped: integer("equipped", { mode: "boolean" }).notNull().default(false),
+  // Equipment slot when equipped: head | neck | chest | hands | mainHand | offHand | ring1 | ring2 | legs | feet
+  slot: text("slot"),
+  // Damage dice this weapon deals when equipped in mainHand (e.g. "1d8") — only
+  // meaningful for itemType "weapon". Null means it doesn't override the
+  // character's base damage dice.
+  weaponDamageDice: text("weapon_damage_dice"),
 
   locationNote: text("location_note").notNull().default(""),
   source: text("source").notNull().default("manual"),
@@ -545,6 +677,7 @@ export const createCampaignFormSchema = z.object({
 
   worldType: z.enum(["custom", "faerun", "original"]),
   combatStyle: z.enum(["cinematic", "tactical", "dice"]),
+  ruleset: z.enum(["dnd5e", "dnd35e"]).default("dnd5e"),
   storyMode: z.boolean().default(false),
 
   worldGenStyle: z.enum(["standard", "isekai", "portal", "reincarnation", "dreamfall"]),
@@ -564,6 +697,24 @@ export const createCharacterFormSchema = z.object({
   charClass: z.string().min(1, "Class is required").max(100),
   traits: z.string().max(3000).default(""),
   backstory: z.string().max(5000).default(""),
+  // No .default(10) here on purpose: a request that omits an ability score
+  // must fail validation, not silently become a 10. That silent fallback is
+  // exactly what produced a live character with every score defaulted and
+  // +0 everywhere — see campaign.tsx's character-creation form, which now
+  // requires the player to actually roll or point-buy before this is ever
+  // submitted.
+  // Max raised from 18 to 20: a legitimate 18 (4d6-drop-lowest ceiling or
+  // max point buy) plus a +2 racial adjustment can reach 20. Min lowered to 1
+  // for the same reason on the penalty side (a -2 racial adjustment on a low
+  // roll, clamped at 1 by applyRacialAdjustments in shared/races.ts).
+  str: z.number().int().min(1).max(20),
+  dex: z.number().int().min(1).max(20),
+  con: z.number().int().min(1).max(20),
+  int: z.number().int().min(1).max(20),
+  wis: z.number().int().min(1).max(20),
+  cha: z.number().int().min(1).max(20),
+  proficiencies: z.array(z.string().max(60)).max(20).default([]),
+  feats: z.array(z.string().min(1).max(200)).max(20).default([]),
 });
 
 export const playerActionSchema = z.object({

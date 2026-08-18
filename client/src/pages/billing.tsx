@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
@@ -8,17 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Crown, CreditCard, ChevronLeft, Loader2, AlertTriangle,
-  CheckCircle, Gift, Plus, ExternalLink, Zap, RefreshCw,
+  CheckCircle, Plus, ExternalLink, Zap, RefreshCw,
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
-import { TIERS, TURN_PACKS, formatPrice, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
+import { TIERS, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
 
 export default function Billing() {
   const [, navigate] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [buyingTopUp, setBuyingTopUp] = useState<string | null>(null);
 
   if (!authLoading && !user) { navigate("/login"); return null; }
 
@@ -46,19 +44,23 @@ export default function Billing() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const topUpMutation = useMutation({
-    mutationFn: async (packId: string) => {
-      const res = await apiRequest("POST", "/api/stripe/topup", { packId });
-      return res.json();
-    },
-    onSuccess: (data: any) => { if (data.url) window.location.href = data.url; },
-    onError: (err: Error) => { toast({ title: "Error", description: err.message, variant: "destructive" }); setBuyingTopUp(null); },
-  });
-
   const tier = (billing?.tier || user?.tier || "free") as TierName;
   const status = (billing?.subscriptionStatus || user?.subscriptionStatus || "trial") as SubscriptionStatus;
   const tierDef = TIERS[tier];
   const limits = getEffectiveLimits(tier, status, user?.trialEndsAt ? new Date(user.trialEndsAt) : null);
+  // /api/billing's turnsIncluded is the authoritative per-period entitlement
+  // (it accounts for weekly vs monthly/yearly interval and unlimitedTurns);
+  // limits.aiTurnsPerMonth is always the MONTHLY figure regardless of the
+  // subscriber's actual billing interval, so a weekly Adventurer must never
+  // be shown "200" here — falls back to the client-computed value only if
+  // the API hasn't returned billing data yet.
+  const turnsIncluded: number = billing?.turnsIncluded ?? limits.aiTurnsPerMonth;
+  const turnPeriodLabel = billing?.stripeBillingInterval === "weekly" ? "week" : "month";
+  // getNewUserBillingState() gives every new signup subscriptionStatus:
+  // "expired" (no free trial) — someone who has never touched Stripe and
+  // never had a subscription period hasn't "expired", they've simply never
+  // subscribed. A red "expired" badge right after registration is misleading.
+  const neverSubscribed = status === "expired" && !billing?.hasStripe && !billing?.subscriptionCurrentPeriodEnd;
 
   const statusColors: Record<string, string> = {
     trial: "bg-primary/10 text-primary border-primary/20",
@@ -97,7 +99,11 @@ export default function Billing() {
               </h2>
               <div className="flex items-center gap-2 mt-2">
                 <span className="font-serif text-2xl font-bold text-foreground">{tierDef.displayName}</span>
-                <Badge className={`text-xs border capitalize ${statusColors[status] || statusColors.trial}`}>{status}</Badge>
+                {neverSubscribed ? (
+                  <Badge className="text-xs border bg-primary/10 text-primary border-primary/20">Not subscribed</Badge>
+                ) : (
+                  <Badge className={`text-xs border capitalize ${statusColors[status] || statusColors.trial}`}>{status}</Badge>
+                )}
               </div>
               {status === "trial" && user?.trialEndsAt && (
                 <p className="text-xs text-muted-foreground mt-1">
@@ -117,9 +123,9 @@ export default function Billing() {
               )}
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground mb-1">AI Turns this month</p>
+              <p className="text-xs text-muted-foreground mb-1">AI Turns this {turnPeriodLabel}</p>
               <p className="font-mono text-lg font-bold text-foreground">
-                {billing?.aiTurnsUsedThisMonth ?? 0} <span className="text-sm text-muted-foreground font-normal">/ {limits.aiTurnsPerMonth === 999 ? "∞" : limits.aiTurnsPerMonth}</span>
+                {billing?.aiTurnsUsedThisMonth ?? 0} <span className="text-sm text-muted-foreground font-normal">/ {turnsIncluded === -1 ? "∞" : turnsIncluded}</span>
               </p>
               {(billing?.bonusTurns ?? 0) > 0 && (
                 <p className="text-xs text-primary mt-0.5">+{billing.bonusTurns} bonus turns</p>
@@ -157,7 +163,7 @@ export default function Billing() {
             {[
               { label: "Active Campaigns", value: limits.activeCampaigns === 999 ? "Unlimited" : limits.activeCampaigns },
               { label: "Players per Campaign", value: limits.playersPerCampaign },
-              { label: "AI Turns per Month", value: limits.aiTurnsPerMonth === 999 ? "Unlimited" : limits.aiTurnsPerMonth.toLocaleString() },
+              { label: turnPeriodLabel === "week" ? "AI Turns per Week" : "AI Turns per Month", value: turnsIncluded === -1 ? "Unlimited" : turnsIncluded.toLocaleString() },
               { label: "Message History Depth", value: limits.messageHistoryDepth === 99999 ? "Unlimited" : limits.messageHistoryDepth.toLocaleString() },
               { label: "Anime Worlds", value: limits.animeWorlds ? "✓ Included" : "✗ Not included" },
               { label: "Epic Mode", value: limits.epicMode ? "✓ Included" : "✗ Not included" },
@@ -182,47 +188,6 @@ export default function Billing() {
             </div>
           )}
         </div>
-
-        {/* Top-up turns */}
-        {status !== "expired" && tier !== "free" && (
-          <div>
-            <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Gift className="w-4 h-4 text-primary" /> Buy More AI Turns
-            </h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Top up your AI turns any time. As a {tierDef.displayName} subscriber, you get {tierDef.topUpDiscountPct}% off all packs.
-            </p>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {TURN_PACKS.filter((p) => p.prices[tier] !== null).map((pack) => {
-                const price = pack.prices[tier];
-                if (price === null) return null;
-                return (
-                  <div key={pack.id} className="bg-card border border-border rounded-xl p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-bold text-foreground">{pack.turns} turns</p>
-                        <p className="text-xs text-muted-foreground">{pack.playTime}</p>
-                      </div>
-                      <p className="font-serif text-xl font-bold text-primary">{formatPrice(price)}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full gap-1.5"
-                      disabled={topUpMutation.isPending && buyingTopUp === pack.id}
-                      onClick={() => { setBuyingTopUp(pack.id); topUpMutation.mutate(pack.id); }}
-                    >
-                      {topUpMutation.isPending && buyingTopUp === pack.id
-                        ? <><Loader2 className="w-3 h-3 animate-spin" />Processing...</>
-                        : <><Plus className="w-3 h-3" />Buy Pack</>
-                      }
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Upgrade to higher tiers (if applicable) */}
         {tier !== "chronicler" && status !== "expired" && (

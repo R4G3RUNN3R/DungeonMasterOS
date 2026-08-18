@@ -1,3 +1,5 @@
+import { webSocketUrl } from "./appBase";
+
 type MessageHandler = (data: any) => void;
 
 class GameWebSocket {
@@ -12,8 +14,7 @@ class GameWebSocket {
     this.manuallyClosed = false;
     this.disconnectInternal();
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsUrl = webSocketUrl();
 
     try {
       this.ws = new WebSocket(wsUrl);

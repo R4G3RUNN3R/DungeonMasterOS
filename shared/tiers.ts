@@ -8,7 +8,7 @@ export interface TurnPack {
   id: string;
   turns: number;
   playTime: string;
-  prices: Record<TierName, number | null>; // pence, null = not available
+  prices: Record<TierName, number | null>; // cents, null = not available
   // Stripe price IDs injected at runtime from env vars
   stripePriceIds?: Partial<Record<TierName, string>>;
 }
@@ -18,7 +18,7 @@ export interface Tier {
   displayName: string;
   tagline: string;
   badge?: string;
-  priceMonthly: number; // GBP pence
+  priceMonthly: number; // GBP cents
   priceWeekly: number;
   priceYearly: number;
 
@@ -61,7 +61,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 6,
     playersPerCampaign: 1,
-    aiTurnsPerMonth: 60,
+    aiTurnsPerMonth: 0,
     messageHistoryDepth: 30,
     multiplayerHost: false,
     animeWorlds: false,
@@ -81,9 +81,9 @@ export const TIERS: Record<TierName, Tier> = {
     name: "adventurer",
     displayName: "Adventurer",
     tagline: "Solo adventures and duo campaigns",
-    priceMonthly: 1000,
-    priceWeekly: 300,
-    priceYearly: 8400,
+    priceMonthly: 1499,
+    priceWeekly: 499,
+    priceYearly: 15999,
     stripePriceIdMonthly: "STRIPE_PRICE_ADVENTURER_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_ADVENTURER_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_ADVENTURER_YEARLY",
@@ -112,9 +112,9 @@ export const TIERS: Record<TierName, Tier> = {
     displayName: "Campaign Master",
     tagline: "For regular groups and ongoing campaigns",
     badge: "Most Popular",
-    priceMonthly: 2000,
-    priceWeekly: 600,
-    priceYearly: 16800,
+    priceMonthly: 2499,
+    priceWeekly: 799,
+    priceYearly: 26999,
     stripePriceIdMonthly: "STRIPE_PRICE_MASTER_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_MASTER_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_MASTER_YEARLY",
@@ -122,7 +122,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 20,
     playersPerCampaign: 4,
-    aiTurnsPerMonth: 600,
+    aiTurnsPerMonth: 400,
     messageHistoryDepth: 1000,
     multiplayerHost: true,
     animeWorlds: true,
@@ -142,9 +142,9 @@ export const TIERS: Record<TierName, Tier> = {
     name: "legend",
     displayName: "Legend",
     tagline: "For serious players running multiple groups",
-    priceMonthly: 3000,
-    priceWeekly: 900,
-    priceYearly: 25200,
+    priceMonthly: 3499,
+    priceWeekly: 1099,
+    priceYearly: 37999,
     stripePriceIdMonthly: "STRIPE_PRICE_LEGEND_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_LEGEND_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_LEGEND_YEARLY",
@@ -152,7 +152,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 999,
     playersPerCampaign: 6,
-    aiTurnsPerMonth: 2000,
+    aiTurnsPerMonth: 600,
     messageHistoryDepth: 5000,
     multiplayerHost: true,
     animeWorlds: true,
@@ -165,7 +165,7 @@ export const TIERS: Record<TierName, Tier> = {
     earlyAccess: false,
     topUpDiscountPct: 50,
     color: "#e67e22",
-    upgradePrompt: "For players who never stop, there's Chronicler.",
+    upgradePrompt: "Legend is our top tier — for even more headroom, add a Squire Pass for solo one-off sessions.",
   },
 
   chronicler: {
@@ -173,9 +173,9 @@ export const TIERS: Record<TierName, Tier> = {
     displayName: "Chronicler",
     tagline: "The Dungeon Master never tires. Neither do you.",
     badge: "For the Devoted",
-    priceMonthly: 4900,
-    priceWeekly: 1200,
-    priceYearly: 41160,
+    priceMonthly: 7999,
+    priceWeekly: 2399,
+    priceYearly: 79990,
     stripePriceIdMonthly: "STRIPE_PRICE_CHRONICLER_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_CHRONICLER_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_CHRONICLER_YEARLY",
@@ -183,7 +183,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 999,
     playersPerCampaign: 6,
-    aiTurnsPerMonth: 3000,
+    aiTurnsPerMonth: 500,
     messageHistoryDepth: 99999,
     multiplayerHost: true,
     animeWorlds: true,
@@ -200,48 +200,129 @@ export const TIERS: Record<TierName, Tier> = {
   },
 };
 
+export type BillingInterval = "weekly" | "monthly" | "yearly";
+
+export const SQUIRE_PASS = {
+  displayName: "Squire Pass",
+  price: 499,
+  turns: 50,
+  stripePriceEnv: "STRIPE_PRICE_SQUIRE_PASS",
+} as const;
+
+const WEEKLY_INCLUDED_TURNS: Partial<Record<TierName, number>> = {
+  adventurer: 50,
+  master: 100,
+  legend: 150,
+};
+
+export function getIncludedTurns(
+  tier: TierName,
+  interval: BillingInterval,
+): number {
+  if (tier === "free") return 0;
+
+  if (interval === "weekly") {
+    return WEEKLY_INCLUDED_TURNS[tier] ?? TIERS[tier]?.aiTurnsPerMonth ?? 0;
+  }
+
+  return TIERS[tier]?.aiTurnsPerMonth ?? 0;
+}
+
+export function getNextUsageResetAt(
+  interval: BillingInterval,
+  from: Date = new Date(),
+): Date {
+  const next = new Date(from.getTime());
+
+  if (interval === "weekly") {
+    next.setUTCDate(next.getUTCDate() + 7);
+    return next;
+  }
+
+  const originalDay = next.getUTCDate();
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+
+  const daysInTargetMonth = new Date(
+    Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  next.setUTCDate(Math.min(originalDay, daysInTargetMonth));
+  return next;
+}
+
+export function calculateTurnSpend(
+  used: number,
+  bonusTurns: number,
+  useBonusTurn: boolean,
+): { used: number; bonusTurns: number } {
+  if (useBonusTurn) {
+    return {
+      used,
+      bonusTurns: Math.max(0, bonusTurns - 1),
+    };
+  }
+
+  return {
+    used: used + 1,
+    bonusTurns,
+  };
+}
+
+export function getNewUserBillingState() {
+  return {
+    tier: "free" as const,
+    subscriptionStatus: "expired" as const,
+    trialEndsAt: null,
+    usageResetAt: null,
+    aiTurnsUsedThisMonth: 0,
+    bonusTurns: 0,
+    onboardingComplete: false,
+  };
+}
+
+export function isPurchasableSubscriptionTier(
+  tier: unknown,
+): tier is "adventurer" | "master" | "legend" {
+  return tier === "adventurer" || tier === "master" || tier === "legend";
+}
+
 export const TURN_PACKS: TurnPack[] = [
   {
     id: "pack_50",
     turns: 50,
-    playTime: "4–7 hours of play",
-    prices: { free: null, adventurer: 109, master: 99, legend: 79, chronicler: 99 },
+    playTime: "4-7 hours of play",
+    prices: { free: null, adventurer: 999, master: 999, legend: 999, chronicler: 999 },
   },
   {
-    id: "pack_100",
-    turns: 100,
-    playTime: "8–14 hours of play",
-    prices: { free: null, adventurer: 219, master: 199, legend: 149, chronicler: 149 },
+    id: "pack_125",
+    turns: 125,
+    playTime: "10-18 hours of play",
+    prices: { free: null, adventurer: 1999, master: 1999, legend: 1999, chronicler: 1999 },
   },
   {
-    id: "pack_250",
-    turns: 250,
-    playTime: "21–36 hours of play",
-    prices: { free: null, adventurer: 549, master: 499, legend: 349, chronicler: 299 },
+    id: "pack_300",
+    turns: 300,
+    playTime: "25-43 hours of play",
+    prices: { free: null, adventurer: 4499, master: 4499, legend: 4499, chronicler: 4499 },
   },
   {
-    id: "pack_500",
-    turns: 500,
-    playTime: "42–71 hours of play",
-    prices: { free: null, adventurer: 999, master: 849, legend: 649, chronicler: 549 },
-  },
-  {
-    id: "pack_1000",
-    turns: 1000,
-    playTime: "83–143 hours of play",
-    prices: { free: null, adventurer: 1799, master: 1499, legend: 1149, chronicler: 1099 },
+    id: "pack_750",
+    turns: 750,
+    playTime: "62-107 hours of play",
+    prices: { free: null, adventurer: 9999, master: 9999, legend: 9999, chronicler: 9999 },
   },
 ];
 
 export const TRIAL_DAYS = 7;
 
 export const TRIAL_LIMITS = {
-  activeCampaigns: 3,
-  charactersTotal: 12,
-  playersPerCampaign: 4,
-  aiTurnsPerMonth: 999,
-  messageHistoryDepth: 500,
-  multiplayerHost: true,
+  activeCampaigns: 1,
+  charactersTotal: 6,
+  playersPerCampaign: 1,
+  aiTurnsPerMonth: 10,
+  messageHistoryDepth: 120,
+  multiplayerHost: false,
   animeWorlds: true,
   epicMode: true,
   allWorldModes: true,
@@ -296,9 +377,9 @@ export function getTopUpPrice(packId: string, tier: TierName): number | null {
   return pack.prices[tier] ?? null;
 }
 
-export function formatPrice(pence: number): string {
-  if (pence === 0) return "Free";
-  return `£${(pence / 100).toFixed(2).replace(".00", "")}`;
+export function formatPrice(cents: number): string {
+  if (cents === 0) return "Free";
+  return `£${(cents / 100).toFixed(2).replace(".00", "")}`;
 }
 
 export function trialDaysRemaining(trialEndsAt: string | null): number {

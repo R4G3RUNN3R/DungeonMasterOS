@@ -8,6 +8,7 @@ import {
   BookOpen, Tv, Wand2, ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { TIERS, SQUIRE_PASS, formatPrice } from "@shared/tiers";
 import logoImg from "@assets/logo.png";
 
 function ParticleCanvas() {
@@ -106,10 +107,10 @@ const testimonials = [
 ];
 
 const faqs = [
-  { q: "No card required for the trial?", a: "Correct. Full 7-day trial with no payment info needed." },
+  { q: "Is there a free trial?", a: `No — but a one-time ${formatPrice(SQUIRE_PASS.price)} Squire Pass gets you ${SQUIRE_PASS.turns} AI DM turns with no subscription, so you can try a full session before committing.` },
   { q: "D&D only?", a: "Any system. Anime, homebrew, narrative-only — it adapts to whatever you paste in." },
   { q: "Does every player need to subscribe?", a: "Only the host. Players join campaigns for free using an invite code." },
-  { q: "What happens when the trial ends?", a: "Your campaigns are saved and preserved. Subscribe to continue. Nothing is deleted." },
+  { q: "Can I cancel anytime?", a: "Yes — cancel anytime with no fees. Access continues until the end of your paid period." },
 ];
 
 export default function Landing() {
@@ -128,6 +129,8 @@ export default function Landing() {
         <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
           <Link href="/how-it-works" className="hover:text-foreground transition-colors">How It Works</Link>
           <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
+          <Link href="/compendium" className="hover:text-foreground transition-colors">Compendium</Link>
+          <Link href="/updates" className="hover:text-foreground transition-colors">Updates</Link>
           {user ? (
             <Link href="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
           ) : (
@@ -140,7 +143,7 @@ export default function Landing() {
           </Button>
         ) : (
           <Button size="sm" onClick={() => navigate("/register")} className="text-xs font-medium">
-            Start Free Trial
+            Get Started
           </Button>
         )}
       </nav>
@@ -160,7 +163,7 @@ export default function Landing() {
             style={{ width: 120, height: 120, border: "2px solid #c4a265" }}
           />
           <div className="inline-flex items-center gap-2 text-primary text-xs font-semibold mb-6 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
-            <Star className="w-3 h-3" /> 7-day free trial · No card required
+            <Star className="w-3 h-3" /> One-time Squire Pass or subscribe — no free trial needed
           </div>
           <h1 className="font-serif text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-tight">
             Your AI Dungeon Master<br />
@@ -173,14 +176,14 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" onClick={() => navigate(user ? "/dashboard" : "/register")} className="px-8 h-12 text-base gap-2">
               <Swords className="w-5 h-5" />
-              {user ? "Go to Dashboard" : "Start Free — No Card Needed"}
+              {user ? "Go to Dashboard" : "Get Started"}
             </Button>
             <Button size="lg" variant="outline" onClick={() => navigate("/how-it-works")} className="px-8 h-12 text-base gap-2">
               <BookOpen className="w-4 h-4" /> How It Works
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-4">
-            7-day trial · Weekly £9 · Monthly £30 · Players join free
+            Squire Pass {formatPrice(SQUIRE_PASS.price)} one-time · Subscriptions from {formatPrice(TIERS.adventurer.priceWeekly)}/wk · Players join free
           </p>
         </div>
 
@@ -287,27 +290,28 @@ export default function Landing() {
 
       {/* Pricing summary */}
       <section className="py-24 px-6">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-serif text-3xl md:text-4xl font-bold tracking-tight mb-4">Simple, honest pricing</h2>
-          <p className="text-muted-foreground mb-10">Start free. Subscribe when you're ready. Cancel anytime.</p>
-          <div className="grid sm:grid-cols-3 gap-4 mb-10">
+          <p className="text-muted-foreground mb-10">A one-time pass or a subscription. Cancel anytime.</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
             {[
-              { label: "7-Day Trial", price: "£0", note: "Full access, no card" },
-              { label: "Weekly", price: "£9", note: "per week" },
-              { label: "Monthly", price: "£30", note: "per month · save 17%" },
+              { label: SQUIRE_PASS.displayName, price: formatPrice(SQUIRE_PASS.price), note: "one-time, no subscription" },
+              { label: TIERS.adventurer.displayName, price: `${formatPrice(TIERS.adventurer.priceWeekly)}/wk`, note: `from ${formatPrice(TIERS.adventurer.priceWeekly)}/week` },
+              { label: TIERS.master.displayName, price: `${formatPrice(TIERS.master.priceWeekly)}/wk`, note: "Most Popular" },
+              { label: TIERS.legend.displayName, price: `${formatPrice(TIERS.legend.priceWeekly)}/wk`, note: "our top tier" },
             ].map((p) => (
               <div key={p.label} className="bg-card border border-border rounded-xl p-6">
                 <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2">{p.label}</p>
-                <p className="font-serif text-4xl font-bold text-foreground mb-1">{p.price}</p>
+                <p className="font-serif text-3xl font-bold text-foreground mb-1">{p.price}</p>
                 <p className="text-xs text-muted-foreground">{p.note}</p>
               </div>
             ))}
           </div>
-          <p className="text-sm text-muted-foreground mb-6">Players join campaigns free. Only the host needs to subscribe.</p>
+          <p className="text-sm text-muted-foreground mb-6">Players join campaigns free. Only the host needs to pay.</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" onClick={() => navigate(user ? "/dashboard" : "/register")} className="px-8 gap-2">
               <Swords className="w-4 h-4" />
-              {user ? "Go to Dashboard" : "Start Your Free Trial"}
+              {user ? "Go to Dashboard" : "Get Started"}
             </Button>
             <Button size="lg" variant="outline" onClick={() => navigate("/pricing")} className="px-8">
               View Full Pricing
@@ -346,10 +350,10 @@ export default function Landing() {
           <h2 className="font-serif text-4xl md:text-5xl font-bold tracking-tight mb-4">
             Your next campaign starts now
           </h2>
-          <p className="text-muted-foreground mb-8">7-day free trial. No credit card. No software to install.</p>
+          <p className="text-muted-foreground mb-8">No subscription required to start. No software to install.</p>
           <Button size="lg" onClick={() => navigate(user ? "/dashboard" : "/register")} className="px-10 h-14 text-base gap-2">
             <Swords className="w-5 h-5" />
-            {user ? "Continue Your Adventure" : "Begin Your Free Trial"}
+            {user ? "Continue Your Adventure" : "Get Started"}
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
@@ -365,6 +369,8 @@ export default function Landing() {
           <div className="flex gap-5">
             <Link href="/how-it-works" className="hover:text-foreground transition-colors">How It Works</Link>
             <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
+            <Link href="/compendium" className="hover:text-foreground transition-colors">Compendium</Link>
+            <Link href="/updates" className="hover:text-foreground transition-colors">Updates</Link>
             <Link href="/login" className="hover:text-foreground transition-colors">Sign In</Link>
             <Link href="/register" className="hover:text-foreground transition-colors">Register</Link>
           </div>

@@ -3,22 +3,20 @@ import { Link, useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Check, Swords, ChevronDown, ChevronUp, Star, Crown, Loader2, X } from "lucide-react";
-import { TIERS, formatPrice, type TierName } from "@shared/tiers";
+import { Check, Swords, ChevronDown, ChevronUp, Star, Crown, Loader2, Sparkles } from "lucide-react";
+import { TIERS, formatPrice, getIncludedTurns, SQUIRE_PASS, type TierName, type BillingInterval } from "@shared/tiers";
 import logoImg from "@assets/logo.png";
 
-const TIER_ORDER: TierName[] = ["free", "adventurer", "master", "legend", "chronicler"];
+const TIER_ORDER: TierName[] = ["adventurer", "master", "legend"];
 
 const faqs = [
-  { q: "What happens after the free trial?", a: "Your campaigns are saved and preserved. Subscribe to continue playing. Nothing is deleted." },
   { q: "Can I cancel anytime?", a: "Yes — cancel anytime with no fees. Access continues until the end of your paid period." },
-  { q: "Do all players need to subscribe?", a: "Only the campaign host needs a subscription. Players join campaigns for free using an invite code." },
+  { q: "Do all players need to subscribe?", a: "Only the campaign host needs to pay. Players join for free using an invite code, up to your plan's players-per-campaign limit (2 to 6 depending on tier, including the host)." },
   { q: "What game systems does it support?", a: "Any system. D&D 5e, Pathfinder, anime power systems (Naruto, One Piece), homebrew rules, narrative-only — paste your character sheet and the DM adapts." },
-  { q: "Is there a difference between weekly and monthly?", a: "Same full access, different billing cadence. Monthly saves you 17% compared to paying weekly." },
-  { q: "What's in the top-up packs?", a: "Additional AI DM turns you can buy any time. Higher tiers get bigger loyalty discounts — up to 60% off." },
+  { q: "What's the difference between Squire Pass and a subscription?", a: `Squire Pass is a one-time ${formatPrice(SQUIRE_PASS.price)} purchase for ${SQUIRE_PASS.turns} AI DM turns — no recurring billing, ideal for a single one-shot session. Subscriptions renew automatically and refill your turns every billing period.` },
+  { q: "Why do weekly plans include fewer turns than monthly?", a: "Weekly billing includes a smaller turn allotment per period so your total cost scales with how often you actually play. Monthly and yearly plans include the full monthly allotment every period." },
   { q: "What happens if I lose internet mid-session?", a: "Sessions are persisted server-side. Reconnect and the DM will pick up exactly where you left off." },
 ];
 
@@ -38,19 +36,31 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-const TIER_FEATURES: Record<TierName, string[]> = {
-  free: ["1 active campaign", "60 AI turns/month", "Solo only", "30-message context", "7-day trial included"],
-  adventurer: ["1 active campaign", "200 AI turns/month", "2 players", "200-message context", "Custom worlds", "Homebrew rules", "Export sessions", "25% top-up discount"],
-  master: ["3 active campaigns", "600 AI turns/month", "4 players", "1,000-message context", "Anime worlds", "Epic mode", "All world modes", "35% top-up discount"],
-  legend: ["10 active campaigns", "2,000 AI turns/month", "6 players", "5,000-message context", "Priority responses", "Early access", "50% top-up discount"],
-  chronicler: ["Unlimited campaigns", "3,000 AI turns/month", "6 players", "Full unlimited history", "Priority responses", "Early access features", "60% top-up discount"],
-};
+function getTierFeatures(tierName: TierName, interval: BillingInterval): string[] {
+  const t = TIERS[tierName];
+  const turnUnit = interval === "weekly" ? "week" : "month";
+  const features = [
+    `${t.activeCampaigns >= 999 ? "Unlimited" : t.activeCampaigns} active campaign${t.activeCampaigns === 1 ? "" : "s"}`,
+    `${getIncludedTurns(tierName, interval)} AI turns/${turnUnit}`,
+    `${t.playersPerCampaign} player${t.playersPerCampaign === 1 ? "" : "s"} per campaign`,
+    `${t.messageHistoryDepth >= 99999 ? "Unlimited" : t.messageHistoryDepth.toLocaleString()}-message context`,
+  ];
+  if (t.customWorldPrompt) features.push("Custom worlds");
+  if (t.homebrewRules) features.push("Homebrew rules");
+  if (t.exportSessions) features.push("Export sessions");
+  if (t.animeWorlds) features.push("Anime worlds");
+  if (t.epicMode) features.push("Epic mode");
+  if (t.allWorldModes) features.push("All world modes");
+  if (t.priorityResponse) features.push("Priority responses");
+  if (t.earlyAccess) features.push("Early access");
+  return features;
+}
 
 export default function Pricing() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [interval, setInterval] = useState<"monthly" | "weekly" | "yearly">("monthly");
+  const [interval, setInterval] = useState<BillingInterval>("monthly");
   const [subscribingTier, setSubscribingTier] = useState<TierName | null>(null);
 
   const checkoutMutation = useMutation({
@@ -68,8 +78,21 @@ export default function Pricing() {
     },
   });
 
+  const squireMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) { navigate("/register"); return; }
+      const res = await apiRequest("POST", "/api/stripe/squire");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data?.url) window.location.href = data.url;
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleSubscribe = (tier: TierName) => {
-    if (tier === "free") { navigate(user ? "/dashboard" : "/register"); return; }
     if (!user) { navigate("/register"); return; }
     setSubscribingTier(tier);
     checkoutMutation.mutate({ tier, interval });
@@ -99,7 +122,7 @@ export default function Pricing() {
           ) : (
             <>
               <Link href="/login"><Button variant="ghost" size="sm" className="text-xs">Sign In</Button></Link>
-              <Link href="/register"><Button size="sm" className="text-xs">Start Free Trial</Button></Link>
+              <Link href="/register"><Button size="sm" className="text-xs">Get Started</Button></Link>
             </>
           )}
         </div>
@@ -113,7 +136,7 @@ export default function Pricing() {
           </div>
           <h1 className="font-serif text-4xl md:text-5xl font-bold tracking-tight mb-5">Choose Your Adventure</h1>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto leading-relaxed mb-8">
-            Start free — no card required. Subscribe when you're ready. Players always join for free.
+            Grab a one-time Squire Pass to try a session, or subscribe for ongoing campaigns. Players always join for free.
           </p>
 
           {/* Billing toggle */}
@@ -130,16 +153,50 @@ export default function Pricing() {
               </button>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-3">Billing toggle applies to subscriptions — Squire Pass is a flat one-time price.</p>
         </div>
 
         {/* Tier cards */}
-        <div className="grid lg:grid-cols-5 md:grid-cols-3 gap-4 mb-20">
+        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4 mb-20">
+          {/* Squire Pass — one-time purchase, not a subscription tier */}
+          <div className="bg-card rounded-xl p-6 flex flex-col relative border border-border">
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{SQUIRE_PASS.displayName}</p>
+              <div className="flex items-end gap-1 mb-1">
+                <span className="font-serif text-3xl font-bold text-foreground">{formatPrice(SQUIRE_PASS.price)}</span>
+                <span className="text-muted-foreground text-xs mb-1">one-time</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">A single solo session, no subscription required</p>
+            </div>
+
+            <ul className="space-y-2 mb-6 flex-1">
+              {[`${SQUIRE_PASS.turns} AI DM turns, no expiry`, "Solo play", "No recurring billing", "Upgrade to a subscription anytime"].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Check className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />{f}
+                </li>
+              ))}
+            </ul>
+
+            <Button
+              className="w-full text-xs"
+              variant="outline"
+              onClick={() => squireMutation.mutate()}
+              disabled={squireMutation.isPending}
+            >
+              {squireMutation.isPending ? (
+                <><Loader2 className="w-3 h-3 animate-spin mr-1.5" />Processing...</>
+              ) : (
+                <><Sparkles className="w-3 h-3 mr-1.5" />Buy Squire Pass</>
+              )}
+            </Button>
+          </div>
+
           {TIER_ORDER.map((tierName) => {
             const tierDef = TIERS[tierName];
             const price = getPriceForInterval(tierName);
             const isMostPopular = tierName === "master";
             const isCurrent = user?.tier === tierName;
-            const features = TIER_FEATURES[tierName];
+            const features = getTierFeatures(tierName, interval);
 
             return (
               <div
@@ -160,17 +217,11 @@ export default function Pricing() {
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{tierDef.displayName}</p>
                   <div className="flex items-end gap-1 mb-1">
-                    {tierName === "free" ? (
-                      <span className="font-serif text-3xl font-bold text-foreground">Free</span>
-                    ) : (
-                      <>
-                        <span className="font-serif text-3xl font-bold text-foreground">{formatPrice(price)}</span>
-                        <span className="text-muted-foreground text-xs mb-1">/{interval === "weekly" ? "wk" : interval === "yearly" ? "mo" : "mo"}</span>
-                      </>
-                    )}
+                    <span className="font-serif text-3xl font-bold text-foreground">{formatPrice(price)}</span>
+                    <span className="text-muted-foreground text-xs mb-1">/{interval === "weekly" ? "wk" : "mo"}</span>
                   </div>
-                  {tierName !== "free" && interval === "yearly" && (
-                    <p className="text-xs text-green-400">Billed {formatPrice(TIERS[tierName].priceYearly)}/yr</p>
+                  {interval === "yearly" && (
+                    <p className="text-xs text-green-400">Billed {formatPrice(TIERS[tierName].priceYearly)}/yr &middot; turns replenish monthly</p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">{tierDef.tagline}</p>
                 </div>
@@ -187,12 +238,10 @@ export default function Pricing() {
                   className="w-full text-xs"
                   variant={isMostPopular ? "default" : "outline"}
                   onClick={() => handleSubscribe(tierName)}
-                  disabled={checkoutMutation.isPending && subscribingTier === tierName}
+                  disabled={isCurrent || (checkoutMutation.isPending && subscribingTier === tierName)}
                 >
                   {checkoutMutation.isPending && subscribingTier === tierName ? (
                     <><Loader2 className="w-3 h-3 animate-spin mr-1.5" />Processing...</>
-                  ) : tierName === "free" ? (
-                    user ? "Go to Dashboard" : "Start Free Trial"
                   ) : isCurrent ? (
                     "Current Plan"
                   ) : (
@@ -228,10 +277,10 @@ export default function Pricing() {
           <Link href={user ? "/dashboard" : "/register"}>
             <Button size="lg" className="px-8 gap-2">
               <Swords className="w-4 h-4" />
-              {user ? "Go to Dashboard" : "Begin Your Free Trial"}
+              {user ? "Go to Dashboard" : "Get Started"}
             </Button>
           </Link>
-          <p className="text-xs text-muted-foreground mt-4">7-day trial · No credit card · Cancel anytime</p>
+          <p className="text-xs text-muted-foreground mt-4">No subscription required to start · Cancel anytime</p>
         </div>
       </main>
     </div>

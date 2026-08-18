@@ -1,30 +1,19 @@
-import { useMemo } from "react";
-import {
-  Heart,
-  Shield,
-  Zap,
-  Coins,
-  Backpack,
-  Sparkles,
-  Sword,
-  Castle,
-  Car,
-  Ship,
-  Wrench,
-  ScrollText,
-  Link as LinkIcon,
-  UserRound,
-  PawPrint,
-  Package,
-  Wifi,
-  WifiOff,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Heart, Shield, Zap, Coins, Sword, Wifi, WifiOff, Backpack, BookOpen, ScrollText, Wind, Moon, Trophy } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import InventoryModal from "@/components/InventoryModal";
+import CodexModal from "@/components/CodexModal";
+import CharacterSheetModal, { type FullCharacterSheet } from "@/components/CharacterSheetModal";
+import LevelUpWizard from "@/components/LevelUpWizard";
+import AchievementsPanel from "@/components/AchievementsPanel";
 
 type Character = {
   id: number;
@@ -42,6 +31,14 @@ type Character = {
   attacksPerRound: number;
   status: string;
   characterData: string;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  ac: number;
+  xp: number;
 };
 
 type Item = {
@@ -55,6 +52,7 @@ type Item = {
   consumable: boolean;
   equipped: boolean;
   identified: boolean;
+  slot: string | null;
 };
 
 type CurrencyBalance = {
@@ -78,72 +76,25 @@ type Props = {
   currencies: CurrencyBalance[];
   campaignCurrencies: CampaignCurrency[];
   connected?: boolean;
+  onEquip: (itemId: number, slot: string) => void;
+  onUnequip: (itemId: number) => void;
+  onUse: (itemId: number) => Promise<void>;
+  onRead: (itemId: number) => Promise<string>;
+  onSubmitReport: (description: string) => Promise<void>;
+  worldState?: string;
 };
 
-type ParsedSection = {
-  label: string;
-  type?: string;
-  entries?: Array<{
-    key?: string;
-    name?: string;
-    value?: string;
-    description?: string;
-    quantity?: number;
-    equipped?: boolean;
-  }>;
+const ABILITY_LABELS: Record<string, string> = {
+  str: "STR",
+  dex: "DEX",
+  con: "CON",
+  int: "INT",
+  wis: "WIS",
+  cha: "CHA",
 };
 
-function safeParseCharacterData(raw: string): { sections: ParsedSection[] } {
-  try {
-    const parsed = JSON.parse(raw || "{}");
-    return {
-      sections: Array.isArray(parsed.sections) ? parsed.sections : [],
-    };
-  } catch {
-    return { sections: [] };
-  }
-}
-
-function getItemTypeMeta(itemType: string) {
-  const t = String(itemType || "misc").toLowerCase();
-
-  if (t === "weapon") return { label: "Weapons", icon: Sword };
-  if (t === "armor") return { label: "Armor", icon: Shield };
-  if (t === "consumable") return { label: "Consumables", icon: Sparkles };
-  if (t === "property") return { label: "Property", icon: Castle };
-  if (t === "vehicle") return { label: "Vehicles", icon: Car };
-  if (t === "vessel") return { label: "Vessels", icon: Ship };
-  if (t === "tool") return { label: "Tools", icon: Wrench };
-  if (t === "magic") return { label: "Magic Items", icon: ScrollText };
-  if (t === "retainer") return { label: "Retainers", icon: UserRound };
-  if (t === "mount" || t === "creature") return { label: "Mounts & Creatures", icon: PawPrint };
-  if (t === "key") return { label: "Keys", icon: LinkIcon };
-  return { label: "Gear & Misc", icon: Package };
-}
-
-function groupItems(items: Item[]) {
-  const groups = new Map<
-    string,
-    {
-      label: string;
-      icon: any;
-      items: Item[];
-    }
-  >();
-
-  for (const item of items) {
-    const meta = getItemTypeMeta(item.itemType);
-    if (!groups.has(meta.label)) {
-      groups.set(meta.label, {
-        label: meta.label,
-        icon: meta.icon,
-        items: [],
-      });
-    }
-    groups.get(meta.label)!.items.push(item);
-  }
-
-  return Array.from(groups.values());
+function modifierFor(score: number) {
+  return Math.floor((score - 10) / 2);
 }
 
 function formatCurrencyAmount(amount: number, def?: CampaignCurrency) {
@@ -158,35 +109,52 @@ export default function SidebarCharacterSheet({
   currencies,
   campaignCurrencies,
   connected = true,
+  onEquip,
+  onUnequip,
+  onUse,
+  onRead,
+  onSubmitReport,
+  worldState,
 }: Props) {
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [codexOpen, setCodexOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [levelUpOpen, setLevelUpOpen] = useState(false);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
+
+  const qc = useQueryClient();
+
+  // Shared with CharacterSheetModal via the same query key — react-query
+  // dedupes the request, so opening the modal doesn't refetch what the
+  // sidebar already has.
+  const { data: sheet } = useQuery<FullCharacterSheet>({
+    queryKey: [`/api/characters/${character.id}/sheet`],
+  });
+
+  const longRestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/characters/${character.id}/long-rest`, {});
+      return res.json() as Promise<{ hp: number; maxHp: number; pendingLevelUps: number }>;
+    },
+    onSuccess: async (data) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", character.campaignId, "my-character"] }),
+        qc.invalidateQueries({ queryKey: [`/api/characters/${character.id}/sheet`] }),
+      ]);
+      if (data.pendingLevelUps > 0) setLevelUpOpen(true);
+    },
+  });
+
   const hpPercent =
     character.maxHp > 0
       ? Math.max(0, Math.min(100, Math.round((character.hp / character.maxHp) * 100)))
       : 0;
 
-  const parsedCharacterData = useMemo(
-    () => safeParseCharacterData(character.characterData),
-    [character.characterData],
-  );
-
-  const groupedItems = useMemo(() => groupItems(items), [items]);
-
-  const grantedAbilitiesSection = useMemo(() => {
-    return parsedCharacterData.sections.find(
-      (section) =>
-        String(section.label || "").toLowerCase() === "granted abilities" ||
-        String(section.type || "").toLowerCase() === "abilities",
-    );
-  }, [parsedCharacterData]);
-
   const currencyDisplay = useMemo(() => {
     return currencies
       .map((balance) => {
         const def = campaignCurrencies.find((c) => c.code === balance.currencyCode);
-        return {
-          ...balance,
-          def,
-        };
+        return { ...balance, def };
       })
       .sort((a, b) => {
         const aPrimary = a.def?.isPrimary ? 1 : 0;
@@ -196,23 +164,27 @@ export default function SidebarCharacterSheet({
   }, [currencies, campaignCurrencies]);
 
   return (
-    <div className="h-full flex flex-col bg-[radial-gradient(circle_at_top,_rgba(245,158,11,0.05),_transparent_35%)]">
-      <div className="border-b border-border px-5 py-4 bg-background/90 backdrop-blur">
+    <div className="h-full flex flex-col parchment-surface">
+      <div className="border-b border-amber-900/20 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1 min-w-0">
-            <div className="text-xl font-semibold leading-tight truncate">{character.name}</div>
-            <div className="text-sm text-muted-foreground truncate">
+            <div className="parchment-heading text-xl font-semibold leading-tight truncate text-amber-950">
+              {character.name}
+            </div>
+            <div className="text-sm text-amber-900/60 truncate">
               {character.race} • {character.charClass}
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary">Lv {character.level}</Badge>
+            <Badge className="bg-amber-100/70 text-amber-900 border border-amber-800/25 hover:bg-amber-100/70">
+              Lv {character.level}
+            </Badge>
             <Badge
               variant="outline"
               className={cn(
-                "gap-1",
-                connected ? "text-emerald-600 border-emerald-500/30" : "text-yellow-600 border-yellow-500/30",
+                "gap-1 bg-amber-50/40",
+                connected ? "text-emerald-700 border-emerald-700/30" : "text-yellow-700 border-yellow-700/30",
               )}
             >
               {connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
@@ -224,220 +196,223 @@ export default function SidebarCharacterSheet({
 
       <ScrollArea className="flex-1">
         <div className="p-5 space-y-5">
-          <Card className="p-4 space-y-4">
-            <div className="flex items-center gap-2 font-medium">
-              <Heart className="w-4 h-4 text-rose-500" />
-              Vital Status
-            </div>
+        <div className="grid grid-cols-4 gap-2">
+          <Button
+            variant="outline"
+            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
+            onClick={() => setInventoryOpen(true)}
+          >
+            <Backpack className="w-4 h-4 text-amber-700" />
+            Inventory
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
+            onClick={() => setCodexOpen(true)}
+          >
+            <BookOpen className="w-4 h-4 text-amber-700" />
+            Codex
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
+            onClick={() => setSheetOpen(true)}
+          >
+            <ScrollText className="w-4 h-4 text-amber-700" />
+            Sheet
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
+            onClick={() => setAchievementsOpen(true)}
+          >
+            <Trophy className="w-4 h-4 text-amber-700" />
+            Deeds
+          </Button>
+        </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>HP</span>
-                <span className="font-medium">
-                  {character.hp} / {character.maxHp}
-                  {character.tempHp > 0 ? ` (+${character.tempHp} temp)` : ""}
-                </span>
+        <Card className="parchment-ruled p-4 space-y-4 bg-amber-50/30 border-amber-800/25 text-amber-950 shadow-none">
+          <div className="parchment-label flex items-center gap-2">
+            <Heart className="w-4 h-4 text-rose-700" />
+            Vital Status
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>HP</span>
+              <span className="font-medium">
+                {character.hp} / {character.maxHp}
+                {character.tempHp > 0 ? ` (+${character.tempHp} temp)` : ""}
+              </span>
+            </div>
+            <Progress value={hpPercent} className="bg-amber-900/10" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg border border-amber-800/20 bg-amber-50/40 p-3">
+              <div className="text-amber-900/60 text-xs mb-1">Speed</div>
+              <div className="font-medium flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-amber-700" />
+                {character.speed}
               </div>
-              <Progress value={hpPercent} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg border border-border p-3">
-                <div className="text-muted-foreground text-xs mb-1">Speed</div>
-                <div className="font-medium flex items-center gap-2">
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
-                  {character.speed}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-border p-3">
-                <div className="text-muted-foreground text-xs mb-1">Attacks / Round</div>
-                <div className="font-medium flex items-center gap-2">
-                  <Sword className="w-3.5 h-3.5 text-primary" />
-                  {character.attacksPerRound}
-                </div>
+            <div className="rounded-lg border border-amber-800/20 bg-amber-50/40 p-3">
+              <div className="text-amber-900/60 text-xs mb-1">Attacks</div>
+              <div className="font-medium flex items-center gap-2">
+                <Sword className="w-3.5 h-3.5 text-amber-700" />
+                {character.attacksPerRound}
               </div>
             </div>
 
-            <div className="text-xs text-muted-foreground">
-              Status: <span className="font-medium text-foreground">{character.status}</span>
-            </div>
-          </Card>
-
-          <Card className="p-4 space-y-4">
-            <div className="flex items-center gap-2 font-medium">
-              <Coins className="w-4 h-4 text-amber-500" />
-              Currency
-            </div>
-
-            {currencyDisplay.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No currency tracked yet.</div>
-            ) : (
-              <div className="space-y-2">
-                {currencyDisplay.map((entry) => (
-                  <div
-                    key={entry.currencyCode}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        {entry.def?.name || entry.currencyCode}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {entry.currencyCode}
-                        {entry.def?.isPrimary ? " • primary" : ""}
-                      </div>
-                    </div>
-
-                    <div className="font-semibold">
-                      {formatCurrencyAmount(entry.amount, entry.def)}
-                    </div>
-                  </div>
-                ))}
+            <div className="rounded-lg border border-amber-800/20 bg-amber-50/40 p-3">
+              <div className="text-amber-900/60 text-xs mb-1">Initiative</div>
+              <div className="font-medium flex items-center gap-2">
+                <Wind className="w-3.5 h-3.5 text-amber-700" />
+                {sheet ? (sheet.abilities.dex.modifier >= 0 ? `+${sheet.abilities.dex.modifier}` : sheet.abilities.dex.modifier) : "—"}
               </div>
-            )}
-          </Card>
-
-          <Card className="p-4 space-y-4">
-            <div className="flex items-center gap-2 font-medium">
-              <Backpack className="w-4 h-4 text-primary" />
-              Inventory & Possessions
             </div>
+          </div>
 
-            {groupedItems.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                Nothing tracked yet. Once the DM actually awards or you buy something, it should appear here instead of evaporating into decorative prose.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {groupedItems.map((group) => {
-                  const Icon = group.icon;
-                  return (
-                    <div key={group.label} className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <Icon className="w-4 h-4 text-muted-foreground" />
-                        {group.label}
-                      </div>
+          <div className="flex items-center justify-between text-xs text-amber-900/60">
+            <span>
+              Status: <span className="font-medium text-amber-950">{character.status}</span>
+            </span>
+            <span>{character.xp} XP</span>
+          </div>
 
-                      <div className="space-y-2">
-                        {group.items.map((item) => (
-                          <div
-                            key={item.id}
-                            className="rounded-lg border border-border px-3 py-2 text-sm"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="font-medium truncate">
-                                  {item.name}
-                                  {item.quantity > 1 ? ` ×${item.quantity}` : ""}
-                                </div>
-                                {item.description ? (
-                                  <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                                    {item.description}
-                                  </div>
-                                ) : null}
-                              </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80"
+            disabled={longRestMutation.isPending}
+            onClick={() => longRestMutation.mutate()}
+          >
+            <Moon className="w-3.5 h-3.5 text-amber-700" />
+            {longRestMutation.isPending ? "Resting..." : "Long Rest"}
+          </Button>
+        </Card>
 
-                              <div className="flex flex-col gap-1 shrink-0 items-end">
-                                {item.equipped && <Badge variant="secondary">Equipped</Badge>}
-                                {!item.identified && <Badge variant="outline">Unknown</Badge>}
-                                {item.consumable && <Badge variant="outline">Consumable</Badge>}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-4 space-y-4">
-            <div className="flex items-center gap-2 font-medium">
-              <Sparkles className="w-4 h-4 text-violet-500" />
-              Abilities & Features
-            </div>
-
-            {grantedAbilitiesSection?.entries?.length ? (
-              <div className="space-y-2">
-                {grantedAbilitiesSection.entries.map((entry, idx) => (
-                  <div
-                    key={`${entry.key || entry.name || "ability"}-${idx}`}
-                    className="rounded-lg border border-border px-3 py-2 text-sm"
-                  >
-                    <div className="font-medium">
-                      {entry.name || entry.key || "Ability"}
-                    </div>
-                    {(entry.description || entry.value) && (
-                      <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                        {entry.description || entry.value}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                No tracked granted abilities yet.
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-4 space-y-3">
-            <div className="font-medium">Traits</div>
-            <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-              {character.traits?.trim() || "No traits entered."}
-            </div>
-          </Card>
-
-          <Card className="p-4 space-y-3">
-            <div className="font-medium">Backstory</div>
-            <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-              {character.backstory?.trim() || "No backstory entered."}
-            </div>
-          </Card>
-
-          {parsedCharacterData.sections
-            .filter((section) => {
-              const label = String(section.label || "").toLowerCase();
+        <Card className="parchment-ruled p-4 space-y-3 bg-amber-50/30 border-amber-800/25 text-amber-950 shadow-none">
+          <div className="parchment-label flex items-center gap-2">
+            <Shield className="w-4 h-4 text-amber-700" />
+            Saving Throws
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(["str", "dex", "con", "int", "wis", "cha"] as const).map((key) => {
+              const save = sheet?.saves[key];
               return (
-                label !== "granted abilities" &&
-                label !== "currency" &&
-                label !== "inventory" &&
-                label !== "items"
+                <div
+                  key={key}
+                  className={cn(
+                    "rounded-lg border p-2 text-center",
+                    save?.proficient ? "border-amber-700/40 bg-amber-100/40" : "border-amber-800/20 bg-amber-50/40",
+                  )}
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-amber-900/60">{ABILITY_LABELS[key]}</div>
+                  <div className="text-sm font-semibold">{save ? (save.total >= 0 ? `+${save.total}` : save.total) : "—"}</div>
+                </div>
               );
-            })
-            .map((section, sectionIndex) => (
-              <Card key={`${section.label}-${sectionIndex}`} className="p-4 space-y-3">
-                <div className="font-medium">{section.label || "Section"}</div>
+            })}
+          </div>
+        </Card>
 
-                {section.entries?.length ? (
-                  <div className="space-y-2">
-                    {section.entries.map((entry, entryIndex) => (
-                      <div
-                        key={`${entry.key || entry.name || "entry"}-${entryIndex}`}
-                        className="rounded-lg border border-border px-3 py-2 text-sm"
-                      >
-                        <div className="font-medium">
-                          {entry.name || entry.key || "Entry"}
-                        </div>
-                        {(entry.description || entry.value) && (
-                          <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                            {entry.description || entry.value}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+        <Card className="parchment-ruled p-4 space-y-4 bg-amber-50/30 border-amber-800/25 text-amber-950 shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <div className="parchment-label flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-700" />
+              Ability Scores
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-amber-900/60">AC</span>
+              <span className="parchment-badge">{character.ac}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {(["str", "dex", "con", "int", "wis", "cha"] as const).map((key) => {
+              const score = character[key];
+              const mod = modifierFor(score);
+              return (
+                <div key={key} className="rounded-lg border border-amber-800/20 bg-amber-50/40 p-2 text-center">
+                  <div className="text-[10px] uppercase tracking-wide text-amber-900/60">
+                    {ABILITY_LABELS[key]}
                   </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground">No entries.</div>
-                )}
-              </Card>
-            ))}
+                  <div className="text-sm font-semibold">{score}</div>
+                  <div className="text-xs text-amber-900/60">{mod >= 0 ? `+${mod}` : mod}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className="parchment-ruled p-4 space-y-4 bg-amber-50/30 border-amber-800/25 text-amber-950 shadow-none">
+          <div className="parchment-label flex items-center gap-2">
+            <Coins className="w-4 h-4 text-amber-700" />
+            Currency
+          </div>
+
+          {currencyDisplay.length === 0 ? (
+            <div className="text-sm text-amber-900/60">No currency tracked yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {currencyDisplay.map((entry) => (
+                <div
+                  key={entry.currencyCode}
+                  className="flex items-center justify-between rounded-lg border border-amber-800/20 bg-amber-50/40 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{entry.def?.name || entry.currencyCode}</div>
+                    <div className="text-xs text-amber-900/60 truncate">
+                      {entry.currencyCode}
+                      {entry.def?.isPrimary ? " • primary" : ""}
+                    </div>
+                  </div>
+
+                  <div className="font-semibold">{formatCurrencyAmount(entry.amount, entry.def)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
         </div>
       </ScrollArea>
+
+      <InventoryModal
+        open={inventoryOpen}
+        onOpenChange={setInventoryOpen}
+        items={items}
+        onEquip={onEquip}
+        onUnequip={onUnequip}
+        onUse={onUse}
+        onRead={onRead}
+      />
+
+      <CodexModal
+        open={codexOpen}
+        onOpenChange={setCodexOpen}
+        traits={character.traits}
+        backstory={character.backstory}
+        characterData={character.characterData}
+        worldState={worldState}
+        onSubmitReport={onSubmitReport}
+      />
+
+      <CharacterSheetModal
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        characterId={character.id}
+        characterName={character.name}
+        race={character.race}
+        charClass={character.charClass}
+        level={character.level}
+        ac={character.ac}
+        characterData={character.characterData}
+      />
+
+      <LevelUpWizard open={levelUpOpen} onOpenChange={setLevelUpOpen} characterId={character.id} />
+
+      <AchievementsPanel open={achievementsOpen} onOpenChange={setAchievementsOpen} />
     </div>
   );
 }

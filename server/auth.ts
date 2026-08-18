@@ -15,8 +15,11 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import {
   getEffectiveLimits,
+  getIncludedTurns,
+  getNextUsageResetAt,
   isReadOnly,
   canPlay,
+  type BillingInterval,
   type TierName,
   type SubscriptionStatus,
 } from "../shared/tiers";
@@ -41,7 +44,11 @@ export function signToken(userId: number): string {
 
 export function verifyToken(token: string): { sub: number } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { sub: number };
+    const payload = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload | string;
+    const rawSub = typeof payload === "string" ? undefined : payload.sub;
+    const sub = Number(rawSub);
+    if (!Number.isFinite(sub)) return null;
+    return { sub };
   } catch {
     return null;
   }
@@ -97,18 +104,21 @@ export function attachUser(req: Request, _res: Response, next: NextFunction) {
     }
   }
 
-  // Auto-reset monthly usage counter
+  // Auto-reset usage at the current entitlement boundary
   if (user.usageResetAt) {
     if (new Date() >= new Date(user.usageResetAt)) {
-      const nextReset = new Date();
-      nextReset.setMonth(nextReset.getMonth() + 1);
-      nextReset.setDate(1);
-      nextReset.setHours(0, 0, 0, 0);
+      const interval: BillingInterval =
+        user.stripeBillingInterval === "weekly" ||
+        user.stripeBillingInterval === "yearly"
+          ? user.stripeBillingInterval
+          : "monthly";
+      const nextReset = getNextUsageResetAt(interval);
       storage.updateUser(user.id, {
         aiTurnsUsedThisMonth: 0,
         usageResetAt: nextReset.toISOString(),
       });
       user.aiTurnsUsedThisMonth = 0;
+      user.usageResetAt = nextReset.toISOString();
     }
   }
 
@@ -128,6 +138,24 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+export function requireDungeonMaster(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({
+      message: "Sign in to continue.",
+      code: "UNAUTHENTICATED",
+    });
+  }
+
+  if (!(req.user.isAdmin || req.user.role === "dungeon_master")) {
+    return res.status(403).json({
+      message: "DungeonMaster access is required for that action.",
+      code: "DUNGEON_MASTER_REQUIRED",
+    });
+  }
+
+  next();
+}
+
 // ── Middleware: require active subscription or trial ───────────────────────
 export function requireCanPlay(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -136,8 +164,15 @@ export function requireCanPlay(req: Request, res: Response, next: NextFunction) 
       code: "UNAUTHENTICATED",
     });
   }
+  if (req.user.unlimitedTurns) return next();
   const status = req.user.subscriptionStatus as SubscriptionStatus;
-  if (!canPlay(status)) {
+  // Squire Pass turns (bonusTurns) are sold as one-time, no-expiry AI turns
+  // — a user whose subscription has lapsed to "expired" must still be able
+  // to spend any bonusTurns they separately paid for. checkTurnLimit does
+  // the real per-request accounting (0 included turns for a non-playable
+  // tier + remaining bonusTurns), so this only widens who reaches that
+  // check, not how many turns anyone actually gets.
+  if (!canPlay(status) && !((req.user.bonusTurns ?? 0) > 0)) {
     return res.status(402).json({
       message: "Your adventure awaits — subscribe to continue.",
       code: "SUBSCRIPTION_REQUIRED",
@@ -186,54 +221,112 @@ export function checkCampaignLimit(req: Request, res: Response, next: NextFuncti
 }
 
 // ── Middleware: check AI turn limit ───────────────────────────────────────
-export function checkTurnLimit(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) return next();
-  const user = req.user;
-  const tier = user.tier as TierName;
-  const status = user.subscriptionStatus as SubscriptionStatus;
-  const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
-  const limits = getEffectiveLimits(tier, status, trialEndsAt);
+export interface CheckTurnLimitOptions {
+  // The clientSubmissionId dedup bypass below is only safe on routes whose
+  // handler has its own downstream dedup (createMessageIdempotent) that
+  // returns the original result without consuming a new turn — that's
+  // `/api/campaigns/:id/action`, and only that route. Any other route
+  // guarded by this middleware (e.g. `/api/campaigns/:id/start`, which makes
+  // a real, turn-incrementing AI call with no downstream dedup) must NOT
+  // honor a replayed clientSubmissionId, or an over-quota user can replay
+  // any of their own prior /action submission ids to get unlimited free
+  // generations that keep incrementing their own counter. Opt in explicitly
+  // per route rather than defaulting to on, so a future route added to this
+  // middleware is bypass-safe unless it deliberately asks otherwise.
+  dedupAware?: boolean;
+}
 
-  const totalTurns = limits.aiTurnsPerMonth + (user.bonusTurns ?? 0);
+export function checkTurnLimit(options: CheckTurnLimitOptions = {}) {
+  return function checkTurnLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+    if (!req.user) return next();
+    if (req.user.unlimitedTurns) return next();
 
-  if (user.aiTurnsUsedThisMonth >= totalTurns) {
-    return res.status(403).json({
-      message: `You've used your ${limits.aiTurnsPerMonth} DM responses this month. ${limits.upgradePrompt}`,
-      code: "TURN_LIMIT",
-      limit: totalTurns,
-      used: user.aiTurnsUsedThisMonth,
-      canTopUp: tier !== "free",
-    });
-  }
-  next();
+    if (options.dedupAware) {
+      const clientSubmissionId = typeof req.body?.clientSubmissionId === "string" ? req.body.clientSubmissionId : undefined;
+      if (clientSubmissionId) {
+        const campaignId = Number(req.params.id);
+        const existing = storage.getMessageBySubmissionId(campaignId, clientSubmissionId);
+        // A retry of an already-processed submission must not be blocked by the
+        // turn limit even if the original submission used up the user's last
+        // turn — handleAction's own dedup path returns the original result
+        // without consuming a new turn, so there's nothing to protect here.
+        if (existing) return next();
+      }
+    }
+
+    const user = req.user;
+    const tier = user.tier as TierName;
+    const status = user.subscriptionStatus as SubscriptionStatus;
+    const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
+    const limits = getEffectiveLimits(tier, status, trialEndsAt);
+    const interval: BillingInterval =
+      user.stripeBillingInterval === "weekly" ||
+      user.stripeBillingInterval === "yearly"
+        ? user.stripeBillingInterval
+        : "monthly";
+    const includedTurns = getIncludedTurns(tier, interval);
+    const totalTurns = includedTurns + (user.bonusTurns ?? 0);
+
+    if (user.aiTurnsUsedThisMonth >= totalTurns) {
+      return res.status(403).json({
+        message: `You've used your ${includedTurns} included DM responses for this entitlement period. ${limits.upgradePrompt}`,
+        code: "TURN_LIMIT",
+        limit: totalTurns,
+        used: user.aiTurnsUsedThisMonth,
+        canTopUp: tier !== "free",
+      });
+    }
+    next();
+  };
 }
 
 // ── Increment AI turn counter ──────────────────────────────────────────────
 export function incrementTurnCount(userId: number): void {
   const user = storage.getUser(userId);
   if (!user) return;
-  // Decrement bonus turns first if any
-  if ((user.bonusTurns ?? 0) > 0) {
-    const tier = user.tier as TierName;
-    const status = user.subscriptionStatus as SubscriptionStatus;
-    const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
-    const limits = getEffectiveLimits(tier, status, trialEndsAt);
-    if (user.aiTurnsUsedThisMonth >= limits.aiTurnsPerMonth) {
-      // Only deduct bonus if regular allowance is exhausted
-      storage.updateUser(userId, {
-        bonusTurns: Math.max(0, (user.bonusTurns ?? 0) - 1),
-        aiTurnsUsedThisMonth: user.aiTurnsUsedThisMonth + 1,
-      });
-      return;
-    }
-  }
+
+  const tier = user.tier as TierName;
+  const interval: BillingInterval =
+    user.stripeBillingInterval === "weekly" ||
+    user.stripeBillingInterval === "yearly"
+      ? user.stripeBillingInterval
+      : "monthly";
+  const includedTurns = getIncludedTurns(tier, interval);
+  const useBonusTurn =
+    (user.bonusTurns ?? 0) > 0 &&
+    user.aiTurnsUsedThisMonth >= includedTurns;
+
+  storage.recordTurnSpend(userId, useBonusTurn);
+}
+
+export function grantDungeonMasterAccess(userId: number): User | undefined {
+  const user = storage.getUser(userId);
+  if (!user) return undefined;
+
   storage.updateUser(userId, {
-    aiTurnsUsedThisMonth: user.aiTurnsUsedThisMonth + 1,
-  });
+    role: "dungeon_master",
+    isAdmin: true,
+    unlimitedTurns: true,
+  } as Partial<User>);
+
+  return storage.getUser(userId);
+}
+
+export function revokeDungeonMasterAccess(userId: number): User | undefined {
+  const user = storage.getUser(userId);
+  if (!user) return undefined;
+
+  storage.updateUser(userId, {
+    role: "player",
+    isAdmin: false,
+    unlimitedTurns: false,
+  } as Partial<User>);
+
+  return storage.getUser(userId);
 }
 
 // ── Strip password from user ───────────────────────────────────────────────
 export function toPublicUser(user: User): PublicUser {
-  const { passwordHash: _pw, ...pub } = user;
+  const { passwordHash: _pw, googleId: _googleId, ...pub } = user;
   return pub;
 }

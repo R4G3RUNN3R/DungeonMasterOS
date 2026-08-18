@@ -15,15 +15,41 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
 import type { Campaign } from "@shared/schema";
-import { TIERS, TURN_PACKS, formatPrice, trialDaysRemaining, turnsUsedPercent, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
+import { turnsUsedPercent } from "@shared/tiers";
 
-function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
+function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft, hasStripe, subscriptionCurrentPeriodEnd }: {
   status: string | undefined;
   tier: string | undefined;
   trialEndsAt: string | null | undefined;
   daysLeft: number | null;
+  hasStripe: boolean | undefined;
+  subscriptionCurrentPeriodEnd: string | null | undefined;
 }) {
   if (!status) return null;
+
+  // getNewUserBillingState() gives every new signup subscriptionStatus:
+  // "expired" (no free trial) — someone who has never touched Stripe and
+  // never had a subscription period is not "lapsed", they've simply never
+  // subscribed. Showing them the same "Subscription ended / Resubscribe"
+  // banner as an actually-lapsed subscriber is misleading right after
+  // registration.
+  const neverSubscribed = status === "expired" && !hasStripe && !subscriptionCurrentPeriodEnd;
+  if (neverSubscribed) {
+    return (
+      <div className="bg-primary/10 border-b border-primary/20 px-6 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-sm">
+          <Crown className="w-4 h-4 text-primary shrink-0" />
+          <span className="text-foreground">
+            <span className="font-semibold">Choose a plan</span> to start playing —{" "}
+            <span className="text-muted-foreground">a one-time Squire Pass or a subscription.</span>
+          </span>
+        </div>
+        <Link href="/pricing">
+          <Button size="sm" className="text-xs shrink-0">See Plans</Button>
+        </Link>
+      </div>
+    );
+  }
 
   if (status === "trial" && daysLeft !== null) {
     return (
@@ -76,17 +102,19 @@ function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
   return null;
 }
 
-function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
-  used: number; tier: string; status: string; trialEndsAt: string | null | undefined; bonusTurns: number;
+function TurnsUsageBar({ used, turnsIncluded, interval, bonusTurns }: {
+  used: number; turnsIncluded: number; interval: string | null | undefined; bonusTurns: number;
 }) {
-  const limits = getEffectiveLimits(
-    tier as TierName,
-    status as SubscriptionStatus,
-    trialEndsAt ? new Date(trialEndsAt) : null,
-  );
-  const total = limits.aiTurnsPerMonth + bonusTurns;
-  const pct = turnsUsedPercent(used, total);
-  const remaining = Math.max(0, total - used);
+  // turnsIncluded comes straight from /api/billing, which already accounts
+  // for the subscriber's real weekly/monthly/yearly entitlement and
+  // unlimitedTurns (-1) — it must never be recomputed client-side from
+  // aiTurnsPerMonth, which is always the MONTHLY figure regardless of the
+  // subscriber's actual billing interval.
+  const unlimited = turnsIncluded === -1;
+  const total = unlimited ? 0 : turnsIncluded + bonusTurns;
+  const pct = unlimited ? 0 : turnsUsedPercent(used, total);
+  const remaining = unlimited ? 0 : Math.max(0, total - used);
+  const periodLabel = interval === "weekly" ? "week" : "month";
 
   const barColor = pct >= 95 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-primary";
 
@@ -95,25 +123,25 @@ function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Monthly AI Turns</span>
+          <span className="text-sm font-medium">{periodLabel === "week" ? "Weekly" : "Monthly"} AI Turns</span>
         </div>
-        <span className="text-xs text-muted-foreground">{used} / {total === 999 ? "∞" : total}</span>
+        <span className="text-xs text-muted-foreground">{used} / {unlimited ? "∞" : total}</span>
       </div>
       <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
+        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${unlimited ? 0 : Math.min(100, pct)}%` }} />
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{remaining} turns remaining this month</span>
+        <span>{unlimited ? "Unlimited turns" : `${remaining} turns remaining this ${periodLabel}`}</span>
         {bonusTurns > 0 && (
           <span className="text-primary flex items-center gap-1">
             <Gift className="w-3 h-3" /> +{bonusTurns} bonus
           </span>
         )}
       </div>
-      {pct >= 80 && (
-        <Link href="/billing">
+      {!unlimited && pct >= 80 && (
+        <Link href="/pricing">
           <Button size="sm" variant="outline" className="w-full text-xs gap-1">
-            <Plus className="w-3 h-3" /> Buy More Turns
+            <Plus className="w-3 h-3" /> Get More Turns
           </Button>
         </Link>
       )}
@@ -207,8 +235,8 @@ export default function Dashboard() {
       toast({ title: "Subscription activated!", description: "Welcome to Dungeon Master OS. Your adventure begins now." });
       window.history.replaceState(null, "", window.location.pathname + "#/dashboard");
     }
-    if (hash.includes("topup=1")) {
-      toast({ title: "Turns added!", description: "Your bonus AI turns have been added to your account." });
+    if (hash.includes("squire=1")) {
+      toast({ title: "Squire Pass activated!", description: "50 AI DM turns have been added to your account." });
       window.history.replaceState(null, "", window.location.pathname + "#/dashboard");
     }
   }, []);
@@ -317,6 +345,8 @@ export default function Dashboard() {
         tier={billingData?.tier || user?.tier}
         trialEndsAt={user?.trialEndsAt}
         daysLeft={daysLeftInTrial}
+        hasStripe={billingData?.hasStripe}
+        subscriptionCurrentPeriodEnd={billingData?.subscriptionCurrentPeriodEnd}
       />
 
       {/* Main */}
@@ -340,9 +370,8 @@ export default function Dashboard() {
             {billingData && (
               <TurnsUsageBar
                 used={billingData.aiTurnsUsedThisMonth}
-                tier={billingData.tier}
-                status={billingData.subscriptionStatus}
-                trialEndsAt={user?.trialEndsAt}
+                turnsIncluded={billingData.turnsIncluded}
+                interval={billingData.stripeBillingInterval}
                 bonusTurns={billingData.bonusTurns ?? 0}
               />
             )}
@@ -359,9 +388,9 @@ export default function Dashboard() {
                 <Crown className="w-4 h-4" /> Upgrade Plan
               </Button>
             </Link>
-            <Link href="/billing">
+            <Link href="/pricing">
               <Button className="w-full gap-2 justify-start" variant="outline">
-                <Gift className="w-4 h-4" /> Buy More Turns
+                <Gift className="w-4 h-4" /> Get More Turns
               </Button>
             </Link>
           </div>

@@ -28,6 +28,12 @@ export interface Achievement {
   icon: string;              // emoji
   hidden: boolean;
   points: number;            // cosmetic XP value
+  // Real, spendable AI turns granted on unlock — omitted or 0 for the vast
+  // majority of achievements, which stay cosmetic-only on purpose (see the
+  // "reward evidence of history, not repetition of a button" design note
+  // above tryUnlockAchievements in server/routes.ts). Only grant this for
+  // achievements backed by a server-authoritative, farm-resistant counter.
+  rewardTurns?: number;
 }
 
 // ── Full achievement catalogue ───────────────────────────────────────────────
@@ -35,6 +41,21 @@ export interface Achievement {
 export const ACHIEVEMENTS: Achievement[] = [
 
   // ── CHARACTER PROGRESSION ────────────────────────────────────────────────
+  {
+    id: "scars_of_experience",
+    name: "Scars of Experience",
+    description: "Reach 20 verified level-ups, across any of your characters.",
+    flavour: "\"Twenty times you became something greater.\"",
+    category: "character",
+    icon: "📈",
+    hidden: false,
+    points: 100,
+    // The one reward-bearing achievement in the launch catalogue — backed by
+    // users.totalLevelUps, incremented server-side only by the real,
+    // eligibility-checked /level-up endpoint (server/routes.ts), never by
+    // narration or client claim. See tryUnlockAchievements.
+    rewardTurns: 100,
+  },
   {
     id: "iron_body",
     name: "Iron Body",
@@ -357,6 +378,30 @@ export const ACHIEVEMENTS: Achievement[] = [
     hidden: true,
     points: 250,
   },
+  // Emergent titles — hidden until unlocked on purpose (see server/titles.ts
+  // and processTitleTags). The requirement itself (10 / 100 established
+  // titles) must never be shown to the player pre-unlock, which is exactly
+  // what `hidden: true` already enforces in the achievements UI.
+  {
+    id: "many_names",
+    name: "Many Names",
+    description: "This character has become known by many names.",
+    flavour: "\"They call you a great many things, these days.\"",
+    category: "character",
+    icon: "🎭",
+    hidden: true,
+    points: 150,
+  },
+  {
+    id: "legend_of_many_names",
+    name: "Legend of Many Names",
+    description: "Across every character on this account, the world has given you countless names.",
+    flavour: "\"No single name was ever going to be enough.\"",
+    category: "meta",
+    icon: "👑",
+    hidden: true,
+    points: 300,
+  },
 ];
 
 export const ACHIEVEMENT_MAP: Record<string, Achievement> = Object.fromEntries(
@@ -391,6 +436,7 @@ export interface AchievementEventContext {
     cha?: number;
     abilityCount?: number;  // total abilities + spells on sheet
     itemCount?: number;
+    establishedTitleCount?: number;  // server/titles.ts — never player-visible pre-unlock
   };
 
   // Campaign data snapshot
@@ -429,6 +475,15 @@ export interface AchievementEventContext {
     type: string;
   };
 
+  // Account-wide counters — server-authoritative tallies that live on the
+  // user row, not derived from anything the AI said. Kept separate from
+  // `character` (which is a per-event snapshot of one character) because
+  // these accumulate across every character on the account.
+  account?: {
+    totalLevelUps: number;
+    establishedTitleCount?: number;  // server/titles.ts — never player-visible pre-unlock
+  };
+
   // Already unlocked achievement IDs (to avoid duplicates)
   unlockedIds: Set<string>;
 }
@@ -444,6 +499,14 @@ export function checkAchievements(ctx: AchievementEventContext): string[] {
     if (!has(id) && condition) toUnlock.push(id);
   };
 
+  // ── ACCOUNT-WIDE COUNTERS ───────────────────────────────────────────────
+  if (ctx.account) {
+    check("scars_of_experience", ctx.account.totalLevelUps >= 20);
+    if (ctx.account.establishedTitleCount !== undefined) {
+      check("legend_of_many_names", ctx.account.establishedTitleCount >= 100);
+    }
+  }
+
   // ── CHARACTER PROGRESSION ──────────────────────────────────────────────
   if (ctx.character) {
     const c = ctx.character;
@@ -451,6 +514,9 @@ export function checkAchievements(ctx: AchievementEventContext): string[] {
     check("unkillable", c.maxHp >= 300);
     check("scholar_of_magic", (c.abilityCount ?? 0) >= 10);
     check("item_hoarder", (c.itemCount ?? 0) >= 20);
+    if (c.establishedTitleCount !== undefined) {
+      check("many_names", c.establishedTitleCount >= 10);
+    }
 
     // STR milestone
     if (c.str !== undefined) {

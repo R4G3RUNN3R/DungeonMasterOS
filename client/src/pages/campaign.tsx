@@ -4,10 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/appBase";
+import logoImg from "@assets/logo.png";
 
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import ShopPanel from "@/components/ShopPanel";
 import CharacterSheetView from "@/components/CharacterSheetView";
+
+import { classesForRuleset, SKILL_ABILITY, startingSkillCount, startingFeatSlots } from "@shared/classes";
+import { racesForRuleset, getRace, applyRacialAdjustments } from "@shared/races";
+import { toast } from "@/hooks/use-toast";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,7 +33,29 @@ import {
   Store,
   ArrowLeft,
   UserPlus,
+  Dices,
 } from "lucide-react";
+
+const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"] as const;
+type AbilityKey = (typeof ABILITY_KEYS)[number];
+const ABILITY_LABELS: Record<AbilityKey, string> = {
+  str: "Strength",
+  dex: "Dexterity",
+  con: "Constitution",
+  int: "Intelligence",
+  wis: "Wisdom",
+  cha: "Charisma",
+};
+
+function rollFourD6DropLowest(): number {
+  const dice = Array.from({ length: 4 }, () => 1 + Math.floor(Math.random() * 6));
+  dice.sort((a, b) => a - b);
+  return dice[1] + dice[2] + dice[3];
+}
+
+function abilityModifier(score: number): number {
+  return Math.floor((score - 10) / 2);
+}
 
 type Campaign = {
   id: number;
@@ -47,6 +75,7 @@ type Campaign = {
   animeWorldMode: string;
   worldState: string;
   activeShopId?: number | null;
+  ruleset: string;
 };
 
 type Character = {
@@ -65,6 +94,14 @@ type Character = {
   attacksPerRound: number;
   status: string;
   characterData: string;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  ac: number;
+  xp: number;
 };
 
 type Message = {
@@ -89,6 +126,7 @@ type Item = {
   consumable: boolean;
   equipped: boolean;
   identified: boolean;
+  slot: string | null;
 };
 
 type CurrencyBalance = {
@@ -141,7 +179,7 @@ type ShopResponse = {
 };
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
@@ -199,6 +237,83 @@ export default function CampaignPage() {
   );
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Ability score rolling — 4d6 drop lowest, six times, freely assignable.
+  const [rolledPool, setRolledPool] = useState<number[]>([]);
+  const [abilityAssignment, setAbilityAssignment] = useState<Record<AbilityKey, number>>({
+    str: 0,
+    dex: 1,
+    con: 2,
+    int: 3,
+    wis: 4,
+    cha: 5,
+  });
+
+  // Alternative to rolling: standard point buy, base 8 in every ability.
+  const [statMethod, setStatMethod] = useState<"roll" | "pointbuy">("roll");
+  const [pointBuyScores, setPointBuyScores] = useState<Record<AbilityKey, number>>({
+    str: 8,
+    dex: 8,
+    con: 8,
+    int: 8,
+    wis: 8,
+    cha: 8,
+  });
+  const POINT_BUY_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+
+  const [multiclass, setMulticlass] = useState(false);
+  const [secondClass, setSecondClass] = useState("");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [feats, setFeats] = useState<string[]>([]);
+
+  function rollStats() {
+    setRolledPool(Array.from({ length: 6 }, rollFourD6DropLowest));
+    setAbilityAssignment({ str: 0, dex: 1, con: 2, int: 3, wis: 4, cha: 5 });
+  }
+
+  function assignAbility(ability: AbilityKey, poolIndex: number) {
+    setAbilityAssignment((prev) => {
+      const next = { ...prev };
+      const swapWith = (Object.keys(next) as AbilityKey[]).find(
+        (key) => next[key] === poolIndex,
+      );
+      if (swapWith && swapWith !== ability) {
+        next[swapWith] = prev[ability];
+      }
+      next[ability] = poolIndex;
+      return next;
+    });
+  }
+
+  function pointBuySpent(scores: Record<AbilityKey, number>): number {
+    return ABILITY_KEYS.reduce((sum, key) => sum + (POINT_BUY_COST[scores[key]] ?? 0), 0);
+  }
+
+  function adjustPointBuy(ability: AbilityKey, delta: number) {
+    setPointBuyScores((prev) => {
+      const next = Math.min(15, Math.max(8, prev[ability] + delta));
+      if (next === prev[ability]) return prev;
+      const candidate = { ...prev, [ability]: next };
+      return pointBuySpent(candidate) <= pointBuyBudget ? candidate : prev;
+    });
+  }
+
+  function toggleSkill(skill: string, cap: number) {
+    setSelectedSkills((prev) => {
+      if (prev.includes(skill)) return prev.filter((s) => s !== skill);
+      if (prev.length >= cap) return prev;
+      return [...prev, skill];
+    });
+  }
+
+  const abilityScores: Record<AbilityKey, number> =
+    statMethod === "pointbuy"
+      ? pointBuyScores
+      : rolledPool.length === 6
+        ? (Object.fromEntries(
+            ABILITY_KEYS.map((key) => [key, rolledPool[abilityAssignment[key]]]),
+          ) as Record<AbilityKey, number>)
+        : { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+
   const qc = useQueryClient();
 
   const campaignQuery = useQuery({
@@ -255,13 +370,19 @@ export default function CampaignPage() {
   });
 
   const createCharacterMutation = useMutation({
-    mutationFn: () =>
-      api(`/api/campaigns/${campaignId}/characters`, {
+    mutationFn: () => {
+      let finalCharClass = charClass;
+      if (multiclass && secondClass) {
+        const levelA = Math.ceil(level / 2);
+        const levelB = level - levelA;
+        finalCharClass = `${charClass} ${levelA} / ${secondClass} ${levelB}`;
+      }
+      return api(`/api/campaigns/${campaignId}/characters`, {
         method: "POST",
         body: JSON.stringify({
           name,
           race,
-          charClass,
+          charClass: finalCharClass,
           traits,
           backstory,
           level,
@@ -270,8 +391,12 @@ export default function CampaignPage() {
           speed,
           attacksPerRound,
           characterData,
+          proficiencies: selectedSkills,
+          feats: feats.map((f) => f.trim()).filter(Boolean),
+          ...adjustedAbilityScores,
         }),
-      }),
+      });
+    },
     onSuccess: async () => {
       setCreateError(null);
       await Promise.all([
@@ -311,9 +436,11 @@ export default function CampaignPage() {
         method: "POST",
         body: JSON.stringify({ content }),
       }),
-    onMutate: () => setDmThinking(true),
-    onSuccess: async () => {
+    onMutate: () => {
       setActionInput("");
+      setDmThinking(true);
+    },
+    onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
         qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
@@ -325,7 +452,10 @@ export default function CampaignPage() {
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] }),
       ]);
     },
-    onError: () => setDmThinking(false),
+    onError: (_err, content) => {
+      setDmThinking(false);
+      setActionInput(content);
+    },
     onSettled: () => setDmThinking(false),
   });
 
@@ -346,6 +476,73 @@ export default function CampaignPage() {
       ]);
     },
   });
+
+  const equipMutation = useMutation({
+    mutationFn: ({
+      itemId,
+      equipped,
+      slot,
+    }: {
+      itemId: number;
+      equipped: boolean;
+      slot: string | null;
+    }) =>
+      api(`/api/items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ equipped, slot }),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
+  });
+
+  function handleEquip(itemId: number, slot: string) {
+    const conflicting = items.find(
+      (it) => it.equipped && it.slot === slot && it.id !== itemId,
+    );
+    if (conflicting) {
+      equipMutation.mutate({ itemId: conflicting.id, equipped: false, slot: null });
+    }
+    equipMutation.mutate({ itemId, equipped: true, slot });
+  }
+
+  function handleUnequip(itemId: number) {
+    equipMutation.mutate({ itemId, equipped: false, slot: null });
+  }
+
+  const useItemMutation = useMutation({
+    mutationFn: (itemId: number) => api(`/api/items/${itemId}/use`, { method: "POST" }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
+        qc.invalidateQueries({
+          queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
+        }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
+      ]);
+    },
+  });
+
+  async function handleUseItem(itemId: number) {
+    await useItemMutation.mutateAsync(itemId);
+  }
+
+  async function handleReadItem(itemId: number): Promise<string> {
+    const res = await api<{ content: string }>(`/api/items/${itemId}/read`, { method: "POST" });
+    return res.content;
+  }
+
+  const reportBugMutation = useMutation({
+    mutationFn: (description: string) =>
+      api("/api/bug-reports", {
+        method: "POST",
+        body: JSON.stringify({ description, campaignId }),
+      }),
+  });
+
+  async function handleSubmitReport(description: string) {
+    await reportBugMutation.mutateAsync(description);
+  }
 
   useEffect(() => {
     if (!campaignId) return;
@@ -394,6 +591,19 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
           break;
 
+        case "achievement_unlocked": {
+          // Broadcast campaign-wide (a party sees each other's unlocks, like
+          // any co-op game) — so this toast never claims turns landed in
+          // *this* viewer's account specifically, only that the deed happened.
+          qc.invalidateQueries({ queryKey: ["/api/achievements"] });
+          const achievement = data.achievement;
+          toast({
+            title: `${achievement?.icon ?? "🏆"} ${achievement?.name ?? "Achievement Unlocked"}`,
+            description: achievement?.description,
+          });
+          break;
+        }
+
         case "campaign_restored":
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] });
@@ -422,6 +632,52 @@ export default function CampaignPage() {
   }, [messagesQuery.data, dmThinking]);
 
   const campaign = campaignQuery.data;
+  const pointBuyBudget = campaign?.ruleset === "dnd35e" ? 28 : 27;
+
+  // Race is only a real, registry-backed selection for 3.5e so far (Canon-doc
+  // Phase 1 scope) — other rulesets keep the free-text field and never touch
+  // this. adjustedAbilityScores is what actually gets submitted: the raw
+  // rolled/point-bought scores stay untouched in the interactive UI above,
+  // racial adjustments are applied only at this derived layer.
+  const selectedRace = campaign?.ruleset === "dnd35e" ? getRace("dnd35e", race) : undefined;
+  const adjustedAbilityScores = applyRacialAdjustments(abilityScores, selectedRace);
+
+  const skillCount = startingSkillCount(campaign?.ruleset || "dnd5e", charClass, abilityModifier(adjustedAbilityScores.int));
+  const requiredFeatSlots = startingFeatSlots(campaign?.ruleset || "dnd5e", level);
+  const statsReady =
+    statMethod === "roll" ? rolledPool.length === 6 : pointBuySpent(pointBuyScores) === pointBuyBudget;
+  const raceRequired = campaign?.ruleset === "dnd35e";
+  const createDisabled =
+    createCharacterMutation.isPending ||
+    !name.trim() ||
+    !race.trim() ||
+    (raceRequired && !selectedRace) ||
+    !charClass.trim() ||
+    !statsReady ||
+    selectedSkills.length !== skillCount ||
+    feats.slice(0, requiredFeatSlots).length < requiredFeatSlots ||
+    feats.slice(0, requiredFeatSlots).some((f) => !f.trim()) ||
+    (multiclass && (!secondClass || secondClass === charClass));
+
+  // Auto-fill Speed from the selected race's base speed (still editable
+  // below — this just seeds a sensible default instead of leaving whatever
+  // was there before, e.g. after switching from Human to Halfling).
+  useEffect(() => {
+    if (selectedRace) setSpeed(selectedRace.speed);
+  }, [selectedRace?.id]);
+
+  // Pre-populate the mandatory feat slots (grows with class level for 3.5e)
+  // so the required inputs are actually on screen, not just counted.
+  useEffect(() => {
+    setFeats((prev) => (prev.length < requiredFeatSlots ? [...prev, ...Array(requiredFeatSlots - prev.length).fill("")] : prev));
+  }, [requiredFeatSlots]);
+
+  // Reset skill selection whenever the trainable count changes (class/INT
+  // change) so a stale over-cap selection can't silently linger.
+  useEffect(() => {
+    setSelectedSkills((prev) => (prev.length > skillCount ? prev.slice(0, skillCount) : prev));
+  }, [skillCount]);
+
   const myCharacter = myCharacterQuery.data;
   const messages = messagesQuery.data || [];
   const items = itemsQuery.data || [];
@@ -532,23 +788,325 @@ export default function CampaignPage() {
 
                   <div>
                     <label className="text-sm text-muted-foreground">Race</label>
-                    <Input
-                      value={race}
-                      onChange={(e) => setRace(e.target.value)}
-                      placeholder="Wood Elf"
-                    />
+                    {campaign.ruleset === "dnd35e" ? (
+                      <select
+                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={race}
+                        onChange={(e) => setRace(e.target.value)}
+                      >
+                        <option value="">Choose a race...</option>
+                        {racesForRuleset(campaign.ruleset).map((r) => (
+                          <option key={r.id} value={r.displayName}>
+                            {r.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        value={race}
+                        onChange={(e) => setRace(e.target.value)}
+                        placeholder="Wood Elf"
+                      />
+                    )}
+                    {selectedRace && (
+                      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                        <div>
+                          {Object.keys(selectedRace.abilityAdjustments).length > 0
+                            ? Object.entries(selectedRace.abilityAdjustments)
+                                .map(([ab, delta]) => `${ab.toUpperCase()} ${delta! > 0 ? "+" : ""}${delta}`)
+                                .join(", ")
+                            : "No ability adjustments"}
+                          {" · "}
+                          {selectedRace.size === "small" ? "Small" : "Medium"} · {selectedRace.speed} ft speed
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
                     <label className="text-sm text-muted-foreground">Class</label>
-                    <Input
+                    <select
+                      className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
                       value={charClass}
                       onChange={(e) => setCharClass(e.target.value)}
-                      placeholder="Rogue"
-                    />
+                    >
+                      <option value="">Choose a class...</option>
+                      {classesForRuleset(campaign.ruleset).map((cls) => (
+                        <option key={cls} value={cls}>
+                          {cls}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={multiclass}
+                        disabled={level < 2}
+                        onChange={(e) => {
+                          setMulticlass(e.target.checked);
+                          if (!e.target.checked) setSecondClass("");
+                        }}
+                      />
+                      Multiclass{level < 2 && " (requires starting level 2+)"}
+                    </label>
+                    {multiclass && (
+                      <select
+                        className="w-full h-9 mt-2 rounded-md border border-input bg-background px-2 text-sm"
+                        value={secondClass}
+                        onChange={(e) => setSecondClass(e.target.value)}
+                      >
+                        <option value="">Choose a second class...</option>
+                        {classesForRuleset(campaign.ruleset)
+                          .filter((cls) => cls !== charClass)
+                          .map((cls) => (
+                            <option key={cls} value={cls}>
+                              {cls}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+                    {multiclass && secondClass && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Splits your {level} starting levels: {Math.ceil(level / 2)} {charClass || "(class)"} /{" "}
+                        {level - Math.ceil(level / 2)} {secondClass}.
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
+
+              <Card className="p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold">Ability Scores</div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant={statMethod === "roll" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setStatMethod("roll")}
+                    >
+                      Roll
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={statMethod === "pointbuy" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setStatMethod("pointbuy")}
+                    >
+                      Point Buy
+                    </Button>
+                  </div>
+                </div>
+
+                {statMethod === "roll" ? (
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={rollStats}>
+                      <Dices className="w-4 h-4 mr-2" />
+                      {rolledPool.length === 6 ? "Reroll" : "Roll Stats"}
+                    </Button>
+
+                    {rolledPool.length === 6 ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {ABILITY_KEYS.map((key) => {
+                          const score = rolledPool[abilityAssignment[key]];
+                          const mod = abilityModifier(score);
+                          return (
+                            <div key={key}>
+                              <label className="text-sm text-muted-foreground">
+                                {ABILITY_LABELS[key]}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  className="flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm"
+                                  value={abilityAssignment[key]}
+                                  onChange={(e) => assignAbility(key, Number(e.target.value))}
+                                >
+                                  {rolledPool.map((value, idx) => (
+                                    <option key={idx} value={idx}>
+                                      {value}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-sm text-muted-foreground w-8 text-right">
+                                  {mod >= 0 ? `+${mod}` : mod}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        Roll 4d6 (drop the lowest) six times, then assign the results to
+                        whichever abilities you like. Reroll as many times as you want
+                        before entering the world.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm text-muted-foreground">
+                      {pointBuyBudget - pointBuySpent(pointBuyScores)} of {pointBuyBudget} points
+                      remaining. Every ability starts at 8.
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {ABILITY_KEYS.map((key) => {
+                        const score = pointBuyScores[key];
+                        const mod = abilityModifier(score);
+                        return (
+                          <div key={key}>
+                            <label className="text-sm text-muted-foreground">
+                              {ABILITY_LABELS[key]}
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => adjustPointBuy(key, -1)}
+                                disabled={score <= 8}
+                              >
+                                -
+                              </Button>
+                              <span className="w-8 text-center text-sm">{score}</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => adjustPointBuy(key, 1)}
+                                disabled={score >= 15}
+                              >
+                                +
+                              </Button>
+                              <span className="text-sm text-muted-foreground w-8 text-right">
+                                {mod >= 0 ? `+${mod}` : mod}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </Card>
+
+              {selectedRace && (
+                <Card className="p-5 space-y-3">
+                  <div className="font-semibold">Final Ability Scores</div>
+                  <div className="text-xs text-muted-foreground">
+                    Rolled/point-bought scores plus {selectedRace.displayName} racial adjustments.
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {ABILITY_KEYS.map((key) => {
+                      const base = abilityScores[key];
+                      const final = adjustedAbilityScores[key];
+                      const mod = abilityModifier(final);
+                      return (
+                        <div key={key} className="rounded-lg border border-input p-2 text-center">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            {ABILITY_LABELS[key].slice(0, 3)}
+                          </div>
+                          <div className="text-sm font-semibold">
+                            {final}
+                            {final !== base && (
+                              <span className="text-muted-foreground font-normal">
+                                {" "}({base} {final > base ? "+" : ""}{final - base})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{mod >= 0 ? `+${mod}` : mod}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
+
+              <Card className="p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold">Trained Skills</div>
+                  <div className="text-sm text-muted-foreground">
+                    {selectedSkills.length} / {skillCount} selected
+                  </div>
+                </div>
+                {!charClass ? (
+                  <div className="text-sm text-muted-foreground">Choose a class first.</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(SKILL_ABILITY).map(([skill, ability]) => (
+                      <label key={skill} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedSkills.includes(skill)}
+                          onChange={() => toggleSkill(skill, skillCount)}
+                          disabled={!selectedSkills.includes(skill) && selectedSkills.length >= skillCount}
+                        />
+                        {skill}{" "}
+                        <span className="text-muted-foreground">({ABILITY_LABELS[ability].slice(0, 3)})</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              {requiredFeatSlots > 0 || feats.length > 0 ? (
+                <Card className="p-5 space-y-4">
+                  <div className="font-semibold">
+                    Feats{requiredFeatSlots > 0 && ` (${requiredFeatSlots} required)`}
+                  </div>
+                  <div className="space-y-2">
+                    {feats.map((feat, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          value={feat}
+                          onChange={(e) =>
+                            setFeats((prev) => prev.map((f, i) => (i === idx ? e.target.value : f)))
+                          }
+                          placeholder={idx < requiredFeatSlots ? "Required feat" : "Optional feat"}
+                        />
+                        {idx >= requiredFeatSlots && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setFeats((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFeats((prev) => [...prev, ""])}
+                  >
+                    Add feat
+                  </Button>
+                </Card>
+              ) : (
+                <Card className="p-5 space-y-3">
+                  <div className="font-semibold">Feats</div>
+                  <div className="text-sm text-muted-foreground">
+                    No feats at character creation for this ruleset. You'll pick feats as you level up.
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFeats((prev) => [...prev, ""])}
+                  >
+                    Add a starting feat anyway
+                  </Button>
+                </Card>
+              )}
 
               <Card className="p-5 space-y-4">
                 <div className="font-semibold">Vitals</div>
@@ -631,16 +1189,23 @@ export default function CampaignPage() {
 
                 <Button
                   className="w-full"
-                  disabled={
-                    createCharacterMutation.isPending ||
-                    !name.trim() ||
-                    !race.trim() ||
-                    !charClass.trim()
-                  }
+                  disabled={createDisabled}
                   onClick={() => createCharacterMutation.mutate()}
                 >
                   {createCharacterMutation.isPending ? "Creating..." : "Enter the World"}
                 </Button>
+                {!createDisabled ? null : (
+                  <div className="text-xs text-muted-foreground">
+                    {!statsReady && "Finish rolling or point-buying your ability scores. "}
+                    {selectedSkills.length !== skillCount &&
+                      `Select exactly ${skillCount} trained skill${skillCount === 1 ? "" : "s"}. `}
+                    {feats.slice(0, requiredFeatSlots).some((f) => !f.trim()) &&
+                      "Fill in all required feats. "}
+                    {multiclass &&
+                      (!secondClass || secondClass === charClass) &&
+                      "Choose a different second class. "}
+                  </div>
+                )}
               </Card>
             </div>
 
@@ -694,6 +1259,12 @@ export default function CampaignPage() {
             currencies={balances}
             campaignCurrencies={currencies}
             connected={wsConnected}
+            onEquip={handleEquip}
+            onUnequip={handleUnequip}
+            onUse={handleUseItem}
+            onRead={handleReadItem}
+            onSubmitReport={handleSubmitReport}
+            worldState={campaign?.worldState}
           />
         </div>
       </aside>
@@ -768,7 +1339,9 @@ export default function CampaignPage() {
                   >
                     <div className="flex items-center justify-between mb-2 gap-3">
                       <div className="font-medium text-sm flex items-center gap-2">
-                        {msg.senderType === "dm" && <Sparkles className="w-4 h-4 text-amber-500" />}
+                        {msg.senderType === "dm" && (
+                          <img src={logoImg} alt="" className="w-4 h-4 rounded-sm object-cover" />
+                        )}
                         {msg.senderType === "player" && <Sword className="w-4 h-4 text-primary" />}
                         {msg.sender}
                       </div>
@@ -792,7 +1365,7 @@ export default function CampaignPage() {
             </ScrollArea>
 
             <div className="border-t border-border p-4 space-y-3 bg-background/95">
-              {messages.length === 0 ? (
+              {!messages.some((m) => m.senderType === "dm") ? (
                 <Button
                   onClick={() => startMutation.mutate()}
                   disabled={startDisabled}

@@ -13,6 +13,7 @@ import {
   Hash,
   Shield,
 } from "lucide-react";
+import { TIERS, SQUIRE_PASS, formatPrice } from "@shared/tiers";
 import logoImg from "@assets/logo.png";
 
 function SectionHeader({
@@ -83,7 +84,7 @@ export default function HowItWorks() {
           </Link>
           <Link href="/register">
             <Button size="sm" className="text-xs">
-              Start Free Trial
+              Get Started
             </Button>
           </Link>
         </div>
@@ -312,16 +313,16 @@ export default function HowItWorks() {
             Ready to start your campaign?
           </h2>
           <p className="text-muted-foreground text-lg mb-2">
-            7-day free trial · No credit card required
+            One-time Squire Pass or subscribe — no free trial needed
           </p>
           <p className="text-muted-foreground text-sm mb-8">
-            Weekly £9 · Monthly £30 (save 17%) · Players join free
+            Squire Pass {formatPrice(SQUIRE_PASS.price)} · Subscriptions from {formatPrice(TIERS.adventurer.priceWeekly)}/wk · Players join free
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/register">
               <Button size="lg" className="px-8 gap-2">
                 <Swords className="w-4 h-4" />
-                Begin Your Free Trial
+                Get Started
               </Button>
             </Link>
             <Link href="/pricing">

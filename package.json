@@ -9,7 +9,10 @@
     "build": "npx tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "db:push": "drizzle-kit push",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test server/**/*.test.ts",
+    "dms:build-local": "powershell -ExecutionPolicy Bypass -File .\\local-dms\\build-model.ps1",
+    "dms:smoke": "cross-env DM_AI_PROVIDER=ollama OLLAMA_MODEL=dmos-dms OLLAMA_BASE_URL=http://127.0.0.1:11434 tsx script/test-local-dms.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

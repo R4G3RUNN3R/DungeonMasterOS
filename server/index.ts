@@ -2,9 +2,11 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
+import { registerCompendiumRoutes } from "./compendium-routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
+import { initializeCompendium } from "./compendium";
 
 const app = express();
 const httpServer = createServer(app);
@@ -73,11 +75,26 @@ app.use((req, res, next) => {
   try {
     runMigrations();
     log("Database migrations complete", "db");
+
+    const compendium = await initializeCompendium();
+    log(
+      `Item compendium ready: ${compendium.totalDefinitions} definitions (${compendium.canonicalImported} canonical rows imported this run, ${compendium.homebrewSeeded} first-party homebrew definitions seeded)`,
+      "compendium",
+    );
+    if (compendium.canonicalErrors.length) {
+      console.warn(
+        "Compendium canonical sync completed with non-fatal source errors:",
+        compendium.canonicalErrors,
+      );
+    }
   } catch (err: any) {
     console.error("Database migration failed:", err);
     process.exit(1);
   }
 
+  // Public, read-only catalogue endpoints. Kept separate from campaign routes so
+  // the website compendium can evolve without touching active gameplay handlers.
+  registerCompendiumRoutes(app);
   await registerRoutes(httpServer, app);
 
   // Error handler

@@ -17,6 +17,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { apiUrl } from "@/lib/appBase";
+import { RULESETS } from "@shared/rulesets";
 
 type CurrencyDef = {
   id: string;
@@ -51,7 +53,7 @@ type CreateCampaignPayload = {
 };
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
@@ -144,6 +146,7 @@ export default function HomePage() {
   const [powerLevel, setPowerLevel] = useState<"low" | "standard" | "high" | "godtier">("standard");
   const [worldType, setWorldType] = useState<"custom" | "faerun" | "original">("original");
   const [combatStyle, setCombatStyle] = useState<"cinematic" | "tactical" | "dice">("cinematic");
+  const [ruleset, setRuleset] = useState<"dnd5e" | "dnd35e">("dnd5e");
   const [storyMode, setStoryMode] = useState(false);
   const [worldGenStyle, setWorldGenStyle] = useState<"standard" | "isekai" | "portal" | "reincarnation" | "dreamfall">("standard");
   const [homebrewRules, setHomebrewRules] = useState("");
@@ -254,6 +257,7 @@ export default function HomePage() {
       powerLevel,
       worldType,
       combatStyle,
+      ruleset,
       storyMode,
       worldGenStyle,
       homebrewRules,
@@ -358,6 +362,36 @@ export default function HomePage() {
                     <option value="custom">Custom Seed</option>
                   </select>
                 </div>
+              </div>
+            </Card>
+
+            <Card className="p-5 space-y-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <ScrollText className="h-4 w-4 text-primary" />
+                Ruleset
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {RULESETS.map((option) => {
+                  const available = option.status === "available";
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={!available}
+                      title={option.description}
+                      onClick={() => available && setRuleset(option.id as "dnd5e" | "dnd35e")}
+                      className={`${optionClass} ${ruleset === option.id ? selectedClass : ""} ${!available ? "opacity-40 cursor-not-allowed" : ""} relative`}
+                    >
+                      {option.name}
+                      {!available && (
+                        <span className="block text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
+                          Coming soon
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </Card>
 
