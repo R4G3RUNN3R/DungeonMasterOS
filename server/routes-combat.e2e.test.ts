@@ -319,6 +319,29 @@ test("buildSystemPrompt documents the mechanical tags the AI is expected to emit
   assert.ok(!dmEngineSource.includes("[COMBAT_END]"), "the removed COMBAT_END tag must not still be documented");
 });
 
+test("buildSystemPrompt is grounded with the authoritative party inventory (regression guard for item-hallucination bug)", async () => {
+  // Same last-resort source-content approach as the test above: buildSystemPrompt
+  // isn't exported, so this guards against someone silently deleting the fix for
+  // the 2026-08-18 production bug where the AI DM claimed real inventory items
+  // (Bag of Holding, CIEL Ring, etc.) didn't exist because the prompt never told
+  // it what the party actually owned.
+  const dmEngineSource = fs.readFileSync(path.join(__dirname, "dm-engine.ts"), "utf-8");
+  assert.ok(
+    dmEngineSource.includes("AUTHORITATIVE PARTY INVENTORY"),
+    "system prompt source must include the authoritative party inventory grounding section",
+  );
+  assert.ok(
+    dmEngineSource.includes("partyInventory"),
+    "buildSystemPrompt's call chain must still be wired to accept a partyInventory param",
+  );
+
+  const routesSource = fs.readFileSync(path.join(__dirname, "routes.ts"), "utf-8");
+  assert.ok(
+    routesSource.includes("buildPartyInventorySnapshots"),
+    "the live action/opening-scene/item-use routes must still build and pass real inventory snapshots into the AI prompt",
+  );
+});
+
 test("cleanup", () => {
   // better-sqlite3 keeps its file handle open for the life of the process,
   // and on Windows an open file can't be unlinked (EPERM) — see the same

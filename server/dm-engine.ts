@@ -1,8 +1,48 @@
-import type { Campaign, CampaignCurrency, Character, Message } from "../shared/schema";
+import type { Campaign, CampaignCurrency, Character, Message, Item, CharacterCurrency } from "../shared/schema";
 import type { Encounter } from "../shared/schema";
 import type { EncounterParticipant } from "./combat-engine";
 import { formatCampaignMemory, parseCampaignWorldState } from "./campaign-memory";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
+
+// ── Authoritative party inventory grounding ─────────────────────────────────
+// The AI has no other channel to real item/currency state — it previously
+// had to re-derive "what does the party actually own" purely by re-reading
+// the freeform narrative transcript each turn, with nothing to check itself
+// against. That's a real production bug (see docs/superpowers/... investigation
+// notes): over enough turns the model loses track, invents contradictory
+// state, or claims real items don't exist. This snapshot is the fix — pulled
+// fresh from the real items/character_currencies tables on every generation,
+// never from narration or memory.
+export interface PartyInventorySnapshot {
+  characterId: number;
+  characterName: string;
+  items: Item[];
+  currencies: CharacterCurrency[];
+}
+
+function formatItemForPrompt(item: Item): string {
+  const label = item.identified ? item.name : `${item.name} (Unidentified)`;
+  const qty = item.quantity > 1 ? ` x${item.quantity}` : "";
+  const eq = item.equipped ? " [equipped]" : "";
+  const carried = item.carried === false ? " [stored, not carried]" : "";
+  return `${label}${qty}${eq}${carried}`;
+}
+
+function formatPartyInventoryForPrompt(snapshots: PartyInventorySnapshot[]): string {
+  if (snapshots.length === 0) return "No characters have any recorded items or currency yet.";
+
+  return snapshots
+    .map((snapshot) => {
+      const itemLines = snapshot.items.length > 0
+        ? snapshot.items.map((item) => `  - ${formatItemForPrompt(item)}`).join("\n")
+        : "  (none)";
+      const currencyLine = snapshot.currencies.length > 0
+        ? snapshot.currencies.map((c) => `${c.amount} ${c.currencyCode}`).join(", ")
+        : "none recorded";
+      return `${snapshot.characterName}:\nItems:\n${itemLines}\nCurrency: ${currencyLine}`;
+    })
+    .join("\n\n");
+}
 
 const OPENING_MAX_TOKENS = DM_AI_PROVIDER === "ollama" ? 900 : 1500;
 const RESPONSE_MAX_TOKENS = DM_AI_PROVIDER === "ollama" ? 950 : 1500;
@@ -27,6 +67,7 @@ function buildSystemPrompt(
   characters: Character[],
   currencies: CampaignCurrency[],
   combatContext: CombatPromptContext | null = null,
+  partyInventory: PartyInventorySnapshot[] = [],
 ): string {
   const worldState = parseCampaignWorldState(campaign.worldState);
 
@@ -95,6 +136,9 @@ ${formatWorldStateForPrompt(campaign)}
 
 CAMPAIGN MEMORY:
 ${formatCampaignMemory(worldState.memory)}
+
+AUTHORITATIVE PARTY INVENTORY — this is the actual, currently-true record of what each character owns and carries, pulled directly from the game's database. It is NOT your memory of the story; it is ground truth, and it can include items granted many turns ago that a short recap might not mention. Never claim a character doesn't have an item that appears here. Never invent an item, amount of currency, or piece of equipment that isn't listed here without granting it properly first (see INVENTORY / REWARDS and CURRENCY below). If the narrative and this list ever conflict, this list wins:
+${formatPartyInventoryForPrompt(partyInventory)}
 
 IMPORTANT SYSTEM BEHAVIOR:
 
@@ -425,8 +469,9 @@ export async function generateOpeningScene(
   campaign: Campaign,
   characters: Character[],
   currencies: CampaignCurrency[] = [],
+  partyInventory: PartyInventorySnapshot[] = [],
 ): Promise<string> {
-  const system = buildSystemPrompt(campaign, characters, currencies);
+  const system = buildSystemPrompt(campaign, characters, currencies, null, partyInventory);
 
   const response = await generateNarrationText({
     system,
@@ -462,8 +507,9 @@ export async function generateDMResponse(
   playerName: string,
   currencies: CampaignCurrency[] = [],
   combatContext: CombatPromptContext | null = null,
+  partyInventory: PartyInventorySnapshot[] = [],
 ): Promise<string> {
-  const system = buildSystemPrompt(campaign, characters, currencies, combatContext);
+  const system = buildSystemPrompt(campaign, characters, currencies, combatContext, partyInventory);
 
   const messages = history.map((message) => ({
     role: message.senderType === "player" ? "user" : "assistant",

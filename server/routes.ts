@@ -8,8 +8,15 @@ import {
   mergeCampaignWorldState,
   parseCampaignWorldState,
 } from "./campaign-memory";
-import { generateDMResponse, generateOpeningScene, extractWorldState, generateNpcTurnAction, buildCombatContext } from "./dm-engine";
-import { getNarrationServiceIssue, getNarrationServiceLabel, generateNarrationText } from "./dm-provider";
+import { generateDMResponse, generateOpeningScene, extractWorldState, generateNpcTurnAction, buildCombatContext, type PartyInventorySnapshot } from "./dm-engine";
+import { getNarrationServiceIssue, getNarrationServiceLabel, generateNarrationText, DM_AI_PROVIDER } from "./dm-provider";
+import { hashSnapshot, logAiContextSnapshot, logAiMutations, type AiGenerationPurpose } from "./ai-diagnostics";
+import { runDataIntegrityChecks } from "./integrity-checks";
+
+// Bump this whenever buildSystemPrompt's structure changes in a way that
+// matters for diagnosing a past generation (new grounding section, new tag,
+// etc.) — see server/dm-engine.ts's buildSystemPrompt.
+const DM_PROMPT_VERSION = "v2-authoritative-inventory";
 import { resolveCheckTag } from "./mechanics-resolver";
 import { fleeEncounter, applyNpcSurrender, resolveAttack, executeAttack, startEncounter, type AttackResolution } from "./combat-engine";
 import { computeFullCharacterSheet } from "./character-stats";
@@ -196,6 +203,48 @@ Something in the scene responds, even if imperfectly. You sense movement nearby,
 Whatever happens next, your action has pushed the moment forward.
 
 **What do you do now?**`;
+}
+
+// Pulls the real, current items/currency for every character in the party
+// straight from storage, for injection into the DM's system prompt. This is
+// the authoritative grounding the AI has always been missing — previously
+// the model had no structured channel to inventory state at all and had to
+// re-derive "what does the party own" purely from its own memory of the
+// freeform narrative transcript, which drifts and contradicts real state
+// over long campaigns (production investigation, 2026-08-18).
+function buildPartyInventorySnapshots(chars: Character[]): PartyInventorySnapshot[] {
+  return chars.map((character) => ({
+    characterId: character.id,
+    characterName: character.name,
+    items: storage.getItemsByCharacter(character.id),
+    currencies: storage.getCharacterCurrencies(character.id),
+  }));
+}
+
+// Logs a fingerprint (not the content) of everything the AI is about to be
+// told is true, so a later production bug report can be matched back to
+// exactly what grounding data was in play. See server/ai-diagnostics.ts.
+function logDmGenerationContext(params: {
+  purpose: AiGenerationPurpose;
+  campaignId: number;
+  chars: Character[];
+  triggerMessageId: number | null;
+  sceneText: string | null | undefined;
+  combatActive: boolean;
+}): void {
+  const inventorySnapshots = buildPartyInventorySnapshots(params.chars);
+  logAiContextSnapshot({
+    purpose: params.purpose,
+    campaignId: params.campaignId,
+    characterIds: params.chars.map((c) => c.id),
+    triggerMessageId: params.triggerMessageId,
+    provider: DM_AI_PROVIDER,
+    promptVersion: DM_PROMPT_VERSION,
+    sceneHash: hashSnapshot(params.sceneText || ""),
+    inventoryHash: hashSnapshot(inventorySnapshots),
+    currencyHash: hashSnapshot(inventorySnapshots.map((s) => ({ characterId: s.characterId, currencies: s.currencies }))),
+    combatActive: params.combatActive,
+  });
 }
 
 function buildAIUnavailableSystemMessage(
@@ -564,13 +613,41 @@ Rules:
   }
 }
 
+// Each stem below is written with an explicit inflection group (not a bare
+// \b-wrapped word) because a bare word inside \b(...)\b only matches that
+// exact form — "snatch" never matches "snatched", "confiscat" never matches
+// "confiscated", "returns?" never matches "returned". A 2026-08-18
+// production bug (Merchant's Coin Purse never removed after the DM narrated
+// "he snatched it back") traced directly to this: the narration used the
+// inflected form and the gate silently never fired, so the follow-up
+// extraction call that would have removed the item never ran.
+const LOSS_KEYWORDS_RE =
+  /\b(giv(e|es|ing)? (it|them) (back|away)|gave (it|them) (back|away)|hand(s|ed|ing)? (it|them) (back|over)|hand(s|ed|ing)? .{0,20}over|return(s|ed|ing)?|(is|was|were) taken (from|away from) you|steal(s|ing)?|stole|stolen|snatch(es|ed|ing)?|confiscat(e|es|ed|ing)?|drop(s|ped|ping)?|los(e|es|ing)?|lost|destroy(s|ed|ing)?|shatter(s|ed|ing)?|break(s|ing)?|broke|broken|no longer have|is gone|left behind|discard(s|ed|ing)?|sell(s|ing)?|sold|trad(e|ed|ing) away)\b/i;
+
+export function isLossNarration(narration: string): boolean {
+  return LOSS_KEYWORDS_RE.test(narration);
+}
+
+// The AI's narration is evidence that a currency change happened, never
+// authority to apply one that would overdraw a character's real balance —
+// combat/[CHECK] resolutions already follow this "server resolves, AI only
+// narrates" pattern; this closes the one gap where narration-inferred
+// currency changes were applied unconditionally.
+export function resolveCurrencyChange(
+  currentBalance: number,
+  amount: number,
+): { accepted: boolean; reason?: string } {
+  if (amount < 0 && currentBalance + amount < 0) {
+    return { accepted: false, reason: "insufficient_balance" };
+  }
+  return { accepted: true };
+}
+
 async function extractLostItemsFromNarration(
   narration: string,
   characterId: number,
 ): Promise<number[]> {
-  const lossKeywords =
-    /\b(gives? (it|them) (back|away)|hands? (it|them) (back|over)|returns?|is taken from you|steals?|snatch|confiscat|drops?|loses?|lost|destroyed|shatters?|breaks?|no longer have|is gone|left behind|discards?|sells?|traded? away|hands? over)\b/i;
-  if (!lossKeywords.test(narration)) return [];
+  if (!isLossNarration(narration)) return [];
 
   const items = storage.getItemsByCharacter(characterId);
   if (!items.length) return [];
@@ -857,6 +934,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/me", requireDungeonMaster, (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
+  });
+
+  // On-demand production database consistency check (2026-08-18
+  // investigation) — see server/integrity-checks.ts for what it actually
+  // checks and why. Read-only, admin-gated.
+  app.get("/api/admin/integrity-check", requireDungeonMaster, (req, res) => {
+    const issues = runDataIntegrityChecks();
+    return res.json({ issues, checkedAt: new Date().toISOString() });
   });
 
   // ── Updates feed ────────────────────────────────────────────────────────
@@ -2554,7 +2639,25 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       const history = storage.getMessagesByCampaign(item.campaignId);
       const chars = storage.getCharactersByCampaign(item.campaignId);
 
-      const rawResponse = await generateDMResponse(campaign, chars, history, useAction, character.name);
+      logDmGenerationContext({
+        purpose: "item_use",
+        campaignId: item.campaignId,
+        chars,
+        triggerMessageId: playerMsg.id,
+        sceneText: campaign.worldState,
+        combatActive: false,
+      });
+
+      const rawResponse = await generateDMResponse(
+        campaign,
+        chars,
+        history,
+        useAction,
+        character.name,
+        [],
+        null,
+        buildPartyInventorySnapshots(chars),
+      );
       const { cleanContent, worldState } = extractWorldState(rawResponse);
 
       if (worldState) {
@@ -2837,14 +2940,24 @@ Keep it to 2-4 short paragraphs.`,
       const activeEncounterBefore = storage.getActiveEncounterByCampaign(campaignId);
       const combatContext = buildCombatContext(activeEncounterBefore, character);
 
+      logDmGenerationContext({
+        purpose: "main_action",
+        campaignId,
+        chars,
+        triggerMessageId: playerMsg.id,
+        sceneText: campaign.worldState,
+        combatActive: !!combatContext,
+      });
+
       const rawResponse = await deps.generateDMResponse(
         campaign,
         chars,
         history,
         content,
         character.name,
-        [],
+        storage.getCampaignCurrencies(campaignId),
         combatContext,
+        buildPartyInventorySnapshots(chars),
       );
 
       const { cleanContent, worldState } = extractWorldState(rawResponse);
@@ -3024,12 +3137,40 @@ Keep it to 2-4 short paragraphs.`,
           broadcastToCampaign(campaignId, { type: "items_updated", characterId: character.id });
         }
 
+        // Server-side economic authority: a narration-inferred spend can never
+        // take a character's balance below zero. The AI's prose is evidence
+        // that a purchase happened, not permission to invent currency — if the
+        // inferred amount would overdraw the real balance, the change is
+        // rejected outright rather than applied and clamped. (2026-08-18:
+        // this loop previously applied every inferred change unconditionally.)
+        const acceptedCurrencyChanges: typeof currencyChanges = [];
+        const rejectedCurrencyChanges: Array<{ currencyCode: string; amount: number; reason: string }> = [];
         for (const change of currencyChanges) {
+          const balance = storage.getCharacterCurrency(character.id, change.currencyCode);
+          const decision = resolveCurrencyChange(balance?.amount ?? 0, change.amount);
+          if (!decision.accepted) {
+            rejectedCurrencyChanges.push({ ...change, reason: decision.reason! });
+            continue;
+          }
           storage.adjustCharacterCurrency(campaignId, character.id, change.currencyCode, change.amount);
+          acceptedCurrencyChanges.push(change);
         }
-        if (currencyChanges.length) {
+        if (acceptedCurrencyChanges.length) {
           broadcastToCampaign(campaignId, { type: "currencies_updated", characterId: character.id });
         }
+
+        logAiMutations({
+          campaignId,
+          characterId: character.id,
+          narrationMessageId: dmMsg.id,
+          proposedItemGrants: newItems.length,
+          acceptedItemGrants: newItems.length,
+          proposedItemLosses: lostItemIds.length,
+          acceptedItemLosses: lostItemIds.length,
+          proposedCurrencyChanges: currencyChanges,
+          acceptedCurrencyChanges,
+          rejectedCurrencyChanges,
+        });
 
         if (newAbilities.length > 0) {
           const freshChar = storage.getCharacter(character.id);
@@ -3349,7 +3490,21 @@ Keep it to 2-4 short paragraphs.`,
     try {
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: true });
 
-      const rawResponse = await generateOpeningScene(campaign, chars);
+      logDmGenerationContext({
+        purpose: "opening_scene",
+        campaignId,
+        chars,
+        triggerMessageId: null,
+        sceneText: campaign.worldState,
+        combatActive: false,
+      });
+
+      const rawResponse = await generateOpeningScene(
+        campaign,
+        chars,
+        storage.getCampaignCurrencies(campaignId),
+        buildPartyInventorySnapshots(chars),
+      );
       const { cleanContent, worldState } = extractWorldState(rawResponse);
 
       if (worldState) {

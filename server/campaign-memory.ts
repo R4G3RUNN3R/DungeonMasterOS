@@ -1,6 +1,8 @@
 import type { Campaign, Character, Message } from "../shared/schema";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
 
+type NarrationTextGenerator = typeof generateNarrationText;
+
 export type CampaignMemory = {
   summary: string;
   activeThreads: string[];
@@ -164,8 +166,24 @@ function extractJsonObject(text: string): any | null {
   }
 }
 
+// IMPORTANT: this function must NEVER return currentScene. It runs as a
+// fire-and-forget background task after the main narration has already been
+// sent to the player (see queueCampaignMemoryRefresh in routes.ts), using a
+// much smaller token budget and a system prompt with none of the main DM
+// prompt's CONTINUITY LOCK guarantees. A production bug (2026-08-18
+// investigation) traced an unexplained "reality shift" — the party's
+// location silently changing with no in-fiction cause — directly to this
+// function: it used to also propose a currentScene, which
+// mergeCampaignWorldState applied unconditionally, letting an under-
+// constrained summarization call silently overwrite the authoritative scene
+// state that every future turn's system prompt trusts. Scene changes now
+// happen through exactly one channel: the main narration's [WORLD_STATE]
+// tag, which is subject to the full continuity-locked system prompt. This
+// function is only ever allowed to summarize memory (summary/threads/facts/
+// npcNotes/consequences) — never to assert where the party currently is.
 export async function generateCampaignMemoryUpdate(
   params: MemoryUpdateParams,
+  generate: NarrationTextGenerator = generateNarrationText,
 ): Promise<Partial<CampaignWorldState> | null> {
   const currentWorldState = parseCampaignWorldState(params.campaign.worldState);
   const recentHistory = params.history
@@ -173,7 +191,7 @@ export async function generateCampaignMemoryUpdate(
     .map((message) => `${message.senderType.toUpperCase()} ${message.sender}: ${message.content}`)
     .join("\n");
 
-  const response = await generateNarrationText({
+  const response = await generate({
     system: `You maintain persistent campaign memory for DungeonMasterOS.
 
 Return JSON only. No markdown fences. No explanation.
@@ -185,10 +203,10 @@ Rules:
 - Do not invent NPC motives unless the scene established them.
 - Favor short, concrete notes.
 - Keep arrays lean. Prefer 1-4 strong entries per list instead of exhaustive noise.
+- You are summarizing memory ONLY. You have no authority over the party's current location or scene — do not describe, restate, reinterpret, or imply any change to where the party physically is. That is decided elsewhere, by a process with full continuity safeguards this one does not have.
 
 Return exactly this shape:
 {
-  "currentScene": "short description of where things stand right now",
   "memory": {
     "summary": "50-90 word rolling summary of the campaign so far",
     "activeThreads": ["open question or unresolved thread"],
@@ -208,7 +226,7 @@ Characters: ${params.characters.map((character) => `${character.name} (${charact
 Existing memory:
 ${JSON.stringify(currentWorldState.memory, null, 2)}
 
-Existing current scene:
+Existing current scene (for your context only — do not restate or alter it):
 ${currentWorldState.currentScene || "None recorded yet."}
 
 Recent transcript:
@@ -225,8 +243,9 @@ ${params.latestNarration}`,
     return null;
   }
 
+  // currentScene is deliberately never read from `parsed`, even if the model
+  // includes one anyway — see the function-level comment above.
   return {
-    currentScene: typeof parsed.currentScene === "string" ? parsed.currentScene.trim() : "",
     memory: normalizeMemory(parsed.memory),
   };
 }
