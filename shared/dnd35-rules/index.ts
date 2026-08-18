@@ -3,6 +3,7 @@ export * from "./sources";
 export * from "./feat-prerequisites";
 export * from "./validate";
 export * from "./cast-preflight-guarded";
+export * from "./catalogue";
 export * from "./feats/core-metamagic";
 export * from "./feats/core-item-creation";
 export * from "./feats/core-spellcasting";
