@@ -396,6 +396,32 @@ Return ONLY the JSON array. No explanation.`,
   }
 }
 
+// Fallback per-unit weight (lbs) when the AI omits or returns an invalid
+// weight for a granted item, keyed by itemType. Approximate but keeps the
+// encumbrance system honest rather than silently granting free weight.
+const DEFAULT_ITEM_WEIGHT_LBS: Record<string, number> = {
+  weapon: 4,
+  armor: 15,
+  consumable: 0.5,
+  gear: 1,
+  tool: 2,
+  magic: 1,
+  misc: 1,
+  currency: 0.02,
+  key: 0.1,
+  property: 0,
+  vehicle: 0,
+  vessel: 0,
+  mount: 0,
+  creature: 0,
+  retainer: 0,
+};
+
+function resolveItemWeight(itemType: string, aiWeight: unknown): number {
+  if (typeof aiWeight === "number" && Number.isFinite(aiWeight) && aiWeight >= 0) return aiWeight;
+  return DEFAULT_ITEM_WEIGHT_LBS[String(itemType || "misc").toLowerCase()] ?? 1;
+}
+
 async function extractItemsFromNarration(
   narration: string,
   campaignId: number,
@@ -421,7 +447,8 @@ Return a JSON array (may be empty []) of objects:
     "itemType": "consumable|weapon|armor|gear|magic|key|currency|misc|mount|vessel|property|vehicle|creature|retainer",
     "quantity": 1,
     "consumable": true or false,
-    "identified": true or false (false if it's mysterious, glowing, unexamined, or described vaguely)
+    "identified": true or false (false if it's mysterious, glowing, unexamined, or described vaguely),
+    "weight": realistic weight of ONE unit in pounds (a dagger is about 1, a suit of plate armor about 50, a gold coin about 0.02, a house/wagon/mount/vessel/property/creature/retainer is 0)
   }
 ]
 
@@ -430,6 +457,7 @@ Rules:
 - Potions, scrolls, bombs = consumable true
 - Weapons, armor = consumable false
 - If the item seems magical but its nature is unclear = identified false
+- Property, vehicles, vessels, mounts, and creatures are not physically carried — their weight must be 0
 - If nothing was granted, return []
 - Return ONLY the JSON array. No explanation.`,
       messages: [{ role: "user", content: narration }],
@@ -443,24 +471,29 @@ Rules:
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map((item: any) => ({
-      campaignId,
-      characterId,
-      name: item.name || "Unknown Item",
-      trueName: "",
-      description: item.description || "",
-      trueDescription: "",
-      itemType: item.itemType || "misc",
-      quantity: item.quantity || 1,
-      charges: null,
-      maxCharges: null,
-      identified: item.identified !== false,
-      consumable: !!item.consumable,
-      equipped: false,
-      locationNote: "",
-      source: "dm",
-      statMods: "[]",
-    }));
+    return parsed.map((item: any) => {
+      const itemType = item.itemType || "misc";
+      return {
+        campaignId,
+        characterId,
+        name: item.name || "Unknown Item",
+        trueName: "",
+        description: item.description || "",
+        trueDescription: "",
+        itemType,
+        quantity: item.quantity || 1,
+        charges: null,
+        maxCharges: null,
+        identified: item.identified !== false,
+        consumable: !!item.consumable,
+        equipped: false,
+        locationNote: "",
+        source: "dm",
+        statMods: "[]",
+        weight: resolveItemWeight(itemType, item.weight),
+        carried: true,
+      };
+    });
   } catch {
     return [];
   }
@@ -1421,7 +1454,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       name, trueName = "", description = "", trueDescription = "",
       itemType = "gear", quantity = 1, charges = null, maxCharges = null,
       identified = true, consumable = false, equipped = false, locationNote = "",
-      statMods = "[]",
+      statMods = "[]", weight = 0, carried = true,
     } = req.body;
 
     if (!name?.trim()) return res.status(400).json({ message: "Item name is required" });
@@ -1435,6 +1468,8 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       identified, consumable, equipped, locationNote,
       source: "manual",
       statMods: typeof statMods === "string" ? statMods : JSON.stringify(statMods),
+      weight: typeof weight === "number" && Number.isFinite(weight) && weight >= 0 ? weight : 0,
+      carried: carried !== false,
     });
 
     broadcastToCampaign(character.campaignId, { type: "items_updated", characterId });
@@ -1455,11 +1490,16 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     const allowed = [
       "name", "description", "itemType", "quantity", "charges",
       "identified", "consumable", "equipped", "locationNote", "trueName", "trueDescription", "statMods",
+      "weight", "carried",
     ];
     const updates: any = {};
     for (const key of allowed) {
       if ((req.body as any)[key] !== undefined) updates[key] = (req.body as any)[key];
     }
+    if (updates.weight !== undefined && (typeof updates.weight !== "number" || !Number.isFinite(updates.weight) || updates.weight < 0)) {
+      delete updates.weight;
+    }
+    if (updates.carried !== undefined) updates.carried = updates.carried !== false;
 
     storage.updateItem(itemId, updates);
     broadcastToCampaign(item.campaignId, { type: "items_updated", characterId: item.characterId });
