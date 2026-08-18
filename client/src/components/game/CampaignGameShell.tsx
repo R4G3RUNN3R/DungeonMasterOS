@@ -27,6 +27,7 @@ import CodexOverlay from "./CodexOverlay";
 import { getRulesAdapter } from "@/lib/rulesAdapters";
 import { useGameLayoutPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/gameLayoutPreferences";
 import { openCharacterSheetPopup } from "@/lib/openCharacterSheetPopup";
+import { resolveSceneAsset } from "@shared/scene-resolver";
 
 import ShopPanel from "@/components/ShopPanel";
 
@@ -155,6 +156,13 @@ export default function CampaignGameShell({
   const contextLabel = shop ? "Merchant" : "Exploration";
   const deck = shop ? "merchant" : "exploration";
 
+  // No location/scene-classification signal exists yet (that's later
+  // context-expansion work), so this always resolves to the fallback
+  // gradient today — that's correct, not a placeholder bug. The resolver
+  // is wired now so a real environment signal can flow straight through
+  // once one exists, without touching this component again.
+  const scene = resolveSceneAsset({ environmentKey: null });
+
   const insertPrefix = (prefix: string) => {
     onActionInputChange(actionInput ? `${actionInput} ${prefix}` : prefix);
   };
@@ -182,7 +190,12 @@ export default function CampaignGameShell({
 
   return (
     <div className="dm-shell relative h-screen overflow-hidden flex flex-col">
-      <SceneBackdrop imageUrl={null} />
+      <SceneBackdrop
+        imageUrl={scene.asset?.localAssetPath ?? null}
+        dimPercent={scene.asset?.suitability.suggestedDim}
+        vignette={scene.asset?.suitability.suggestedVignette}
+        blurPx={scene.asset?.suitability.suggestedBlurPx}
+      />
 
       <CampaignGameHeader campaignName={campaignName} connected={connected} onBack={onBack} />
 

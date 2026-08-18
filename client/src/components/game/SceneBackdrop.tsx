@@ -1,19 +1,30 @@
 // client/src/components/game/SceneBackdrop.tsx
 //
 // The environmental background layer behind the game shell (design spec
-// §2.2, §13, §19). Phase 1 only needs the presentation contract — a real
-// scene/location resolver (explicit location art -> campaign pool -> global
-// pool) is Phase 2. This component takes whatever image URL it's given (or
-// none) and handles the actual rendering: vignette, dimming, crossfade, and
-// a safe gradient fallback so a missing/broken image never blocks gameplay.
+// §2.2, §13, §19). Renders whatever image URL it's given (or none) with
+// the per-scene-category dimming/vignette/blur treatment from the scene
+// asset's suitability data (research report, "Fallbacks, rendering, and
+// asset workflow"), and always keeps the warm gradient fallback underneath
+// so a missing/broken image never blocks gameplay.
 
 import { useEffect, useState } from "react";
 
+type Vignette = "light" | "medium" | "strong";
+
 type Props = {
   imageUrl?: string | null;
+  dimPercent?: number;
+  vignette?: Vignette;
+  blurPx?: number;
 };
 
-export default function SceneBackdrop({ imageUrl }: Props) {
+const VIGNETTE_SPREAD: Record<Vignette, string> = {
+  light: "10vw 2vw",
+  medium: "18vw 4vw",
+  strong: "24vw 7vw",
+};
+
+export default function SceneBackdrop({ imageUrl, dimPercent = 0, vignette = "medium", blurPx = 0 }: Props) {
   // Two-layer crossfade: keep the previous image visible while the new one
   // fades in, so a scene change never flashes to black between images.
   const [layers, setLayers] = useState<{ id: number; url: string | null }[]>([
@@ -56,7 +67,7 @@ export default function SceneBackdrop({ imageUrl }: Props) {
           <div
             key={layer.id}
             className={`dm-scene-layer${layer.id === activeId ? " dm-scene-active" : ""}`}
-            style={{ backgroundImage: `url(${layer.url})` }}
+            style={{ backgroundImage: `url(${layer.url})`, filter: blurPx ? `blur(${blurPx}px)` : undefined }}
           >
             {/* Preload/error probe — an <img> we never show, purely to
                 detect a broken URL and fall back without a visible break. */}
@@ -70,11 +81,17 @@ export default function SceneBackdrop({ imageUrl }: Props) {
         ) : null,
       )}
 
+      {/* Per-scene dimming, driven by the asset's suitability data so text
+          stays readable regardless of how bright the source image is. */}
+      {dimPercent > 0 && (
+        <div className="absolute inset-0" style={{ background: `hsl(22 24% 4% / ${dimPercent / 100})` }} />
+      )}
+
       {/* Vignette */}
       <div
         className="absolute inset-0"
         style={{
-          boxShadow: "inset 0 0 18vw 4vw hsl(22 24% 4% / 0.75)",
+          boxShadow: `inset 0 0 ${VIGNETTE_SPREAD[vignette]} hsl(22 24% 4% / 0.75)`,
         }}
       />
     </div>
