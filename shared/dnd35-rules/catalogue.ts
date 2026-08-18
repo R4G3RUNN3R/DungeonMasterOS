@@ -1,6 +1,7 @@
 import { DND35_CORE_ITEM_CREATION_FEATS } from "./feats/core-item-creation";
 import { DND35_CORE_METAMAGIC_FEATS } from "./feats/core-metamagic";
 import { DND35_CORE_SPELLCASTING_FEATS } from "./feats/core-spellcasting";
+import { DND35_CORE_SRD_COMBAT_SPELLS } from "./spells/core-srd-combat";
 import { DND35_CORE_SRD_SAMPLE_SPELLS } from "./spells/core-srd-samples";
 import type { Dnd35FeatDefinition, Dnd35SpellDefinition, Dnd35SpellTradition } from "./types";
 
@@ -10,7 +11,10 @@ export const DND35_CORE_FEATS: Dnd35FeatDefinition[] = [
   ...DND35_CORE_SPELLCASTING_FEATS,
 ];
 
-export const DND35_SPELLS: Dnd35SpellDefinition[] = [...DND35_CORE_SRD_SAMPLE_SPELLS];
+export const DND35_SPELLS: Dnd35SpellDefinition[] = [
+  ...DND35_CORE_SRD_SAMPLE_SPELLS,
+  ...DND35_CORE_SRD_COMBAT_SPELLS,
+];
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
 const spellById = new Map(DND35_SPELLS.map((spell) => [spell.id, spell]));
