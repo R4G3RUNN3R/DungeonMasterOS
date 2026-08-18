@@ -4,11 +4,7 @@
 // "how much XP is level N" and "how much HP do you gain leveling up",
 // mirroring how character-stats.ts is the one place ruleset combat math
 // lives. Standard 5e/3.5e XP tables and hit-die-by-class are SRD-derived
-// numeric game data (open content), not reproduced book text — no PHB
-// feat lists or flavor text live here. Level-up "features" are free text
-// the player enters, same as backstory/traits elsewhere in this codebase,
-// which keeps this working for any ruleset or freeform character concept
-// instead of requiring a fixed picklist tied to one specific rulebook.
+// numeric game data (open content), not reproduced book text.
 
 export type Ability = "str" | "dex" | "con" | "int" | "wis" | "cha";
 
@@ -97,10 +93,25 @@ export function hitDieSizeForClass(charClass: string, ruleset: string): number {
 }
 
 // Ability Score Improvement levels — 5e: most classes at 4/8/12/16/19.
-// 3.5e: every 4th level (4/8/12/16/20), a flat +1 to one ability score.
+// 3.5e: every 4th character level (4/8/12/16/20), a flat +1 to one ability.
 export function isAsiLevel(level: number, ruleset: string): boolean {
-  if (ruleset === "dnd35e") return level % 4 === 0;
+  if (ruleset === "dnd35e") return level >= 4 && level % 4 === 0;
   return [4, 8, 12, 16, 19].includes(level);
+}
+
+// Universal/general feat schedule. D&D 3.5 grants a general feat at every
+// 3rd character level after 1st (3/6/9/12/15/18). The level-1 feat is part of
+// character creation, not a level-up from level 0. Class bonus feats (Fighter,
+// Wizard, etc.) are intentionally NOT included here; they belong to class
+// progression and may occur in addition to this universal schedule.
+export function isGeneralFeatLevel(level: number, ruleset: string): boolean {
+  if (ruleset === "dnd35e") return level >= 3 && level % 3 === 0;
+  return false;
+}
+
+export function abilityIncreasePointsForLevel(level: number, ruleset: string): number {
+  if (!isAsiLevel(level, ruleset)) return 0;
+  return ruleset === "dnd35e" ? 1 : 2;
 }
 
 export interface LevelUpResult {
