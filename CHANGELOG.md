@@ -12,6 +12,7 @@
 - Metamagic safety: the canonical guarded preflight filters the loaded metamagic catalogue to only feats explicitly selected for the requested cast, preventing unrelated loaded feat definitions from modifying the spell.
 - Corpus validation: added duplicate-ID, edition, provenance, class-access, component-cost, structured-effect, and executable-metamagic validation checks for future bulk imports.
 - Seed spells: added representative structured SRD records for Magic Missile, Fireball, Cure Light Wounds, and Dispel Magic to exercise arcane, divine, touch, area, save, spell-resistance, scaling, healing, undead interaction, and dispel/counterspell cases.
+- Rules query layer: added direct spell/feat lookup, class and domain spell lists, category filtering, text search, and separate Grimoire/Holy Tome views over one canonical spell corpus.
 - Expected impact: establishes a deterministic D&D 3.5 adjudication layer that the Dungeon Master AI can query instead of inventing spell/feat mechanics from prose or model memory.
 - Risk: moderate and isolated. The work is not wired into live campaign resolution yet; bulk SRD spell/feat ingestion and broader tests remain before merge.
 
