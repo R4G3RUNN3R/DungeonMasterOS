@@ -55,9 +55,7 @@ export type Dnd35SpellComponent = {
   xpCost?: number;
   quantity?: number;
   itemTags?: string[];
-  /** Some 3.5 stat blocks use M/DF or F/DF: the component depends on casting tradition. */
   appliesToTradition?: Dnd35SpellTradition;
-  /** Optional identifier for components that are alternatives rather than cumulative requirements. */
   alternativeGroup?: string;
 };
 
@@ -262,44 +260,52 @@ export type Dnd35Prerequisite =
   | { kind: "spell_level"; minimum: Dnd35SpellLevel; tradition?: Dnd35SpellTradition }
   | { kind: "spellcasting"; requirement: string }
   | { kind: "race"; raceId: string }
-  | { kind: "alignment"; allowed?: string[]; forbidden?: string[] }
-  | { kind: "special"; text: string };
+  | { kind: "alignment"; allowed: string[]; forbidden?: string[] }
+  | { kind: "proficiency"; proficiencyId: string }
+  | { kind: "special"; rule: string };
 
 export type Dnd35FeatParameter = {
   id: string;
-  label: string;
+  kind?: "spell_school" | "spell" | "weapon" | "skill" | "energy_type" | "other";
+  label?: string;
   required: boolean;
   multiple?: boolean;
   allowedValues?: string[];
+  sameAsPrerequisiteParameter?: string;
   notes?: string;
 };
 
 export type Dnd35FeatModifier = {
+  modifierId: string;
   target: string;
-  operation: "add" | "multiply" | "set" | "minimum" | "maximum" | "grant" | "remove" | "special";
+  operation: "add" | "multiply" | "set" | "minimum" | "maximum" | "grant" | "remove" | "allow" | "special";
   value?: number | string | boolean;
   bonusType?: string;
   condition?: string;
   stackingKey?: string;
+  rulesNote?: string;
   notes?: string;
 };
 
 export type Dnd35MetamagicTransformation = {
+  modifierId: string;
   target: string;
-  operation: "add" | "multiply" | "set" | "remove" | "minimum" | "special";
+  operation: "add" | "multiply" | "set" | "replace" | "remove" | "minimum" | "special";
   value?: number | string | boolean;
   condition?: string;
+  rulesNote?: string;
   notes?: string;
 };
 
 export type Dnd35MetamagicRule = {
-  slotAdjustment: number | "heighten";
-  effectiveSpellLevel?: "base" | "slot_level" | "heightened_level";
+  slotAdjustment: number | "variable";
+  effectiveSpellLevel?: "unchanged" | "slot_level";
   preparationTiming: "prepared_with_spell" | "spontaneous_at_cast" | "either" | "special";
-  spontaneousCastingTimeRule?: "increase" | "unchanged" | "special";
+  spontaneousCastingTimeAdjustment?: "normal_metamagic_rule" | "unchanged" | "special";
+  canApplyToSpontaneous?: boolean | "special";
   transformations: Dnd35MetamagicTransformation[];
   restrictions?: string[];
-  stackingNotes?: string[];
+  orderNotes?: string[];
 };
 
 export type Dnd35FeatDefinition = {
@@ -307,10 +313,13 @@ export type Dnd35FeatDefinition = {
   name: string;
   edition: "3.5e";
   categories: Dnd35FeatCategory[];
+  prerequisites?: Dnd35Prerequisite;
+  /** Deprecated singular alias retained for migration compatibility. */
   prerequisite?: Dnd35Prerequisite;
   prerequisiteSummary?: string;
   parameters?: Dnd35FeatParameter[];
   repeatable?: boolean;
+  repeatRule?: string;
   stacking?: "stacks" | "does_not_stack" | "special";
   actionType?: "free" | "swift" | "immediate" | "move" | "standard" | "full_round" | "passive" | "special";
   uses?: { kind: "unlimited" | "per_day" | "per_encounter" | "resource" | "special"; amount?: number; resourceId?: string; text?: string };
