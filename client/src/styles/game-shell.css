@@ -40,49 +40,113 @@
 }
 
 /* ── Reusable surface utilities ─────────────────────────────────────── */
+/*
+ * Every rule here is written as `.dm-shell .dm-x, .dm-shell.dm-x` on
+ * purpose: the plain campaign shell nests dm-shell as an ancestor of
+ * these classes (the descendant form matches), but Radix Dialog/Sheet
+ * content is rendered through a Portal, which breaks real DOM ancestry —
+ * those components carry `dm-shell` and a surface class on the SAME
+ * element, which only the compound (no-space) form matches. Without the
+ * compound form, a descendant-only rule silently loses to shadcn's
+ * `bg-background` utility (equal-or-lower specificity but the only rule
+ * that actually matches), which is exactly the bug this fixes.
+ */
 
-.dm-shell .dm-surface {
+.dm-shell .dm-surface,
+.dm-shell.dm-surface {
   background: hsl(var(--dm-walnut));
   border: 1px solid hsl(var(--dm-line));
 }
 
-.dm-shell .dm-surface-raised {
+.dm-shell .dm-surface-raised,
+.dm-shell.dm-surface-raised {
   background: hsl(var(--dm-walnut-raised));
   border: 1px solid hsl(var(--dm-line));
 }
 
-.dm-shell .dm-leather {
+.dm-shell .dm-leather,
+.dm-shell.dm-leather {
   background: hsl(var(--dm-leather));
   border: 1px solid hsl(var(--dm-line));
 }
 
-.dm-shell .dm-parchment {
+.dm-shell .dm-parchment,
+.dm-shell.dm-parchment {
   background: hsl(var(--dm-parchment));
   color: hsl(var(--dm-parchment-ink));
 }
 
-.dm-shell .dm-heading {
+.dm-shell .dm-heading,
+.dm-shell.dm-heading {
   font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
   letter-spacing: 0.01em;
 }
 
-.dm-shell .dm-label {
+.dm-shell .dm-label,
+.dm-shell.dm-label {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: hsl(var(--dm-text-faint));
 }
 
-.dm-shell .dm-divider {
+.dm-shell .dm-divider,
+.dm-shell.dm-divider {
   border-color: hsl(var(--dm-line));
 }
 
-.dm-shell .dm-amber-text {
+.dm-shell .dm-amber-text,
+.dm-shell.dm-amber-text {
   color: hsl(var(--dm-amber));
 }
 
-.dm-shell .dm-danger-text {
+.dm-shell .dm-danger-text,
+.dm-shell.dm-danger-text {
   color: hsl(var(--dm-danger-soft));
+}
+
+/* ── Codex: open tome/book treatment (design spec §12.2) ────────────── */
+
+.dm-shell .dm-tome,
+.dm-shell.dm-tome {
+  background: hsl(var(--dm-parchment));
+  color: hsl(var(--dm-parchment-ink));
+  box-shadow:
+    inset 0 0 60px hsl(var(--dm-parchment-ink) / 0.10),
+    0 24px 48px hsl(var(--dm-void) / 0.55);
+}
+
+.dm-shell .dm-tome-spine,
+.dm-shell.dm-tome-spine {
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    hsl(var(--dm-parchment-ink) / 0.14) 47%,
+    hsl(var(--dm-parchment-ink) / 0.22) 50%,
+    hsl(var(--dm-parchment-ink) / 0.14) 53%,
+    transparent 100%
+  );
+}
+
+/* ── Character Profile: illuminated manuscript treatment (spec §12.5) ── */
+
+.dm-shell .dm-illuminated,
+.dm-shell.dm-illuminated {
+  background: hsl(var(--dm-parchment));
+  color: hsl(var(--dm-parchment-ink));
+  border: 1px solid hsl(var(--dm-bronze) / 0.6);
+  box-shadow:
+    inset 0 0 0 4px hsl(var(--dm-parchment)),
+    inset 0 0 0 5px hsl(var(--dm-bronze) / 0.5),
+    0 24px 48px hsl(var(--dm-void) / 0.55);
+}
+
+/* ── Merchant ledger chrome (spec §12.6) ─────────────────────────────── */
+
+.dm-shell .dm-ledger-header,
+.dm-shell.dm-ledger-header {
+  background: linear-gradient(180deg, hsl(var(--dm-leather)), hsl(var(--dm-walnut)));
+  border-bottom: 1px solid hsl(var(--dm-bronze) / 0.4);
 }
 
 /* ── Scene backdrop crossfade ───────────────────────────────────────── */
@@ -108,13 +172,16 @@
 
 /* ── Custom scrollbar for the parchment story column ────────────────── */
 
-.dm-shell .dm-scroll::-webkit-scrollbar {
+.dm-shell .dm-scroll::-webkit-scrollbar,
+.dm-shell.dm-scroll::-webkit-scrollbar {
   width: 10px;
 }
-.dm-shell .dm-scroll::-webkit-scrollbar-thumb {
+.dm-shell .dm-scroll::-webkit-scrollbar-thumb,
+.dm-shell.dm-scroll::-webkit-scrollbar-thumb {
   background: hsl(var(--dm-bronze) / 0.4);
   border-radius: 999px;
 }
-.dm-shell .dm-scroll::-webkit-scrollbar-track {
+.dm-shell .dm-scroll::-webkit-scrollbar-track,
+.dm-shell.dm-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
