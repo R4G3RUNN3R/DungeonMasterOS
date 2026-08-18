@@ -12,7 +12,13 @@ import {
   publicDnd35Spell,
   readStoredDnd35FeatSelections,
   recordDnd35FeatSelection,
+  resolveCanonicalItemDefinition,
 } from "./knowledge-library";
+import {
+  consumeCharacterDnd35SpellUse,
+  findDnd35CastSpell,
+  resolveCharacterDnd35SpellCast,
+} from "./dnd35-spellcasting";
 import type { Dnd35FeatDefinition } from "@shared/dnd35-rules/types";
 
 const FEAT_CATEGORIES = new Set<Dnd35FeatDefinition["categories"][number]>([
@@ -30,6 +36,15 @@ function canReadCharacter(req: Request, character: any) {
   if (character.userId && character.userId === req.user.id) return true;
   const campaign = storage.getCampaign(character.campaignId);
   return !!campaign && campaign.userId === req.user.id;
+}
+
+function actionText(body: any) {
+  if (!body || typeof body !== "object") return "";
+  for (const key of ["content", "action", "message", "text"]) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function featParameterValues(body: any): Record<string, string | string[]> | undefined {
@@ -76,6 +91,72 @@ function sameRepeatSelection(feat: Dnd35FeatDefinition, parameters: Record<strin
   const stored = readStoredDnd35FeatSelections(character).filter((entry) => entry.featId === feat.id);
   if (!stored.length) return false;
   return stored.some((entry) => JSON.stringify(entry.parameters ?? {}) === JSON.stringify(parameters ?? {}));
+}
+
+function canonicalItemType(category: string, fallback: string) {
+  const normalized = category.trim().toLowerCase();
+  const allowed = new Set(["weapon", "armor", "consumable", "gear", "magic", "key", "currency", "misc", "mount", "vessel", "property", "vehicle", "creature", "retainer", "tool"]);
+  if (allowed.has(normalized)) return normalized;
+  if (normalized.includes("weapon")) return "weapon";
+  if (normalized.includes("armor") || normalized.includes("armour") || normalized.includes("shield")) return "armor";
+  if (normalized.includes("potion") || normalized.includes("poison") || normalized.includes("consumable")) return "consumable";
+  if (normalized.includes("magic") || normalized.includes("wondrous")) return "magic";
+  return fallback || "gear";
+}
+
+function canonicalStatMods(definition: any, fallback: string) {
+  const mods = Array.isArray(definition?.effects)
+    ? definition.effects.flatMap((effect: any) => {
+        if (!effect || effect.type !== "stat_mod" || typeof effect.stat !== "string" || !Number.isFinite(Number(effect.modifier))) return [];
+        return [{ stat: effect.stat, type: "bonus", modifier: Number(effect.modifier), source: definition.name }];
+      })
+    : [];
+  return mods.length ? JSON.stringify(mods) : fallback;
+}
+
+function canonicalizeGrantedItems(campaign: any, characterId: number, beforeIds: Set<number>) {
+  const newItems = storage.getItemsByCharacter(characterId).filter((item) => !beforeIds.has(item.id));
+  const reconciled: Array<{ itemId: number; name: string; canonical: boolean; definitionKey?: string; ruleset: string }> = [];
+
+  for (const item of newItems) {
+    const definition = resolveCanonicalItemDefinition(campaign.ruleset, item.name);
+    if (!definition) {
+      // Absence from the corpus must remain visible. This can still be a valid
+      // campaign/homebrew reward, but it is not allowed to masquerade as a
+      // canonical rulebook item until that edition's item corpus contains it.
+      storage.updateItem(item.id, { source: `dm-homebrew-unverified:${campaign.ruleset}` } as any);
+      reconciled.push({ itemId: item.id, name: item.name, canonical: false, ruleset: campaign.ruleset });
+      continue;
+    }
+
+    const mechanics = definition.mechanics as Record<string, unknown>;
+    const canonicalDamage = typeof mechanics?.baseDamage === "string"
+      ? mechanics.baseDamage
+      : typeof mechanics?.damageDice === "string"
+        ? mechanics.damageDice
+        : item.weaponDamageDice;
+    const updates: any = {
+      source: `knowledge:${definition.definitionKey}`,
+      itemType: canonicalItemType(definition.category, item.itemType),
+      consumable: definition.consumable,
+      weight: definition.weight ?? item.weight,
+      weaponDamageDice: canonicalDamage,
+      statMods: canonicalStatMods(definition, item.statMods),
+    };
+
+    if (item.identified) {
+      updates.name = definition.name;
+      updates.description = definition.description;
+    } else {
+      updates.trueName = definition.name;
+      updates.trueDescription = definition.description;
+    }
+
+    storage.updateItem(item.id, updates);
+    reconciled.push({ itemId: item.id, name: definition.name, canonical: true, definitionKey: definition.definitionKey, ruleset: definition.ruleset });
+  }
+
+  return reconciled;
 }
 
 export function registerKnowledgeRoutes(app: Express): void {
@@ -140,11 +221,79 @@ export function registerKnowledgeRoutes(app: Express): void {
     return res.json({ edition: "3.5e", feats });
   });
 
-  // This guard is intentionally registered before server/routes.ts. It does not
-  // perform the level-up itself; it prevents the legacy free-text feat path from
-  // accepting an unknown or ineligible 3.5 feat, then lets the existing tested
-  // level-up handler own HP/class/XP changes. On successful response it records
-  // the exact canonical feat mechanics back into characterData.
+  // Registered before the normal campaign action route. For canonical spells
+  // already present in the 3.5 corpus, this turns a player cast into a real
+  // rules preflight against their persisted spellcasting state. The legacy AI
+  // narration route only runs if the cast is legal, and spell resources are
+  // consumed only after that route successfully completes the turn.
+  app.post("/api/campaigns/:id/action", requireAuth, (req, res, next) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return next();
+
+    const visitorId = `user-${req.user!.id}`;
+    const character = storage.getCharacterByVisitor(campaignId, visitorId);
+    if (!character) return next();
+    const beforeItemIds = new Set(storage.getItemsByCharacter(character.id).map((item) => item.id));
+    const text = actionText(req.body);
+
+    let castPreflight: ReturnType<typeof resolveCharacterDnd35SpellCast> | undefined;
+    if (campaign.ruleset === "dnd35e" && text) {
+      const spell = findDnd35CastSpell(text);
+      if (spell) {
+        castPreflight = resolveCharacterDnd35SpellCast(
+          character,
+          spell,
+          text,
+          storage.getItemsByCharacter(character.id),
+          storage.getActiveEffectsByCharacter(character.id),
+        );
+        if (castPreflight.unavailableReason) {
+          return res.status(409).json({
+            message: castPreflight.unavailableReason,
+            code: "DND35_SPELL_STATE_INCOMPLETE",
+            spell: publicDnd35Spell(spell),
+          });
+        }
+        if (!castPreflight.resolution?.legal) {
+          return res.status(400).json({
+            message: `Cannot cast ${spell.name} from the character's current authoritative state.`,
+            code: "DND35_SPELL_CAST_ILLEGAL",
+            spell: publicDnd35Spell(spell),
+            resolution: castPreflight.resolution,
+          });
+        }
+      }
+    }
+
+    const originalJson = res.json.bind(res);
+    let reconciled = false;
+    res.json = ((body: any) => {
+      if (!reconciled && res.statusCode < 400) {
+        reconciled = true;
+        const completedTurn = !body?.duplicate && !body?.aiUnavailable && !body?.fallback && Boolean(body?.dmMessage);
+        if (completedTurn) {
+          const rewards = canonicalizeGrantedItems(campaign, character.id, beforeItemIds);
+          if (rewards.length) body.rewardReconciliation = rewards;
+
+          if (castPreflight?.spell && castPreflight.resolution?.legal) {
+            const fresh = storage.getCharacter(character.id);
+            if (fresh) consumeCharacterDnd35SpellUse(fresh, castPreflight.spell, castPreflight.resolution, storage);
+            body.spellResolution = castPreflight.resolution;
+            body.canonicalSpell = publicDnd35Spell(castPreflight.spell);
+          }
+        }
+      }
+      return originalJson(body);
+    }) as typeof res.json;
+
+    return next();
+  });
+
+  // Narrow canonical feat guard in front of the legacy level-up handler.
+  // It validates and persists exact feat mechanics, but the legacy level-up
+  // route still needs its 3.5 feat/ability-increase scheduling refactored
+  // before this can be considered the final 3.5 level progression workflow.
   app.post("/api/characters/:characterId/level-up", requireAuth, (req, res, next) => {
     const requested = typeof req.body?.featId === "string" && req.body.featId.trim()
       ? req.body.featId.trim()
