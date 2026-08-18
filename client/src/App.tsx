@@ -13,6 +13,7 @@ import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import Pricing from "@/pages/pricing";
 import HowItWorks from "@/pages/how-it-works";
+import Credits from "@/pages/credits";
 import Billing from "@/pages/billing";
 import Account from "@/pages/account";
 import CompendiumPage from "@/pages/compendium";
@@ -36,6 +37,7 @@ function AppRouter() {
       <Route path="/compendium/items/:definitionKey" component={CompendiumItemPage} />
       <Route path="/compendium" component={CompendiumPage} />
       <Route path="/updates" component={UpdatesPage} />
+      <Route path="/credits" component={Credits} />
 
       {/* Auth */}
       <Route path="/login">{() => <AuthPage defaultTab="login" />}</Route>

@@ -10,7 +10,12 @@ import logoImg from "@assets/logo.png";
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import ShopPanel from "@/components/ShopPanel";
 import CharacterSheetView from "@/components/CharacterSheetView";
+import SceneBackdrop from "@/components/game/SceneBackdrop";
+import CombatContext from "@/components/game/CombatContext";
+import "@/styles/game-shell.css";
 
+import { resolveSceneAsset } from "@shared/scene-resolver";
+import type { EncounterState } from "@shared/combat";
 import { classesForRuleset, SKILL_ABILITY, startingSkillCount, startingFeatSlots } from "@shared/classes";
 import { racesForRuleset, getRace, applyRacialAdjustments } from "@shared/races";
 import { toast } from "@/hooks/use-toast";
@@ -369,6 +374,12 @@ export default function CampaignPage() {
     retry: false,
   });
 
+  const encounterQuery = useQuery({
+    queryKey: ["/api/campaigns", campaignId, "encounter"],
+    queryFn: () => api<EncounterState>(`/api/campaigns/${campaignId}/encounter`),
+    enabled: Number.isFinite(campaignId),
+  });
+
   const createCharacterMutation = useMutation({
     mutationFn: () => {
       let finalCharClass = charClass;
@@ -450,6 +461,7 @@ export default function CampaignPage() {
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] }),
       ]);
     },
     onError: (_err, content) => {
@@ -544,6 +556,34 @@ export default function CampaignPage() {
     await reportBugMutation.mutateAsync(description);
   }
 
+  const attackMutation = useMutation({
+    mutationFn: (targetParticipantId: string) =>
+      api(`/api/campaigns/${campaignId}/combat/attack`, {
+        method: "POST",
+        body: JSON.stringify({ targetParticipantId }),
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] }),
+      ]);
+    },
+  });
+
+  const fleeMutation = useMutation({
+    mutationFn: () =>
+      api(`/api/campaigns/${campaignId}/combat/flee`, {
+        method: "POST",
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] }),
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
+      ]);
+    },
+  });
+
   useEffect(() => {
     if (!campaignId) return;
 
@@ -591,6 +631,11 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
           break;
 
+        case "encounter_updated":
+        case "encounter_ended":
+          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] });
+          break;
+
         case "achievement_unlocked": {
           // Broadcast campaign-wide (a party sees each other's unlocks, like
           // any co-op game) — so this toast never claims turns landed in
@@ -610,6 +655,7 @@ export default function CampaignPage() {
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "characters"] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] });
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "shop"] });
+          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "encounter"] });
           qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
           qc.invalidateQueries({
             queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
@@ -683,8 +729,17 @@ export default function CampaignPage() {
   const items = itemsQuery.data || [];
   const currencies = currenciesQuery.data || [];
   const balances = characterCurrenciesQuery.data || [];
+  const encounter: EncounterState = encounterQuery.data ?? { encounter: null, participants: [] };
+  const inCombat = encounter.encounter?.status === "active";
 
-  const shopVisible = !!shopQuery.data?.shop && shopOpen;
+  const shopVisible = !!shopQuery.data?.shop && shopOpen && !inCombat;
+
+  // No environment-classification signal exists yet, so this always
+  // resolves to the fallback gradient today — that's correct, not a
+  // placeholder bug. The resolver is already layered (explicit → campaign
+  // pool → global pool → gradient) so a real signal can be wired in later
+  // without touching this call site.
+  const resolvedScene = useMemo(() => resolveSceneAsset({ environmentKey: null }), []);
 
   const primaryCurrency = useMemo(() => {
     if (!currencies.length) return null;
@@ -1250,7 +1305,7 @@ export default function CampaignPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-background text-foreground flex dm-shell">
       <aside className="hidden xl:flex xl:w-[420px] shrink-0 border-r border-border bg-card/40">
         <div className="w-full h-screen overflow-hidden">
           <SidebarCharacterSheet
@@ -1269,16 +1324,24 @@ export default function CampaignPage() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 flex flex-col h-screen">
-        <div className="border-b border-border bg-background/90 backdrop-blur px-5 py-4">
+      <main className="flex-1 min-w-0 flex flex-col h-screen relative">
+        <SceneBackdrop
+          imageUrl={resolvedScene.imageUrl}
+          dimPercent={resolvedScene.dimPercent}
+          vignette={resolvedScene.vignette}
+          blurPx={resolvedScene.blurPx}
+        />
+
+        <div className="relative border-b border-amber-900/20 dm-leather px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-semibold">{campaign.name}</h1>
+                <h1 className="dm-heading text-xl font-semibold">{campaign.name}</h1>
                 <Badge variant="secondary">{campaign.tone}</Badge>
                 <Badge variant="outline">{campaign.combatStyle}</Badge>
                 {campaign.storyMode && <Badge>Story Mode</Badge>}
                 {campaign.epicMode && <Badge className="bg-amber-600 text-white">Epic</Badge>}
+                {inCombat && <Badge className="bg-rose-700 text-white">Combat</Badge>}
               </div>
               <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
                 <span>Invite: {campaign.inviteCode}</span>
@@ -1294,7 +1357,7 @@ export default function CampaignPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {shopQuery.data?.shop && (
+              {shopQuery.data?.shop && !inCombat && (
                 <Button variant="outline" size="sm" onClick={() => setShopOpen((v) => !v)}>
                   <Store className="w-4 h-4 mr-2" />
                   {shopVisible ? "Hide shop" : "Show shop"}
@@ -1308,8 +1371,8 @@ export default function CampaignPage() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 flex">
-          <section className={cn("flex-1 min-w-0 flex flex-col", shopVisible && "border-r border-border")}>
+        <div className="relative flex-1 min-h-0 flex">
+          <section className={cn("flex-1 min-w-0 flex flex-col", (shopVisible || inCombat) && "border-r border-border")}>
             <ScrollArea className="flex-1 px-5 py-5">
               <div ref={scrollRef} className="space-y-4 pr-2">
                 {messages.length === 0 && (
@@ -1437,7 +1500,22 @@ export default function CampaignPage() {
             </div>
           </section>
 
-          {shopVisible && shopQuery.data?.shop && (
+          {inCombat && (
+            <aside className="w-[360px] shrink-0 dm-surface">
+              <div className="dm-leather border-b px-3 h-9 flex items-center shrink-0">
+                <span className="dm-label">Combat</span>
+              </div>
+              <CombatContext
+                state={encounter}
+                myCharacterId={myCharacter.id}
+                onAttack={(targetParticipantId) => attackMutation.mutate(targetParticipantId)}
+                onFlee={() => fleeMutation.mutate()}
+                actionPending={attackMutation.isPending || fleeMutation.isPending}
+              />
+            </aside>
+          )}
+
+          {!inCombat && shopVisible && shopQuery.data?.shop && (
             <aside className="w-[420px] shrink-0 bg-card/40">
               <ShopPanel
                 shop={shopQuery.data.shop}

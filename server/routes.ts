@@ -11,7 +11,7 @@ import {
 import { generateDMResponse, generateOpeningScene, extractWorldState, generateNpcTurnAction, buildCombatContext } from "./dm-engine";
 import { getNarrationServiceIssue, getNarrationServiceLabel, generateNarrationText } from "./dm-provider";
 import { resolveCheckTag } from "./mechanics-resolver";
-import { fleeEncounter, applyNpcSurrender, resolveAttack, startEncounter, type AttackResolution } from "./combat-engine";
+import { fleeEncounter, applyNpcSurrender, resolveAttack, executeAttack, startEncounter, type AttackResolution } from "./combat-engine";
 import { computeFullCharacterSheet } from "./character-stats";
 import { classesForRuleset } from "@shared/classes";
 import { getRace } from "@shared/races";
@@ -28,6 +28,7 @@ import {
   isGoogleAuthConfigured,
   type GoogleProfile,
 } from "./google-auth";
+import type { Campaign, Character } from "@shared/schema";
 import {
   createCampaignFormSchema,
   createCharacterFormSchema,
@@ -458,6 +459,32 @@ Return ONLY the JSON array. No explanation.`,
   }
 }
 
+// Fallback per-unit weight (lbs) when the AI omits or returns an invalid
+// weight for a granted item, keyed by itemType. Approximate but keeps the
+// encumbrance system honest rather than silently granting free weight.
+const DEFAULT_ITEM_WEIGHT_LBS: Record<string, number> = {
+  weapon: 4,
+  armor: 15,
+  consumable: 0.5,
+  gear: 1,
+  tool: 2,
+  magic: 1,
+  misc: 1,
+  currency: 0.02,
+  key: 0.1,
+  property: 0,
+  vehicle: 0,
+  vessel: 0,
+  mount: 0,
+  creature: 0,
+  retainer: 0,
+};
+
+function resolveItemWeight(itemType: string, aiWeight: unknown): number {
+  if (typeof aiWeight === "number" && Number.isFinite(aiWeight) && aiWeight >= 0) return aiWeight;
+  return DEFAULT_ITEM_WEIGHT_LBS[String(itemType || "misc").toLowerCase()] ?? 1;
+}
+
 async function extractItemsFromNarration(
   narration: string,
   campaignId: number,
@@ -487,7 +514,8 @@ Return a JSON array (may be empty []) of objects:
     "consumable": true or false,
     "charges": number or null,
     "weaponDamageDice": "1d8" or null (only for itemType "weapon" — standard damage dice for that weapon type, e.g. dagger=1d4, shortsword/rapier=1d6, longsword/battleaxe=1d8, greatsword/greataxe=2d6),
-    "identified": true or false (false if it's mysterious, glowing, unexamined, or described vaguely)
+    "identified": true or false (false if it's mysterious, glowing, unexamined, or described vaguely),
+    "weight": realistic weight of ONE unit in pounds (a dagger is about 1, a suit of plate armor about 50, a gold coin about 0.02, a house/wagon/mount/vessel/property/creature/retainer is 0)
   }
 ]
 
@@ -497,6 +525,7 @@ Rules:
 - Weapons, armor = consumable false
 - If the item seems magical but its nature is unclear = identified false
 - For "charges": if the consumable is drunk/used gradually over multiple uses (a flask, waterskin, jug, vial of oil, tin of tobacco, etc.), set a starting charge count like 3 or 4 — it will be depleted one charge per use. If the consumable is used up entirely in a single use (a potion, scroll, bomb, single dose), set charges to null and it will be tracked by quantity instead.
+- Property, vehicles, vessels, mounts, and creatures are not physically carried — their weight must be 0
 - If nothing was granted, return []
 - Return ONLY the JSON array. No explanation.`,
       messages: [{ role: "user", content: narration }],
@@ -506,25 +535,30 @@ Rules:
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map((item: any) => ({
-      campaignId,
-      characterId,
-      name: item.name || "Unknown Item",
-      trueName: "",
-      description: item.description || "",
-      trueDescription: "",
-      itemType: item.itemType || "misc",
-      quantity: item.quantity || 1,
-      charges: typeof item.charges === "number" && item.charges > 0 ? Math.floor(item.charges) : null,
-      maxCharges: typeof item.charges === "number" && item.charges > 0 ? Math.floor(item.charges) : null,
-      identified: item.identified !== false,
-      consumable: !!item.consumable,
-      equipped: false,
-      weaponDamageDice: item.itemType === "weapon" && typeof item.weaponDamageDice === "string" ? item.weaponDamageDice : null,
-      locationNote: "",
-      source: "dm",
-      statMods: "[]",
-    }));
+    return parsed.map((item: any) => {
+      const itemType = item.itemType || "misc";
+      return {
+        campaignId,
+        characterId,
+        name: item.name || "Unknown Item",
+        trueName: "",
+        description: item.description || "",
+        trueDescription: "",
+        itemType,
+        quantity: item.quantity || 1,
+        charges: typeof item.charges === "number" && item.charges > 0 ? Math.floor(item.charges) : null,
+        maxCharges: typeof item.charges === "number" && item.charges > 0 ? Math.floor(item.charges) : null,
+        identified: item.identified !== false,
+        consumable: !!item.consumable,
+        equipped: false,
+        weaponDamageDice: itemType === "weapon" && typeof item.weaponDamageDice === "string" ? item.weaponDamageDice : null,
+        locationNote: "",
+        source: "dm",
+        statMods: "[]",
+        weight: resolveItemWeight(itemType, item.weight),
+        carried: true,
+      };
+    });
   } catch {
     return [];
   }
@@ -2422,7 +2456,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       name, trueName = "", description = "", trueDescription = "",
       itemType = "gear", quantity = 1, charges = null, maxCharges = null,
       identified = true, consumable = false, equipped = false, locationNote = "",
-      statMods = "[]", weaponDamageDice = null,
+      statMods = "[]", weaponDamageDice = null, weight = 0, carried = true,
     } = req.body;
 
     if (!name?.trim()) return res.status(400).json({ message: "Item name is required" });
@@ -2437,6 +2471,8 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       weaponDamageDice,
       source: "manual",
       statMods: typeof statMods === "string" ? statMods : JSON.stringify(statMods),
+      weight: typeof weight === "number" && Number.isFinite(weight) && weight >= 0 ? weight : 0,
+      carried: carried !== false,
     });
 
     broadcastToCampaign(character.campaignId, { type: "items_updated", characterId });
@@ -2457,12 +2493,16 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     const allowed = [
       "name", "description", "itemType", "quantity", "charges",
       "identified", "consumable", "equipped", "slot", "locationNote", "trueName", "trueDescription", "statMods",
-      "weaponDamageDice",
+      "weaponDamageDice", "weight", "carried",
     ];
     const updates: any = {};
     for (const key of allowed) {
       if ((req.body as any)[key] !== undefined) updates[key] = (req.body as any)[key];
     }
+    if (updates.weight !== undefined && (typeof updates.weight !== "number" || !Number.isFinite(updates.weight) || updates.weight < 0)) {
+      delete updates.weight;
+    }
+    if (updates.carried !== undefined) updates.carried = updates.carried !== false;
 
     storage.updateItem(itemId, updates);
     broadcastToCampaign(item.campaignId, { type: "items_updated", characterId: item.characterId });
@@ -3115,6 +3155,187 @@ Keep it to 2-4 short paragraphs.`,
   app.post("/api/campaigns/:id/action", requireAuth, requireCanPlay, checkTurnLimit({ dedupAware: true }), async (req, res) => {
     const campaignId = Number(req.params.id);
     await withCampaignLock(campaignId, () => handleAction(req, res, campaignId));
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COMBAT ROUTES
+  // Direct player-triggered combat (Attack/Flee buttons), alongside the
+  // existing narration-driven path in handleAction. Both share the same
+  // combat-engine.ts state machine and Encounter row — a button click here
+  // is just a deterministic alternative to the AI proposing an [ATTACK] tag,
+  // never a second source of truth.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/campaigns/:id/encounter", requireAuth, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const encounter = storage.getActiveEncounterByCampaign(campaignId);
+    if (!encounter) return res.json({ encounter: null, participants: [] });
+    const participants = JSON.parse(encounter.participants);
+    return res.json({ encounter, participants });
+  });
+
+  app.post("/api/campaigns/:id/combat/attack", requireAuth, requireCanPlay, checkTurnLimit(), async (req, res) => {
+    const visitorId = getVisitorId(req);
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const character = storage.getCharacterByVisitor(campaignId, visitorId);
+    if (!character) return res.status(403).json({ message: "You don't have a character in this campaign" });
+
+    const encounter = storage.getActiveEncounterByCampaign(campaignId);
+    if (!encounter) return res.status(400).json({ message: "There is no active encounter" });
+
+    const participants = JSON.parse(encounter.participants);
+    const current = participants[encounter.turnIndex];
+    if (!current || current.type !== "character" || current.characterId !== character.id) {
+      return res.status(409).json({ message: "It isn't your turn yet" });
+    }
+
+    const targetId = String(req.body?.targetParticipantId ?? "");
+    const target = participants.find((p: any) => p.id === targetId);
+    if (!target || target.type !== "character" && target.type !== "npc" || target.type === current.type || target.isDefeated || target.fled) {
+      return res.status(400).json({ message: "Choose a valid target" });
+    }
+
+    const result = await executeAttack({
+      encounterId: encounter.id,
+      attacker: current,
+      target,
+      storage,
+      rng: Math.random,
+      narrate: (prompt) =>
+        generateNarrationText({
+          system: "You are DMS narrating the fixed outcome of a resolved combat action. Do not restate the numbers; narrate only the consequence, in 2-4 sentences, matching the established DungeonMasterOS narration style.",
+          maxTokens: 300,
+          purpose: "attack outcome narration",
+          messages: [{ role: "user", content: prompt }],
+        }),
+    });
+
+    const msg = storage.createMessage({
+      campaignId,
+      sender: "Dungeon Master",
+      senderType: "dm",
+      content: result.narration,
+      messageType: "narration",
+      metadata: JSON.stringify({
+        roll: {
+          attacker: result.attacker,
+          target: result.target,
+          outcome: result.outcome,
+          isCritical: result.isCritical,
+          isFumble: result.isFumble,
+          damageDealt: result.damageDealt,
+        },
+      }),
+    });
+    broadcastToCampaign(campaignId, { type: "message", message: msg });
+
+    incrementTurnCount(req.user!.id);
+
+    broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });
+
+    if (result.encounterEnded) {
+      broadcastToCampaign(campaignId, { type: "encounter_ended", encounterId: encounter.id });
+      if (result.xpAwarded) {
+        broadcastToCampaign(campaignId, { type: "character_updated" });
+        const xpMsg = storage.createMessage({
+          campaignId,
+          sender: "System",
+          senderType: "system",
+          content: `Victory! The party gains ${result.xpAwarded.perCharacter} XP each.`,
+          messageType: "system",
+        });
+        broadcastToCampaign(campaignId, { type: "message", message: xpMsg });
+      }
+    } else {
+      const worldStateNow = parseCampaignWorldState(campaign.worldState);
+      const npcTurnMessages = await advanceAndResolveTurns(encounter.id, storage, {
+        generateNpcAction: generateNpcTurnAction,
+        narrate: (prompt) =>
+          generateNarrationText({
+            system: "You are DMS narrating the fixed outcome of an NPC's resolved combat action. Do not restate the numbers; narrate only the consequence, in 2-4 sentences, matching the established DungeonMasterOS narration style.",
+            maxTokens: 300,
+            purpose: "npc attack outcome narration",
+            messages: [{ role: "user", content: prompt }],
+          }),
+        rng: Math.random,
+        currentScene: worldStateNow.currentScene,
+        broadcast: (message) => broadcastToCampaign(campaignId, { type: "message", message }),
+      });
+      broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });
+      const encounterFinal = storage.getEncounter(encounter.id);
+      if (encounterFinal?.status === "ended") {
+        broadcastToCampaign(campaignId, { type: "encounter_ended", encounterId: encounter.id });
+        if (encounterFinal.outcome === "victory") {
+          broadcastToCampaign(campaignId, { type: "character_updated" });
+        }
+      }
+      void npcTurnMessages;
+    }
+
+    return res.json({ result });
+  });
+
+  app.post("/api/campaigns/:id/combat/flee", requireAuth, requireCanPlay, checkTurnLimit(), async (req, res) => {
+    const visitorId = getVisitorId(req);
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const character = storage.getCharacterByVisitor(campaignId, visitorId);
+    if (!character) return res.status(403).json({ message: "You don't have a character in this campaign" });
+
+    const encounter = storage.getActiveEncounterByCampaign(campaignId);
+    if (!encounter) return res.status(400).json({ message: "There is no active encounter" });
+
+    const participants = JSON.parse(encounter.participants);
+    const current = participants[encounter.turnIndex];
+    if (!current || current.type !== "character" || current.characterId !== character.id) {
+      return res.status(409).json({ message: "It isn't your turn yet" });
+    }
+
+    const fleeResult = fleeEncounter(encounter.id, current.name, storage);
+    if (!fleeResult.fled) return res.status(400).json({ message: "Could not flee right now" });
+
+    const msg = storage.createMessage({
+      campaignId,
+      sender: "System",
+      senderType: "system",
+      content: `${character.name} flees from the fight.`,
+      messageType: "system",
+    });
+    broadcastToCampaign(campaignId, { type: "message", message: msg });
+
+    incrementTurnCount(req.user!.id);
+
+    broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });
+    if (fleeResult.encounterEnded) {
+      broadcastToCampaign(campaignId, { type: "encounter_ended", encounterId: encounter.id });
+    } else {
+      const worldStateNow = parseCampaignWorldState(campaign.worldState);
+      await advanceAndResolveTurns(encounter.id, storage, {
+        generateNpcAction: generateNpcTurnAction,
+        narrate: (prompt) =>
+          generateNarrationText({
+            system: "You are DMS narrating the fixed outcome of an NPC's resolved combat action. Do not restate the numbers; narrate only the consequence, in 2-4 sentences, matching the established DungeonMasterOS narration style.",
+            maxTokens: 300,
+            purpose: "npc attack outcome narration",
+            messages: [{ role: "user", content: prompt }],
+          }),
+        rng: Math.random,
+        currentScene: worldStateNow.currentScene,
+        broadcast: (message) => broadcastToCampaign(campaignId, { type: "message", message }),
+      });
+      broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });
+      const encounterFinal = storage.getEncounter(encounter.id);
+      if (encounterFinal?.status === "ended") {
+        broadcastToCampaign(campaignId, { type: "encounter_ended", encounterId: encounter.id });
+      }
+    }
+
+    return res.json({ fled: true });
   });
 
   app.post("/api/campaigns/:id/start", requireAuth, requireCanPlay, checkTurnLimit(), async (req, res) => {

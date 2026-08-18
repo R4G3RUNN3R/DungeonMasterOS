@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -427,6 +427,14 @@ export const items = sqliteTable("items", {
   // meaningful for itemType "weapon". Null means it doesn't override the
   // character's base damage dice.
   weaponDamageDice: text("weapon_damage_dice"),
+
+  // Encumbrance (design spec §16). Weight is per single unit, in pounds —
+  // multiply by quantity for the item stack's total weight. Carried
+  // distinguishes items physically on the character from owned-but-stored
+  // assets (a house, a wagon, a cache back at the inn) that must not count
+  // toward carry weight.
+  weight: real("weight").notNull().default(0),
+  carried: integer("carried", { mode: "boolean" }).notNull().default(true),
 
   locationNote: text("location_note").notNull().default(""),
   source: text("source").notNull().default("manual"),

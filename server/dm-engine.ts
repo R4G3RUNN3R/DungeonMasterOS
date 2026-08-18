@@ -169,6 +169,22 @@ ${
     : ""
 }
 
+7. WORLD STATE
+Whenever the party's current location, a notable NPC, a faction, or a
+significant story flag changes or first becomes known, append ONE block
+after your narration (outside the narration itself, the player never sees
+this) in exactly this format:
+
+[WORLD_STATE]
+{"currentScene": {"name": "The Rusted Anchor Tavern", "description": "A smoky dockside tavern"}, "locations": ["Port Vaelis"], "npcs": [{"name": "Old Marrow", "description": "One-eyed harbormaster", "disposition": "wary"}], "factions": ["Dockside Guild"], "flags": ["party_warned_about_smugglers"]}
+[/WORLD_STATE]
+
+Only include fields that actually changed or are newly relevant — omit
+fields with nothing new (e.g. send {"currentScene": {...}} alone if only
+the scene changed). Never emit this block if nothing about the world
+state changed this turn. This must be the only JSON in your response and
+must appear after all narration text.
+
 STYLE:
 - Cinematic but grounded
 - Clear consequences

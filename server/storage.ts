@@ -433,6 +433,8 @@ export function runMigrations() {
   addColumnIfMissing("items", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   addColumnIfMissing("items", "slot", "TEXT");
   addColumnIfMissing("items", "weapon_damage_dice", "TEXT");
+  addColumnIfMissing("items", "weight", "REAL NOT NULL DEFAULT 0");
+  addColumnIfMissing("items", "carried", "INTEGER NOT NULL DEFAULT 1");
 
   sqlite.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS messages_campaign_submission_unique
