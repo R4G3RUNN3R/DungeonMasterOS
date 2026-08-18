@@ -196,6 +196,36 @@ the scene changed). Never emit this block if nothing about the world
 state changed this turn. This must be the only JSON in your response and
 must appear after all narration text.
 
+6. COMBAT
+You narrate when a fight begins and describe its flow, but you NEVER
+decide whether an attack hits, how much damage it does, or when a fight
+ends — the game engine rolls all of that and tells you the result
+afterward. Do not write dialogue like "you hit for 8 damage" unless the
+engine gave you that exact outcome to narrate.
+
+When combat begins, after your narration append:
+
+[COMBAT_START]
+{"combatants": [{"name": "Goblin Raider", "hp": 12, "attackBonus": 3, "armorClass": 14, "damageDie": "1d6+1"}]}
+[/COMBAT_START]
+
+List every hostile combatant the party now faces. hp/attackBonus/
+armorClass/damageDie are your best narrative estimate of difficulty; the
+engine uses them as-is but may clamp extreme values.
+
+When a specific named combatant narratively surrenders, flees, or is
+otherwise removed from the fight for story reasons (not because their HP
+already reached zero — the engine handles that on its own), append:
+
+[SURRENDER]
+{"name": "Goblin Raider"}
+[/SURRENDER]
+
+Do not emit [SURRENDER] for a combatant you were just told died from
+damage — the engine already removed them. Never declare an entire combat
+over yourself; the engine ends it automatically once one side has no
+combatants left and will tell you when that happens.
+
 STYLE:
 - Cinematic but grounded
 - Clear consequences
@@ -315,6 +345,89 @@ export function extractWorldState(text: string): {
   } catch {
     return { cleanContent: text, worldState: null };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMBAT EXTRACTION
+// The AI proposes; the server is the sole mechanical authority (see
+// combat-engine.ts). These extractors only ever produce a proposal —
+// callers must validate/clamp before creating real game state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ProposedCombatant {
+  name: string;
+  hp: number;
+  attackBonus?: number;
+  armorClass?: number;
+  damageDie?: string;
+}
+
+export function extractCombatStart(text: string): {
+  cleanContent: string;
+  combatants: ProposedCombatant[] | null;
+} {
+  try {
+    const match = text.match(/\[COMBAT_START\]([\s\S]*?)\[\/COMBAT_START\]/);
+    if (!match) return { cleanContent: text, combatants: null };
+
+    const json = JSON.parse(match[1].trim());
+    const clean = text.replace(match[0], "").trim();
+    const raw = Array.isArray(json?.combatants) ? json.combatants : [];
+
+    const combatants: ProposedCombatant[] = raw
+      .filter((c: any) => c && typeof c.name === "string" && c.name.trim())
+      .map((c: any) => ({
+        name: String(c.name).trim().slice(0, 80),
+        hp: typeof c.hp === "number" ? c.hp : 10,
+        attackBonus: typeof c.attackBonus === "number" ? c.attackBonus : undefined,
+        armorClass: typeof c.armorClass === "number" ? c.armorClass : undefined,
+        damageDie: typeof c.damageDie === "string" ? c.damageDie : undefined,
+      }));
+
+    return { cleanContent: clean, combatants: combatants.length ? combatants : null };
+  } catch {
+    return { cleanContent: text, combatants: null };
+  }
+}
+
+export function extractSurrender(text: string): {
+  cleanContent: string;
+  surrenderedName: string | null;
+} {
+  try {
+    const match = text.match(/\[SURRENDER\]([\s\S]*?)\[\/SURRENDER\]/);
+    if (!match) return { cleanContent: text, surrenderedName: null };
+
+    const json = JSON.parse(match[1].trim());
+    const clean = text.replace(match[0], "").trim();
+    const name = typeof json?.name === "string" ? json.name.trim() : null;
+
+    return { cleanContent: clean, surrenderedName: name || null };
+  } catch {
+    return { cleanContent: text, surrenderedName: null };
+  }
+}
+
+// Builds a short, focused prompt asking the DM to narrate a mechanical
+// result the server already computed -- the AI supplies flavor text
+// around a fact it cannot change, never the fact itself.
+export function buildCombatResultNarrationPrompt(summary: string): string {
+  return `Narrate this combat result in your usual voice, in 1-3 sentences. Do not change the outcome or invent additional hits/misses/damage -- only describe what already happened:\n${summary}`;
+}
+
+export async function narrateCombatResult(
+  campaign: Campaign,
+  characters: Character[],
+  summary: string,
+): Promise<string> {
+  const system = buildSystemPrompt(campaign, characters, []);
+  const response = await createAnthropicMessageWithRetry({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 400,
+    system,
+    messages: [{ role: "user", content: buildCombatResultNarrationPrompt(summary) }],
+  }, "combat narration");
+  return sanitizeDMNarration(extractText(response));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
