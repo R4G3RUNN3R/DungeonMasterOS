@@ -8,6 +8,7 @@
 import { resolveD20, type Rng } from "./dice-engine";
 import { resolveCharacterModifier, type Ability } from "./character-stats";
 import { extractCheckTag } from "./mechanics-tags";
+import { dnd35RecordedSkillRanks, getDnd35Skill } from "@shared/dnd35-skills";
 
 export interface RollDisplayData {
   rollType: "check";
@@ -31,14 +32,12 @@ interface CharacterLike {
   cha: number;
   proficiencies: string;
   charClass?: string;
+  characterData?: string;
 }
 
 interface StorageLike {
   getCharacterByName(campaignId: number, name: string): CharacterLike | undefined;
   createRollLogEntry(entry: any): any;
-  // Optional: the real `storage` singleton implements these (used to apply
-  // active-effect and equipped-item modifiers). Not required by the test's
-  // minimal fake storage — when absent we simply resolve with none applied.
   getActiveEffectsByCharacter?(characterId: number): Array<{ statMods: string }>;
   getItemsByCharacter?(characterId: number): Array<{ equipped: boolean; statMods: string }>;
 }
@@ -64,21 +63,45 @@ function fallbackNarration(outcome: "success" | "failure"): string {
     : "The attempt falls short — this particular effort doesn't pay off, at least not yet.";
 }
 
+function buildUntrainedNarratePrompt(characterName: string, skillName: string) {
+  return `${characterName} attempted ${skillName}, but under D&D 3.5e this is a trained-only skill and the character has 0 recorded ranks. No d20 roll is made. Narrate briefly that the character lacks the trained technique or knowledge to complete this specific skilled attempt. Do not invent a roll or numeric result.`;
+}
+
+function dnd35SkillRankModifier(character: CharacterLike, skillName: string) {
+  const definition = getDnd35Skill(skillName);
+  if (!definition || !definition.ability) return null;
+  const ranks = dnd35RecordedSkillRanks(character.characterData || "{}", skillName);
+  return {
+    definition,
+    ranks,
+    effectiveRanks: Math.floor(ranks),
+  };
+}
+
 export async function resolveCheckTag(
   params: ResolveCheckParams,
-): Promise<{ cleanContent: string; rollData: RollDisplayData } | null> {
+): Promise<{ cleanContent: string; rollData: RollDisplayData | null } | null> {
   const tag = extractCheckTag(params.rawResponse);
   if (!tag) return null;
 
   const character = params.storage.getCharacterByName(params.campaignId, tag.character);
   if (!character) return null;
 
-  // resolveCharacterModifier (Task 3) expects a storage with getCharacter()/
-  // getActiveEffectsByCharacter(). We've already fetched the character by name
-  // above, so adapt rather than requiring the caller's storage to separately
-  // support a by-id lookup — this keeps the minimal test fake (which only
-  // implements getCharacterByName) sufficient, and is exactly equivalent for
-  // the real storage singleton since it's the same DB row either way.
+  const dnd35Skill =
+    params.ruleset === "dnd35e" && tag.skill && tag.skill !== "attack" && !tag.isSave
+      ? dnd35SkillRankModifier(character, tag.skill)
+      : null;
+
+  if (dnd35Skill?.definition.trainedOnly && dnd35Skill.ranks < 1) {
+    let cleanContent: string;
+    try {
+      cleanContent = await params.narrate(buildUntrainedNarratePrompt(character.name ?? tag.character, dnd35Skill.definition.name));
+    } catch {
+      cleanContent = `${tag.character} does not have the training required to attempt ${dnd35Skill.definition.name} in this way.`;
+    }
+    return { cleanContent, rollData: null };
+  }
+
   const modifierStorage = {
     getCharacter: (_id: number) => character,
     getActiveEffectsByCharacter: (characterId: number) =>
@@ -87,12 +110,24 @@ export async function resolveCheckTag(
       params.storage.getItemsByCharacter?.(characterId) ?? [],
   };
 
+  const requestedAbility = (dnd35Skill?.definition.ability || tag.ability || "str") as Ability;
   const resolved = resolveCharacterModifier(
     character.id,
-    (tag.ability || "str") as Ability,
+    requestedAbility,
     { skill: tag.skill, isSave: tag.isSave, combatStyle: params.combatStyle, ruleset: params.ruleset },
     modifierStorage,
   );
+
+  // character-stats.ts retains its legacy trained/untrained approximation for
+  // old 3.5 character records and for its broad sheet projection. For a real
+  // 3.5 CHECK we replace that approximation with the ranks explicitly stored
+  // on dnd35Sheet.skills. Ability and item/effect modifiers still come from the
+  // same server-authoritative character resolver.
+  if (dnd35Skill) {
+    resolved.total = resolved.total - resolved.proficiencyBonus + dnd35Skill.effectiveRanks;
+    resolved.proficiencyBonus = dnd35Skill.effectiveRanks;
+    resolved.statUsed = `${dnd35Skill.definition.ability}.${dnd35Skill.definition.id}`;
+  }
 
   const roll = resolveD20({
     rng: params.rng,
