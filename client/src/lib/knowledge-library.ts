@@ -100,3 +100,41 @@ export type PublicDnd35Feat = {
   qualified?: boolean;
   failures?: string[];
 };
+
+export type PublicDnd35Item = {
+  id: string;
+  name: string;
+  edition: "3.5e";
+  category: string;
+  subcategory?: string;
+  price?: { amount: number; currency: string; modifier?: boolean; text: string };
+  weightLb?: number;
+  consumable?: boolean;
+  weapon?: {
+    proficiency: string;
+    usage: string;
+    damageSmall?: string;
+    damageMedium?: string;
+    critical?: string;
+    rangeIncrementFeet?: number;
+    damageTypes: string[];
+    doubleWeapon?: boolean;
+    reach?: boolean;
+    thrown?: boolean;
+    projectile?: boolean;
+  };
+  armor?: {
+    armorClass: string;
+    armorOrShieldBonus?: number;
+    maximumDexBonus?: number | null;
+    armorCheckPenalty?: number | null;
+    arcaneSpellFailurePercent?: number | null;
+    speed30Feet?: number | null;
+    speed20Feet?: number | null;
+  };
+  rulesSummary: string;
+  rulesText?: string;
+  executionStatus: "structured" | "reference" | "executable";
+  sources: PublicDnd35Source[];
+  tags: string[];
+};
