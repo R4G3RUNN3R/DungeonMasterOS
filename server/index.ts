@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { registerCompendiumRoutes } from "./compendium-routes";
 import { registerKnowledgeRoutes } from "./knowledge-routes";
+import { initializeDnd35KnowledgeLibrary } from "./knowledge-library";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -27,7 +28,7 @@ if (process.env.NODE_ENV === "production") {
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("X-XSS-Protection", "0");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     next();
   });
@@ -83,6 +84,23 @@ app.use((req, res, next) => {
         "Compendium canonical sync completed with non-fatal source errors:",
         compendium.canonicalErrors,
       );
+    }
+
+    // The pinned 3.5 SRD is a knowledge dependency, not an availability
+    // dependency. If the remote source cannot be fetched, the Library keeps
+    // the curated canonical foundation instead of preventing the server from
+    // starting. Partial imports are rejected by the importer itself.
+    try {
+      const knowledge = await initializeDnd35KnowledgeLibrary();
+      log(
+        `D&D 3.5 spell library: ${knowledge.spellCorpusStatus}, ${knowledge.totalSpells} total (${knowledge.arcaneSpells} arcane, ${knowledge.divineSpells} divine)`,
+        "knowledge",
+      );
+      if (knowledge.errors.length) {
+        console.warn("D&D 3.5 SRD spell import fell back to curated records:", knowledge.errors);
+      }
+    } catch (error) {
+      console.warn("D&D 3.5 knowledge initialization failed unexpectedly; curated records remain available:", error);
     }
   } catch (err: any) {
     console.error("Database migration failed:", err);
