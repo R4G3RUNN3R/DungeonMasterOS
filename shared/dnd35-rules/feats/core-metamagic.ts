@@ -1,0 +1,72 @@
+import type { Dnd35FeatDefinition } from "../types";
+
+const srd = {
+  sourceId: "srd-35",
+  sourceKind: "srd-open" as const,
+  section: "Metamagic Feats",
+  confidence: "verified" as const,
+};
+
+export const DND35_CORE_METAMAGIC_FEATS: Dnd35FeatDefinition[] = [
+  {
+    id: "empower-spell",
+    name: "Empower Spell",
+    edition: "3.5e",
+    categories: ["metamagic"],
+    modifiers: [],
+    metamagic: {
+      slotAdjustment: 2,
+      effectiveSpellLevel: "unchanged",
+      preparationTiming: "either",
+      spontaneousCastingTimeAdjustment: "normal_metamagic_rule",
+      canApplyToSpontaneous: true,
+      transformations: [{ modifierId: "empower-variable-numeric", target: "spell.variableNumericEffects", operation: "multiply", value: 1.5, rulesNote: "Increase variable numeric spell effects by one-half; fixed numeric modifiers are not multiplied." }],
+      orderNotes: ["When combined with Maximize Spell, maximize normally, then add one-half of the normally rolled variable result."],
+    },
+    rulesSummary: "Increases a spell's variable numeric effects by 50% and uses a slot two levels higher.",
+    sources: [srd],
+    tags: ["core", "phb", "metamagic", "numeric-effect"],
+  },
+  {
+    id: "enlarge-spell", name: "Enlarge Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 1, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "enlarge-range", target: "spell.range", operation: "multiply", value: 2, rulesNote: "Applies to spells whose range is close, medium, or long; it does not alter other range categories." }], restrictions: ["Only modifies close, medium, or long range spells."] },
+    rulesSummary: "Doubles qualifying spell range and uses a slot one level higher.", sources: [srd], tags: ["core", "phb", "metamagic", "range"],
+  },
+  {
+    id: "extend-spell", name: "Extend Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 1, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "extend-duration", target: "spell.duration", operation: "multiply", value: 2, rulesNote: "Does not affect instantaneous, permanent, or concentration-only durations that cannot meaningfully be doubled." }], restrictions: ["Does not modify instantaneous or permanent spells."] },
+    rulesSummary: "Doubles a qualifying spell's duration and uses a slot one level higher.", sources: [srd], tags: ["core", "phb", "metamagic", "duration"],
+  },
+  {
+    id: "heighten-spell", name: "Heighten Spell", edition: "3.5e", categories: ["metamagic"], parameters: [{ id: "heightenedLevel", kind: "other", required: true }], modifiers: [],
+    metamagic: { slotAdjustment: "variable", effectiveSpellLevel: "slot_level", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "heighten-effective-level", target: "spell.effectiveLevel", operation: "set", value: "selected-slot-level", rulesNote: "Unlike most metamagic, Heighten changes the spell's effective level for level-dependent effects such as save DC." }], restrictions: ["The selected heightened level must be above the spell's normal level and within an available slot level."] },
+    rulesSummary: "Raises a spell to a chosen higher effective level; the chosen level is also the slot level used.", sources: [srd], tags: ["core", "phb", "metamagic", "save-dc", "effective-spell-level"],
+  },
+  {
+    id: "maximize-spell", name: "Maximize Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 3, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "maximize-variable-numeric", target: "spell.variableNumericEffects", operation: "special", value: "maximum-result", rulesNote: "Treat variable numeric results as their maximum possible value; fixed numeric modifiers are unchanged." }], orderNotes: ["When combined with Empower Spell, maximize normally, then add one-half of the normally rolled variable result."] },
+    rulesSummary: "Maximizes variable numeric spell effects and uses a slot three levels higher.", sources: [srd], tags: ["core", "phb", "metamagic", "numeric-effect"],
+  },
+  {
+    id: "quicken-spell", name: "Quicken Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 4, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "special", canApplyToSpontaneous: "special", transformations: [{ modifierId: "quicken-casting-time", target: "spell.castingTime", operation: "replace", value: "free", rulesNote: "Core 3.5 quickened spells use a free action and remain limited to one quickened spell per round." }], restrictions: ["Cannot quicken a spell whose normal casting time exceeds one full-round action.", "Core spontaneous metamagic casting-time rules normally prevent sorcerers and bards from using Quicken Spell spontaneously without another rule overriding that limitation."] },
+    rulesSummary: "Makes a qualifying spell a free-action cast, limited to one quickened spell per round, and uses a slot four levels higher.", sources: [srd], tags: ["core", "phb", "metamagic", "action-economy"],
+  },
+  {
+    id: "silent-spell", name: "Silent Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 1, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "remove-verbal-component", target: "spell.components.V", operation: "remove", value: true }], restrictions: ["Does not remove non-verbal components."] },
+    rulesSummary: "Removes the verbal component from a spell and uses a slot one level higher.", sources: [srd], tags: ["core", "phb", "metamagic", "component", "verbal"],
+  },
+  {
+    id: "still-spell", name: "Still Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 1, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "remove-somatic-component", target: "spell.components.S", operation: "remove", value: true }], restrictions: ["Does not remove non-somatic components."] },
+    rulesSummary: "Removes the somatic component from a spell and uses a slot one level higher.", sources: [srd], tags: ["core", "phb", "metamagic", "component", "somatic"],
+  },
+  {
+    id: "widen-spell", name: "Widen Spell", edition: "3.5e", categories: ["metamagic"], modifiers: [],
+    metamagic: { slotAdjustment: 3, effectiveSpellLevel: "unchanged", preparationTiming: "either", spontaneousCastingTimeAdjustment: "normal_metamagic_rule", canApplyToSpontaneous: true, transformations: [{ modifierId: "widen-area", target: "spell.area.linearDimensions", operation: "multiply", value: 2, rulesNote: "Doubles the spell area's numeric measurements for qualifying burst, emanation, line, or spread areas." }], restrictions: ["Only applies to spells with a burst, emanation, line, or spread area whose dimensions are numerically defined."] },
+    rulesSummary: "Doubles qualifying spell-area dimensions and uses a slot three levels higher.", sources: [srd], tags: ["core", "phb", "metamagic", "area"],
+  },
+];
+
+export const DND35_CORE_METAMAGIC_BY_ID = new Map(DND35_CORE_METAMAGIC_FEATS.map((feat) => [feat.id, feat]));
