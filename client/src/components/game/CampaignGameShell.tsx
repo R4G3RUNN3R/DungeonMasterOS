@@ -28,6 +28,9 @@ import { getRulesAdapter } from "@/lib/rulesAdapters";
 import { useGameLayoutPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/gameLayoutPreferences";
 import { openCharacterSheetPopup } from "@/lib/openCharacterSheetPopup";
 import { resolveSceneAsset } from "@shared/scene-resolver";
+import type { WorldState } from "@shared/world-state";
+import type { ActiveEffectDisplay } from "./ActiveConditions";
+import type { GrantedItemDisplay } from "./LootFlash";
 
 import ShopPanel from "@/components/ShopPanel";
 
@@ -73,10 +76,13 @@ type Props = {
   campaignId: number;
   campaignName: string;
   worldType?: string | null;
+  worldState: WorldState;
   character: Character;
   party: Array<{ id: number; name: string; race: string; charClass: string }>;
   messages: Message[];
   items: Item[];
+  effects: ActiveEffectDisplay[];
+  recentLoot: GrantedItemDisplay | null;
   campaignCurrencies: CampaignCurrency[];
   balances: CurrencyBalance[];
   shop: { shop: ActiveShop; items: ShopItem[] } | null;
@@ -122,10 +128,13 @@ export default function CampaignGameShell({
   campaignId,
   campaignName,
   worldType,
+  worldState,
   character,
   party,
   messages,
   items,
+  effects,
+  recentLoot,
   campaignCurrencies,
   balances,
   shop,
@@ -153,7 +162,7 @@ export default function CampaignGameShell({
   const hud = getRulesAdapter().buildCharacterHud(character);
   const currencies = currencyDisplayList(campaignCurrencies, balances);
 
-  const contextLabel = shop ? "Merchant" : "Exploration";
+  const contextLabel = shop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
   const deck = shop ? "merchant" : "exploration";
 
   // No location/scene-classification signal exists yet (that's later
@@ -181,7 +190,10 @@ export default function CampaignGameShell({
   const contextPanelNode = (
     <ContextPanel
       worldType={worldType}
+      worldState={worldState}
       party={party}
+      effects={effects}
+      recentLoot={recentLoot}
       activeShop={shop}
       onViewShop={() => setShopExpanded((v) => !v)}
       shopExpanded={shopExpanded}

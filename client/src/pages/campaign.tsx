@@ -3,6 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
+import { parseWorldState } from "@shared/world-state";
 
 import CharacterSheetView from "@/components/CharacterSheetView";
 import CampaignGameShell from "@/components/game/CampaignGameShell";
@@ -75,6 +76,17 @@ type Item = {
   consumable: boolean;
   equipped: boolean;
   identified: boolean;
+};
+
+type ActiveEffect = {
+  id: number;
+  characterId: number;
+  name: string;
+  description: string;
+  isDebuff: boolean;
+  durationType: string;
+  roundsRemaining: number | null;
+  concentration: boolean;
 };
 
 type CurrencyBalance = {
@@ -158,6 +170,8 @@ export default function CampaignPage() {
   const [actionInput, setActionInput] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
   const [dmThinking, setDmThinking] = useState(false);
+  const [recentLoot, setRecentLoot] = useState<Item | null>(null);
+  const recentLootTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Character creation state
   const [name, setName] = useState("");
@@ -220,6 +234,12 @@ export default function CampaignPage() {
     queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
     queryFn: () =>
       api<CurrencyBalance[]>(`/api/characters/${myCharacterQuery.data!.id}/currencies`),
+    enabled: !!myCharacterQuery.data?.id,
+  });
+
+  const effectsQuery = useQuery({
+    queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"],
+    queryFn: () => api<ActiveEffect[]>(`/api/characters/${myCharacterQuery.data!.id}/effects`),
     enabled: !!myCharacterQuery.data?.id,
   });
 
@@ -347,8 +367,16 @@ export default function CampaignPage() {
           break;
 
         case "items_updated":
+          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
+          break;
+
         case "item_granted":
           qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
+          if (data.item && data.item.characterId === myCharacterQuery.data?.id) {
+            if (recentLootTimeoutRef.current) clearTimeout(recentLootTimeoutRef.current);
+            setRecentLoot(data.item as Item);
+            recentLootTimeoutRef.current = setTimeout(() => setRecentLoot(null), 6000);
+          }
           break;
 
         case "currencies_updated":
@@ -359,6 +387,7 @@ export default function CampaignPage() {
 
         case "effects_updated":
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] });
+          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"] });
           break;
 
         case "shop_updated":
@@ -388,6 +417,7 @@ export default function CampaignPage() {
       unsubscribe();
       gameWs.disconnect();
       setWsConnected(false);
+      if (recentLootTimeoutRef.current) clearTimeout(recentLootTimeoutRef.current);
     };
   }, [campaignId, qc, myCharacterQuery.data?.id]);
 
@@ -660,10 +690,13 @@ export default function CampaignPage() {
       campaignId={campaignId}
       campaignName={campaign.name}
       worldType={campaign.worldType}
+      worldState={parseWorldState(campaign.worldState)}
       character={myCharacter}
       party={party}
       messages={messages}
       items={items}
+      effects={effectsQuery.data || []}
+      recentLoot={recentLoot}
       campaignCurrencies={currencies}
       balances={balances}
       shop={shopQuery.data?.shop ? shopQuery.data : null}
