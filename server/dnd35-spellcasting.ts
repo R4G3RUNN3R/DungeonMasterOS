@@ -3,6 +3,7 @@ import { DND35_CORE_FEATS } from "@shared/dnd35-rules/catalogue";
 import { resolveDnd35CastPreflight } from "@shared/dnd35-rules/cast-preflight-guarded";
 import type { Dnd35CastResolution, Dnd35SpellDefinition, Dnd35SpellLevel, Dnd35SpellcastingState } from "@shared/dnd35-rules/types";
 import { listCanonicalDnd35Spells, readStoredDnd35FeatSelections } from "./knowledge-library";
+import { getDnd35Item } from "./dnd35-item-library";
 
 const ARCANE = new Set(["wizard", "sorcerer", "bard"]);
 const DIVINE = new Set(["cleric", "druid", "paladin", "ranger"]);
@@ -26,9 +27,6 @@ export function findDnd35CastSpell(actionText: string): Dnd35SpellDefinition | u
   if (!/\b(cast|casts|casting|invoke|invokes|invoking)\b/i.test(actionText)) return undefined;
   const normalizedAction = normalize(actionText);
   const matches = listCanonicalDnd35Spells().filter((spell) => normalizedAction.includes(normalize(spell.name)));
-  // Prefer the longest exact name when one spell name contains another
-  // (e.g. protection from energy vs protection from spells). Ambiguity at the
-  // same length remains unresolved rather than guessing which resource to burn.
   matches.sort((a, b) => b.name.length - a.name.length);
   if (!matches.length) return undefined;
   if (matches.length > 1 && matches[0].name.length === matches[1].name.length) return undefined;
@@ -121,13 +119,37 @@ function componentAccess(character: Character, items: Item[]) {
   };
 }
 
+function canonicalDnd35ItemFromInventory(item: Item) {
+  const source = String(item.source || "");
+  const prefix = "knowledge:dnd35:";
+  if (!source.startsWith(prefix)) return undefined;
+  return getDnd35Item(source.slice(prefix.length));
+}
+
 function arcaneFailurePercent(character: Character, items: Item[]) {
+  const equipped = items.filter((item) => item.equipped);
+  const countedNames = new Set<string>();
+  let total = 0;
+
+  // Canonical 3.5 reward/equipment records carry ASF directly. This is the
+  // preferred source because it is edition-specific and does not rely on an
+  // AI-authored characterData armor description.
+  for (const item of equipped) {
+    const canonical = canonicalDnd35ItemFromInventory(item);
+    const asf = canonical?.armor?.arcaneSpellFailurePercent;
+    if (typeof asf === "number") {
+      total += asf;
+      countedNames.add(normalize(item.name));
+    }
+  }
+
+  // Preserve existing manually-entered/imported 3.5 sheet armor as a fallback.
   const data = parseJson<any>(character.characterData, {});
   const armor = Array.isArray(data?.dnd35Sheet?.equipment?.armor) ? data.dnd35Sheet.equipment.armor : [];
-  const equippedNames = new Set(items.filter((item) => item.equipped).map((item) => normalize(item.name)));
-  let total = 0;
+  const equippedNames = new Set(equipped.map((item) => normalize(item.name)));
   for (const entry of armor) {
-    if (!equippedNames.has(normalize(String(entry?.name || "")))) continue;
+    const name = normalize(String(entry?.name || ""));
+    if (!equippedNames.has(name) || countedNames.has(name)) continue;
     const match = String(entry?.arcaneSpellFailure || "").match(/(\d+)/);
     if (match) total += Number(match[1]);
   }
