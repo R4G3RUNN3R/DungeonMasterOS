@@ -1,10 +1,13 @@
-# Multiplayer AI Turn Deduction v1
+# Multiplayer AI Turn Deduction + Campaign History v1
 
 Status: **REFERENCE IMPLEMENTATION - READY FOR LIVE-SERVER COMPARISON / SELECTIVE PORT**
 
 Branch: `reference/multiplayer-turn-deduction-v1`
 
-This reference replaces the current assumption that the account sending an action is always the account whose AI turns are consumed.
+This reference contains two related multiplayer account systems:
+
+1. **Campaign AI Turn Deduction** - replaces the current assumption that the account sending an action is always the account whose AI turns are consumed.
+2. **Campaign Participation Ledger** - gives each authenticated player a persistent Campaign History for campaigns they genuinely played in, including campaigns hosted by other users, while filtering out drive-by joins.
 
 ## Product language
 
@@ -39,7 +42,7 @@ The campaign UI should keep a compact status near the top of the campaign screen
 
 The indicator may open the settings/details panel, but it must not become another large gameplay bar.
 
-## Non-negotiable rules
+## Non-negotiable turn rules
 
 - Never silently deduct turns from an account that did not consent to the active policy.
 - Never silently fall back to another account if the configured turn source runs out of turns, loses access, leaves the campaign, or becomes invalid.
@@ -52,7 +55,24 @@ The indicator may open the settings/details panel, but it must not become anothe
 - Deduction occurs per **successful authoritative AI DM generation**, not per chat message, typing event, OOC line, WebSocket event, dice UI interaction, or failed provider request.
 - Raw Anthropic/provider token usage is internal cost telemetry. Players see AI Turns.
 
-## Current repository problem this solves
+## Campaign History product rule
+
+Keep existing owner semantics:
+
+- **My Campaigns** = campaigns the account owns/hosts.
+- **Campaign History** = campaigns the account genuinely participated in, including campaigns hosted by someone else.
+
+A campaign may appear in both when appropriate.
+
+Do not show every invite/join. A player who joins, takes one or two turns, and leaves should not receive a visible history entry.
+
+Qualification is based on canonical meaningful gameplay plus conservative active-play time. Exact thresholds are centralized internally and are intentionally not shown to players.
+
+Once a campaign qualifies, leaving/removal/archive does not erase the player's historical participation record.
+
+## Current repository problems this solves
+
+### Turn deduction
 
 `POST /api/campaigns/:id/action` currently runs `checkTurnLimit` against `req.user`, generates the DM response, then calls `incrementTurnCount(req.user!.id)`. That is correct only for an individual-account policy.
 
@@ -62,7 +82,15 @@ This reference introduces a campaign-level resolver:
 
 The action actor and the turn-deduction account are intentionally separate concepts.
 
+### Campaign history
+
+The current dashboard's `/api/my-campaigns` path is owner-focused. It does not provide a historical account ledger for campaigns a player joined and genuinely played under another host.
+
+This reference keeps `/api/my-campaigns` intact and adds a distinct qualified `/api/campaign-history` concept.
+
 ## Files
+
+### Turn deduction
 
 - `domain.ts` - stable policy and resolver types
 - `turn-deduction-service.ts` - pure/server orchestration rules
@@ -71,9 +99,23 @@ The action actor and the turn-deduction account are intentionally separate conce
 - `route-integration.ts` - server-route integration contract
 - `UI-CONTRACT.md` - setup, consent, status and error UX
 - `TEST-VECTORS.md` - acceptance/security/concurrency cases
+
+### Campaign History
+
+- `CAMPAIGN-PARTICIPATION-LEDGER.md` - product/qualification/history design
+- `participation-ledger.ts` - server-side qualification and active-time service
+- `participation-schema-proposal.ts` - ledger/evidence persistence proposal
+- `participation-route-integration.ts` - current-route/dashboard integration contract
+- `PARTICIPATION-TEST-VECTORS.md` - qualification/idempotency/privacy tests
+
+### Handoff
+
+- `CURRENT-REPO-FINDINGS.md` - verified GitHub baseline behavior
 - `CLAUDE-HANDOFF.md` - live-server comparison and port instructions
 - `REFERENCE-STATUS.md` - implementation readiness and known limits
 
 ## Scope boundary
 
 This module does **not** decide how a future multiplayer action-batching coordinator should attribute an `individual`-mode batch containing actions from several users. The current server generates one DM response per action, so `individual` is unambiguous today. A future batch coordinator must provide an explicit generation initiator/turn-source rule rather than guessing.
+
+The Campaign History ledger is intentionally independent of whose AI Turns were deducted. It records participation, not funding.
