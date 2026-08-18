@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-18
+- Multiplayer turn usage reference: added an isolated server-ready reference design for campaign-level AI Turn deduction with `Campaign Host`, `Each Individual Player`, and consented `Selected Player` modes.
+- Turn usage safety: added explicit policy revisioning, selected-player accept/decline/revoke flow, individual-mode acknowledgement, no-silent-fallback behavior, and compact campaign status wording that avoids billing/token jargon.
+- Turn accounting: added an idempotent reservation/commit/release contract so concurrent requests, retries, provider failures, and local fallbacks do not double-charge or consume turns incorrectly.
+- Route integration: documented required migration of action, item-use, campaign-start, retry/regenerate, WebSocket and campaign-creation paths away from request-user-only deduction.
+- Campaign history reference: added a qualified account-level Campaign History for campaigns genuinely played in, including non-host campaigns, while preserving `My Campaigns` as the owner/host list.
+- Participation filtering: added canonical meaningful-action evidence, conservative active-play-time/session tracking, deduplication, privacy rules, and internal qualification policy so one- or two-turn drive-by joins remain invisible.
+- Historical persistence: qualified participation survives leave/remove/archive states and is stored separately from current campaign access, AI Turn source, `worldState`, and `characterData`.
+- Handoff: all work is isolated under `docs/reference-implementations/multiplayer-turn-deduction-v1/` on `reference/multiplayer-turn-deduction-v1` for live-server comparison and selective port by Claude.
+- Expected impact after production port: multiplayer groups can clearly choose where AI Turns are deducted from, selected users must consent before their turns are used, and every genuinely participating player retains a meaningful personal campaign history.
+- Risk: high for turn accounting and moderate for participation history if ported incorrectly; reference therefore requires server-authoritative source resolution, idempotent reservations/evidence, migrations, concurrency tests and live-server comparison before deployment.
+
 ## 2026-08-17
 - Character sheet: added a dedicated read-only D&D 3.5e character sheet popup page that opens separately from the live campaign and leaves all existing campaign bars untouched.
 - Character sheet data: added `shared/dnd35-character-sheet.ts` as the canonical structured sheet contract for identity, class levels, ability scores, HP, movement, AC/touch/flat-footed AC, initiative, BAB, grapple, saves, skills, feats, special abilities, proficiencies, languages, weapons, armor, equipment, wealth, encumbrance, spellcasting, physical details, XP, backstory, contacts, enemies, and campaign notes.
