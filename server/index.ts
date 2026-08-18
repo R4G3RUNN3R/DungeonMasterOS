@@ -89,15 +89,18 @@ app.use((req, res, next) => {
     // The pinned 3.5 SRD is a knowledge dependency, not an availability
     // dependency. If the remote source cannot be fetched, the Library keeps
     // the curated canonical foundation instead of preventing the server from
-    // starting. Partial imports are rejected by the importer itself.
+    // starting. Partial imports are rejected by the importers themselves.
     try {
       const knowledge = await initializeDnd35KnowledgeLibrary();
       log(
-        `D&D 3.5 spell library: ${knowledge.spellCorpusStatus}, ${knowledge.totalSpells} total (${knowledge.arcaneSpells} arcane, ${knowledge.divineSpells} divine)`,
+        `D&D 3.5 Library: spells ${knowledge.spellCorpusStatus} (${knowledge.totalSpells}; ${knowledge.arcaneSpells} arcane/${knowledge.divineSpells} divine), feats ${knowledge.featCorpusStatus} (${knowledge.totalFeats}; ${knowledge.executableFeats} executable)`,
         "knowledge",
       );
-      if (knowledge.errors.length) {
-        console.warn("D&D 3.5 SRD spell import fell back to curated records:", knowledge.errors);
+      if (knowledge.spellErrors.length) {
+        console.warn("D&D 3.5 SRD spell import fell back to curated records:", knowledge.spellErrors);
+      }
+      if (knowledge.featErrors.length) {
+        console.warn("D&D 3.5 SRD feat import fell back to curated records:", knowledge.featErrors);
       }
     } catch (error) {
       console.warn("D&D 3.5 knowledge initialization failed unexpectedly; curated records remain available:", error);
