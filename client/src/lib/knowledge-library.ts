@@ -88,6 +88,11 @@ export type PublicDnd35Feat = {
     orderNotes?: string[];
   };
   rulesSummary: string;
+  rulesText?: string;
+  benefitText?: string;
+  normalText?: string;
+  specialText?: string;
+  executionStatus?: "reference" | "executable";
   specialRules?: string[];
   sources: PublicDnd35Source[];
   tags: string[];
