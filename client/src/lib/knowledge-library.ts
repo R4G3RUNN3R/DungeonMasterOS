@@ -46,7 +46,15 @@ export type PublicDnd35Spell = {
   classAccess: Array<{ classId: string; level: number; tradition: string }>;
   domainAccess?: Array<{ domainId: string; level: number }>;
   castingTime: { kind: string; amount?: number; text?: string };
-  components: Array<{ kind: string; required: boolean; description?: string; gpCost?: number; xpCost?: number }>;
+  components: Array<{
+    kind: string;
+    required: boolean;
+    description?: string;
+    gpCost?: number;
+    xpCost?: number;
+    appliesToTradition?: "arcane" | "divine" | "other";
+    alternativeGroup?: string;
+  }>;
   range: { kind: string; feet?: number; feetPerCasterLevel?: number; baseFeet?: number; text?: string };
   targeting: { delivery: string[]; targetText?: string; effectText?: string; areaText?: string; radiusFeet?: number };
   duration: { kind: string; amount?: number; dismissible?: boolean; text?: string };
@@ -55,6 +63,8 @@ export type PublicDnd35Spell = {
   attackRoll?: string;
   effects: Array<Record<string, unknown>>;
   rulesSummary: string;
+  rulesText?: string;
+  executionStatus?: "structured" | "executable" | "reference";
   specialRules?: string[];
   sources: PublicDnd35Source[];
   tags: string[];
