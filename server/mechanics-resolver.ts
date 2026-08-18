@@ -23,6 +23,7 @@ export interface RollDisplayData {
 
 interface CharacterLike {
   id: number;
+  name?: string;
   level: number;
   str: number;
   dex: number;
@@ -52,6 +53,8 @@ export interface ResolveCheckParams {
   ruleset?: string;
 }
 
+export type ResolveCheckResult = { cleanContent: string; rollData: RollDisplayData | null };
+
 function buildNarratePrompt(statUsed: string, roll: ReturnType<typeof resolveD20>, dc: number): string {
   const label = roll.outcome === "success" ? "SUCCESS" : "FAILURE";
   return `${statUsed} check: rolled ${roll.diceResult} + modifier = ${roll.total} vs DC ${dc} → ${label}. Narrate this outcome in 2-4 sentences, following the established style rules. Do not restate the numbers.`;
@@ -78,9 +81,7 @@ function dnd35SkillRankModifier(character: CharacterLike, skillName: string) {
   };
 }
 
-export async function resolveCheckTag(
-  params: ResolveCheckParams,
-): Promise<{ cleanContent: string; rollData: RollDisplayData | null } | null> {
+export async function resolveCheckTag(params: ResolveCheckParams): Promise<ResolveCheckResult | null> {
   const tag = extractCheckTag(params.rawResponse);
   if (!tag) return null;
 
@@ -95,7 +96,7 @@ export async function resolveCheckTag(
   if (dnd35Skill?.definition.trainedOnly && dnd35Skill.ranks < 1) {
     let cleanContent: string;
     try {
-      cleanContent = await params.narrate(buildUntrainedNarratePrompt(character.name ?? tag.character, dnd35Skill.definition.name));
+      cleanContent = await params.narrate(buildUntrainedNarratePrompt(character.name || tag.character, dnd35Skill.definition.name));
     } catch {
       cleanContent = `${tag.character} does not have the training required to attempt ${dnd35Skill.definition.name} in this way.`;
     }
@@ -118,11 +119,6 @@ export async function resolveCheckTag(
     modifierStorage,
   );
 
-  // character-stats.ts retains its legacy trained/untrained approximation for
-  // old 3.5 character records and for its broad sheet projection. For a real
-  // 3.5 CHECK we replace that approximation with the ranks explicitly stored
-  // on dnd35Sheet.skills. Ability and item/effect modifiers still come from the
-  // same server-authoritative character resolver.
   if (dnd35Skill) {
     resolved.total = resolved.total - resolved.proficiencyBonus + dnd35Skill.effectiveRanks;
     resolved.proficiencyBonus = dnd35Skill.effectiveRanks;
