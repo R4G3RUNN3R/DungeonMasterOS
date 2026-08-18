@@ -77,6 +77,8 @@ type Item = {
   consumable: boolean;
   equipped: boolean;
   identified: boolean;
+  weight: number;
+  carried: boolean;
 };
 
 type ActiveEffect = {
@@ -348,6 +350,16 @@ export default function CampaignPage() {
         qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "messages"] }),
       ]);
     },
+  });
+
+  const toggleCarriedMutation = useMutation({
+    mutationFn: ({ itemId, carried }: { itemId: number; carried: boolean }) =>
+      api(`/api/items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ carried }),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
   });
 
   const attackMutation = useMutation({
@@ -736,6 +748,7 @@ export default function CampaignPage() {
       party={party}
       messages={messages}
       items={items}
+      onToggleCarried={(itemId, carried) => toggleCarriedMutation.mutate({ itemId, carried })}
       effects={effectsQuery.data || []}
       recentLoot={recentLoot}
       campaignCurrencies={currencies}
