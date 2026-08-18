@@ -215,8 +215,8 @@ function spellLevelValue(record: Partial<Record<SpellLevelKey, number | string>>
 
 function Section({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded border-2 border-stone-800 bg-[#f7f1df] shadow-sm ${className}`}>
-      <div className="border-b-2 border-stone-800 bg-stone-900 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[#f7f1df]">{title}</div>
+    <section className={`rounded border-2 border-[#5c4632] bg-[#f7f1df] shadow-sm ${className}`}>
+      <div className="border-b-2 border-[#8a6a45] bg-gradient-to-r from-[#2b1f16] to-[#3d2f22] px-3 py-1.5 font-serif text-xs font-bold uppercase tracking-[0.18em] text-[#e8dcc4]">{title}</div>
       <div className="p-3">{children}</div>
     </section>
   );
@@ -225,7 +225,7 @@ function Section({ title, children, className = "" }: { title: string; children:
 function InfoBox({ label, value, className = "" }: { label: string; value: unknown; className?: string }) {
   return (
     <div className={`min-h-[50px] rounded border border-stone-500 bg-white/60 px-2 py-1 ${className}`}>
-      <div className="text-[9px] font-bold uppercase tracking-wider text-stone-500">{label}</div>
+      <div className="text-[9px] font-bold uppercase tracking-wider text-[#8a6a45]">{label}</div>
       <div className="mt-1 min-h-5 text-sm font-semibold text-stone-950">{show(value)}</div>
     </div>
   );
@@ -414,11 +414,11 @@ export default function CharacterSheetPage() {
         <Button variant="outline" onClick={() => window.close()}>Close</Button>
       </div>
 
-      <main className="sheet-page mx-auto max-w-[1500px] space-y-3 rounded-lg border border-stone-500 bg-[#eee6d3] p-4 shadow-2xl print:border-0 print:bg-white">
-        <header className="rounded border-2 border-stone-900 bg-[#f7f1df] p-3">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-stone-900 pb-3">
+      <main className="sheet-page mx-auto max-w-[1500px] space-y-3 rounded-lg border border-[#8a6a45] bg-[#eee6d3] p-4 shadow-2xl print:border-0 print:bg-white">
+        <header className="rounded border-2 border-[#5c4632] bg-[#f7f1df] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-[#8a6a45] pb-3">
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.28em] text-stone-500">DungeonMasterOS Character Record</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#8a6a45]">DungeonMasterOS Character Record</div>
               <h1 className="font-serif text-3xl font-black tracking-tight">{character.name}</h1>
               <div className="mt-1 text-sm text-stone-600">D&D 3.5e · {campaignQuery.data?.name || "Campaign"} · read-only live sheet</div>
             </div>

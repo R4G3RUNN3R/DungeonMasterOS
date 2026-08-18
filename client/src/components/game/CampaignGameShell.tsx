@@ -318,8 +318,11 @@ export default function CampaignGameShell({
 
       {shop && (
         <Dialog open={shopExpanded} onOpenChange={setShopExpanded}>
-          <DialogContent className="dm-shell dm-surface border-[hsl(var(--dm-line))] text-[hsl(var(--dm-text))] max-w-lg max-h-[85vh] overflow-y-auto p-0">
-            <DialogHeader className="px-4 pt-4">
+          <DialogContent
+            className="dm-shell dm-surface border-[hsl(var(--dm-line))] text-[hsl(var(--dm-text))] max-w-lg max-h-[85vh] overflow-y-auto p-0"
+            style={{ boxShadow: "inset 0 0 0 1px hsl(var(--dm-bronze) / 0.35)" }}
+          >
+            <DialogHeader className="px-4 pt-4 pb-3 dm-ledger-header">
               <DialogTitle className="dm-heading flex items-center gap-2">
                 <Store className="w-4 h-4 dm-amber-text" />
                 {shop.shop.title || shop.shop.merchantName}
