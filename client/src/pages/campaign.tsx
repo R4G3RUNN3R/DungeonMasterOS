@@ -3,18 +3,17 @@ import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gameWs } from "@/lib/websocket";
-import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/appBase";
-import logoImg from "@assets/logo.png";
 
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
-import ShopPanel from "@/components/ShopPanel";
 import CharacterSheetView from "@/components/CharacterSheetView";
-import SceneBackdrop from "@/components/game/SceneBackdrop";
-import CombatContext from "@/components/game/CombatContext";
+import CampaignGameShell from "@/components/game/CampaignGameShell";
+import type { ActiveEffectDisplay } from "@/components/game/ActiveConditions";
+import type { GrantedItemDisplay } from "@/components/game/LootFlash";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import "@/styles/game-shell.css";
 
-import { resolveSceneAsset } from "@shared/scene-resolver";
+import { parseWorldState } from "@shared/world-state";
 import type { EncounterState } from "@shared/combat";
 import { classesForRuleset, SKILL_ABILITY, startingSkillCount, startingFeatSlots } from "@shared/classes";
 import { racesForRuleset, getRace, applyRacialAdjustments } from "@shared/races";
@@ -24,18 +23,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 import {
   Loader2,
-  Send,
-  ScrollText,
-  Coins,
-  Sparkles,
-  Sword,
   ShieldAlert,
-  Store,
   ArrowLeft,
   UserPlus,
   Dices,
@@ -132,6 +123,8 @@ type Item = {
   equipped: boolean;
   identified: boolean;
   slot: string | null;
+  weight: number;
+  carried: boolean;
 };
 
 type CurrencyBalance = {
@@ -206,15 +199,6 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-function renderMessageContent(content: string) {
-  const parts = content.split(/\n/g);
-  return parts.map((line, index) => (
-    <p key={index} className="whitespace-pre-wrap leading-relaxed">
-      {line}
-    </p>
-  ));
-}
-
 export default function CampaignPage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/campaign/:id");
@@ -224,7 +208,9 @@ export default function CampaignPage() {
   const [actionInput, setActionInput] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
   const [dmThinking, setDmThinking] = useState(false);
-  const [shopOpen, setShopOpen] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [recentLoot, setRecentLoot] = useState<GrantedItemDisplay | null>(null);
+  const recentLootTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Character creation state
   const [name, setName] = useState("");
@@ -380,6 +366,12 @@ export default function CampaignPage() {
     enabled: Number.isFinite(campaignId),
   });
 
+  const effectsQuery = useQuery({
+    queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"],
+    queryFn: () => api<ActiveEffectDisplay[]>(`/api/characters/${myCharacterQuery.data!.id}/effects`),
+    enabled: !!myCharacterQuery.data?.id,
+  });
+
   const createCharacterMutation = useMutation({
     mutationFn: () => {
       let finalCharClass = charClass;
@@ -521,6 +513,13 @@ export default function CampaignPage() {
     equipMutation.mutate({ itemId, equipped: false, slot: null });
   }
 
+  const toggleCarriedMutation = useMutation({
+    mutationFn: ({ itemId, carried }: { itemId: number; carried: boolean }) =>
+      api(`/api/items/${itemId}`, { method: "PATCH", body: JSON.stringify({ carried }) }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] }),
+  });
+
   const useItemMutation = useMutation({
     mutationFn: (itemId: number) => api(`/api/items/${itemId}/use`, { method: "POST" }),
     onSuccess: async () => {
@@ -608,8 +607,16 @@ export default function CampaignPage() {
           break;
 
         case "items_updated":
+          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
+          break;
+
         case "item_granted":
           qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "items"] });
+          if (data.item) {
+            if (recentLootTimeoutRef.current) clearTimeout(recentLootTimeoutRef.current);
+            setRecentLoot(data.item);
+            recentLootTimeoutRef.current = setTimeout(() => setRecentLoot(null), 6000);
+          }
           break;
 
         case "currencies_updated":
@@ -620,6 +627,7 @@ export default function CampaignPage() {
 
         case "effects_updated":
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "my-character"] });
+          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"] });
           break;
 
         case "shop_updated":
@@ -660,6 +668,7 @@ export default function CampaignPage() {
           qc.invalidateQueries({
             queryKey: ["/api/characters", myCharacterQuery.data?.id, "currencies"],
           });
+          qc.invalidateQueries({ queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"] });
           break;
       }
     });
@@ -668,6 +677,7 @@ export default function CampaignPage() {
       unsubscribe();
       gameWs.disconnect();
       setWsConnected(false);
+      if (recentLootTimeoutRef.current) clearTimeout(recentLootTimeoutRef.current);
     };
   }, [campaignId, qc, myCharacterQuery.data?.id]);
 
@@ -731,15 +741,6 @@ export default function CampaignPage() {
   const balances = characterCurrenciesQuery.data || [];
   const encounter: EncounterState = encounterQuery.data ?? { encounter: null, participants: [] };
   const inCombat = encounter.encounter?.status === "active";
-
-  const shopVisible = !!shopQuery.data?.shop && shopOpen && !inCombat;
-
-  // No environment-classification signal exists yet, so this always
-  // resolves to the fallback gradient today — that's correct, not a
-  // placeholder bug. The resolver is already layered (explicit → campaign
-  // pool → global pool → gradient) so a real signal can be wired in later
-  // without touching this call site.
-  const resolvedScene = useMemo(() => resolveSceneAsset({ environmentKey: null }), []);
 
   const primaryCurrency = useMemo(() => {
     if (!currencies.length) return null;
@@ -1305,9 +1306,45 @@ export default function CampaignPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex dm-shell">
-      <aside className="hidden xl:flex xl:w-[420px] shrink-0 border-r border-border bg-card/40">
-        <div className="w-full h-screen overflow-hidden">
+    <>
+      <CampaignGameShell
+        campaignId={campaignId}
+        campaignName={campaign.name}
+        worldType={campaign.worldType}
+        worldState={parseWorldState(campaign.worldState)}
+        character={myCharacter}
+        party={charactersQuery.data ?? []}
+        messages={messages}
+        items={items}
+        onToggleCarried={(itemId, carried) => toggleCarriedMutation.mutate({ itemId, carried })}
+        effects={effectsQuery.data ?? []}
+        recentLoot={recentLoot}
+        campaignCurrencies={currencies}
+        balances={balances}
+        shop={shopQuery.data?.shop ? shopQuery.data : null}
+        connected={wsConnected}
+        dmThinking={dmThinking}
+        actionInput={actionInput}
+        onActionInputChange={setActionInput}
+        onSubmitAction={() => actionMutation.mutate(actionInput.trim())}
+        actionPending={actionMutation.isPending}
+        showBeginAdventure={!messages.some((m) => m.senderType === "dm")}
+        onBeginAdventure={() => startMutation.mutate()}
+        beginAdventurePending={startMutation.isPending}
+        beginAdventureDisabled={startDisabled}
+        onBuy={(shopItemId, quantity) => buyMutation.mutate({ shopItemId, quantity })}
+        buyPending={buyMutation.isPending}
+        encounter={encounter}
+        onAttack={(targetParticipantId) => attackMutation.mutate(targetParticipantId)}
+        onFlee={() => fleeMutation.mutate()}
+        attackPending={attackMutation.isPending || fleeMutation.isPending}
+        onBack={() => navigate("/dashboard")}
+        onOpenSheet={() => setSheetOpen(true)}
+        scrollRef={scrollRef}
+      />
+
+      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+        <DialogContent className="dm-shell max-w-3xl max-h-[85vh] overflow-y-auto p-0 border-[hsl(var(--dm-line))]">
           <SidebarCharacterSheet
             character={myCharacter}
             items={items}
@@ -1321,214 +1358,8 @@ export default function CampaignPage() {
             onSubmitReport={handleSubmitReport}
             worldState={campaign?.worldState}
           />
-        </div>
-      </aside>
-
-      <main className="flex-1 min-w-0 flex flex-col h-screen relative">
-        <SceneBackdrop
-          imageUrl={resolvedScene.asset?.localAssetPath ?? null}
-          dimPercent={resolvedScene.asset?.suitability.suggestedDim}
-          vignette={resolvedScene.asset?.suitability.suggestedVignette}
-          blurPx={resolvedScene.asset?.suitability.suggestedBlurPx}
-        />
-
-        <div className="relative border-b border-amber-900/20 dm-leather px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="dm-heading text-xl font-semibold">{campaign.name}</h1>
-                <Badge variant="secondary">{campaign.tone}</Badge>
-                <Badge variant="outline">{campaign.combatStyle}</Badge>
-                {campaign.storyMode && <Badge>Story Mode</Badge>}
-                {campaign.epicMode && <Badge className="bg-amber-600 text-white">Epic</Badge>}
-                {inCombat && <Badge className="bg-rose-700 text-white">Combat</Badge>}
-              </div>
-              <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
-                <span>Invite: {campaign.inviteCode}</span>
-                <span>World: {campaign.worldType}</span>
-                <span>Rules: {campaign.rulesWeight}</span>
-                {primaryCurrency && (
-                  <span className="inline-flex items-center gap-1">
-                    <Coins className="w-3 h-3" />
-                    Primary currency: {primaryCurrency.name}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {shopQuery.data?.shop && !inCombat && (
-                <Button variant="outline" size="sm" onClick={() => setShopOpen((v) => !v)}>
-                  <Store className="w-4 h-4 mr-2" />
-                  {shopVisible ? "Hide shop" : "Show shop"}
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => navigate("/dashboard")}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Dashboard
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative flex-1 min-h-0 flex">
-          <section className={cn("flex-1 min-w-0 flex flex-col", (shopVisible || inCombat) && "border-r border-border")}>
-            <ScrollArea className="flex-1 px-5 py-5">
-              <div ref={scrollRef} className="space-y-4 pr-2">
-                {messages.length === 0 && (
-                  <Card className="p-5 border-dashed">
-                    <div className="flex items-start gap-3">
-                      <ScrollText className="w-5 h-5 mt-0.5 text-muted-foreground" />
-                      <div className="space-y-2">
-                        <div className="font-medium">Your campaign is ready.</div>
-                        <p className="text-sm text-muted-foreground">
-                          Click <strong>Begin Adventure</strong> to start. Ideally software would
-                          not make this dramatic, but here we are.
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-
-                {messages.map((msg) => (
-                  <Card
-                    key={msg.id}
-                    className={cn(
-                      "p-4 max-w-4xl",
-                      msg.senderType === "player" && "ml-auto bg-primary/5",
-                      msg.senderType === "dm" && "border-amber-500/20",
-                      msg.senderType === "system" && "bg-muted/40 text-sm"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2 gap-3">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {msg.senderType === "dm" && (
-                          <img src={logoImg} alt="" className="w-4 h-4 rounded-sm object-cover" />
-                        )}
-                        {msg.senderType === "player" && <Sword className="w-4 h-4 text-primary" />}
-                        {msg.sender}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                        {msg.messageType}
-                      </div>
-                    </div>
-                    <div className="text-sm space-y-2">{renderMessageContent(msg.content)}</div>
-                  </Card>
-                ))}
-
-                {dmThinking && (
-                  <Card className="p-4 max-w-md border-amber-500/20">
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      The Dungeon Master is thinking...
-                    </div>
-                  </Card>
-                )}
-              </div>
-            </ScrollArea>
-
-            <div className="border-t border-border p-4 space-y-3 bg-background/95">
-              {!messages.some((m) => m.senderType === "dm") ? (
-                <Button
-                  onClick={() => startMutation.mutate()}
-                  disabled={startDisabled}
-                  className="w-full h-11"
-                >
-                  {startMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Beginning...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Begin Adventure
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Describe what you do..."
-                      value={actionInput}
-                      onChange={(e) => setActionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          !e.shiftKey &&
-                          actionInput.trim() &&
-                          !actionMutation.isPending
-                        ) {
-                          e.preventDefault();
-                          actionMutation.mutate(actionInput.trim());
-                        }
-                      }}
-                      className="h-11"
-                    />
-                    <Button
-                      className="h-11 px-4"
-                      disabled={!actionInput.trim() || actionMutation.isPending}
-                      onClick={() => actionMutation.mutate(actionInput.trim())}
-                    >
-                      {actionMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-
-                  <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-3">
-                    <span>
-                      Playing as <strong>{myCharacter.name}</strong>
-                    </span>
-                    {primaryCurrency && (
-                      <span className="inline-flex items-center gap-1">
-                        <Coins className="w-3 h-3" />
-                        {primaryCurrency.name}
-                      </span>
-                    )}
-                    {wsConnected ? (
-                      <span className="text-emerald-500">Live</span>
-                    ) : (
-                      <span className="text-yellow-500">Reconnecting</span>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          {inCombat && (
-            <aside className="w-[360px] shrink-0 dm-surface">
-              <div className="dm-leather border-b px-3 h-9 flex items-center shrink-0">
-                <span className="dm-label">Combat</span>
-              </div>
-              <CombatContext
-                state={encounter}
-                myCharacterId={myCharacter.id}
-                onAttack={(targetParticipantId) => attackMutation.mutate(targetParticipantId)}
-                onFlee={() => fleeMutation.mutate()}
-                actionPending={attackMutation.isPending || fleeMutation.isPending}
-              />
-            </aside>
-          )}
-
-          {!inCombat && shopVisible && shopQuery.data?.shop && (
-            <aside className="w-[420px] shrink-0 bg-card/40">
-              <ShopPanel
-                shop={shopQuery.data.shop}
-                items={shopQuery.data.items}
-                balances={balances}
-                currencies={currencies}
-                buying={buyMutation.isPending}
-                onBuy={(shopItemId, quantity) => buyMutation.mutate({ shopItemId, quantity })}
-              />
-            </aside>
-          )}
-        </div>
-      </main>
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
