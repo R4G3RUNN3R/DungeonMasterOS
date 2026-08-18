@@ -1,4 +1,4 @@
-import type { Dnd35SourceRef } from "./types";
+import type { Dnd35SourceRef, Dnd35SpellTradition } from "./types";
 
 export type Dnd35ItemCategory =
   | "weapon"
@@ -22,6 +22,7 @@ export type Dnd35ItemCategory =
   | "other";
 
 export type Dnd35Price = {
+  /** Price normalized to this currency. Multi-denomination SRD prices use gp. */
   amount: number;
   currency: "cp" | "sp" | "gp" | "pp";
   modifier?: boolean;
@@ -52,12 +53,24 @@ export type Dnd35ArmorStats = {
   speed20Feet?: number | null;
 };
 
+export type Dnd35MagicItemSpellUse = {
+  spellId: string;
+  tradition?: Dnd35SpellTradition;
+  charges: number;
+  casterLevel?: number;
+  spellLevel?: number;
+  notes?: string;
+};
+
 export type Dnd35MagicItemStats = {
   casterLevel?: number;
   aura?: string;
-  activation?: string;
+  activation?: "use-activated" | "spell-completion" | "spell-trigger" | "command-word" | "continuous" | "special";
+  activationText?: string;
   charges?: number;
+  consumesOnUse?: boolean;
   spellIds?: string[];
+  spellUses?: Dnd35MagicItemSpellUse[];
   prerequisites?: string[];
   creationCostGp?: number;
   creationXp?: number;
