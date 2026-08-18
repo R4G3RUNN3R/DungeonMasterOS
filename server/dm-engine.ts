@@ -3,6 +3,7 @@ import type { Encounter } from "../shared/schema";
 import type { EncounterParticipant } from "./combat-engine";
 import { formatCampaignMemory, parseCampaignWorldState, formatCurrentSceneForPrompt } from "./campaign-memory";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
+import { buildCanonicalRulesContext } from "./knowledge-library";
 
 // ── Authoritative party inventory grounding ─────────────────────────────────
 // The AI has no other channel to real item/currency state — it previously
@@ -471,7 +472,10 @@ export async function generateOpeningScene(
   currencies: CampaignCurrency[] = [],
   partyInventory: PartyInventorySnapshot[] = [],
 ): Promise<string> {
-  const system = buildSystemPrompt(campaign, characters, currencies, null, partyInventory);
+  const canonicalRules = buildCanonicalRulesContext(campaign.ruleset, "", characters);
+  const system = [buildSystemPrompt(campaign, characters, currencies, null, partyInventory), canonicalRules]
+    .filter(Boolean)
+    .join("\n\n");
 
   const response = await generateNarrationText({
     system,
@@ -509,7 +513,10 @@ export async function generateDMResponse(
   combatContext: CombatPromptContext | null = null,
   partyInventory: PartyInventorySnapshot[] = [],
 ): Promise<string> {
-  const system = buildSystemPrompt(campaign, characters, currencies, combatContext, partyInventory);
+  const canonicalRules = buildCanonicalRulesContext(campaign.ruleset, playerAction, characters);
+  const system = [buildSystemPrompt(campaign, characters, currencies, combatContext, partyInventory), canonicalRules]
+    .filter(Boolean)
+    .join("\n\n");
 
   const messages = history.map((message) => ({
     role: message.senderType === "player" ? "user" : "assistant",
