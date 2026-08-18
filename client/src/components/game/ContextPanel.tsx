@@ -50,6 +50,10 @@ type Props = {
   onViewShop: () => void;
   shopExpanded: boolean;
   encounter: EncounterState;
+  myCharacterId?: number;
+  onAttack?: (targetParticipantId: string) => void;
+  onFlee?: () => void;
+  attackPending?: boolean;
 };
 
 export default function ContextPanel({
@@ -62,6 +66,10 @@ export default function ContextPanel({
   onViewShop,
   shopExpanded,
   encounter,
+  myCharacterId,
+  onAttack,
+  onFlee,
+  attackPending,
 }: Props) {
   const inCombat = encounter.encounter?.status === "active";
   const label = inCombat ? "Combat" : activeShop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
@@ -73,7 +81,13 @@ export default function ContextPanel({
       </div>
       <div className="flex-1 overflow-y-auto dm-scroll">
         {inCombat ? (
-          <CombatContext state={encounter} />
+          <CombatContext
+            state={encounter}
+            myCharacterId={myCharacterId}
+            onAttack={onAttack}
+            onFlee={onFlee}
+            actionPending={attackPending}
+          />
         ) : activeShop ? (
           <MerchantContext
             shop={activeShop.shop}

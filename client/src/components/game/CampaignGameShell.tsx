@@ -26,7 +26,6 @@ import CodexOverlay from "./CodexOverlay";
 
 import { getRulesAdapter } from "@/lib/rulesAdapters";
 import { useGameLayoutPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/gameLayoutPreferences";
-import { openCharacterSheetPopup } from "@/lib/openCharacterSheetPopup";
 import { resolveSceneAsset } from "@shared/scene-resolver";
 import type { WorldState } from "@shared/world-state";
 import type { ActiveEffectDisplay } from "./ActiveConditions";
@@ -113,6 +112,7 @@ type Props = {
   attackPending: boolean;
 
   onBack: () => void;
+  onOpenSheet: () => void;
   scrollRef: RefObject<HTMLDivElement>;
 };
 
@@ -166,6 +166,7 @@ export default function CampaignGameShell({
   onFlee,
   attackPending,
   onBack,
+  onOpenSheet,
   scrollRef,
 }: Props) {
   const { preferences, setPreset } = useGameLayoutPreferences();
@@ -204,7 +205,7 @@ export default function CampaignGameShell({
       hud={hud}
       currencies={currencies}
       onOpenPortrait={() => setProfileOpen(true)}
-      onOpenSheet={() => openCharacterSheetPopup(campaignId)}
+      onOpenSheet={onOpenSheet}
       onOpenInventory={() => setInventoryOpen(true)}
       onOpenCodex={() => setCodexOpen(true)}
     />
@@ -221,6 +222,10 @@ export default function CampaignGameShell({
       onViewShop={() => setShopExpanded((v) => !v)}
       shopExpanded={shopExpanded}
       encounter={encounter}
+      myCharacterId={character.id}
+      onAttack={onAttack}
+      onFlee={onFlee}
+      attackPending={attackPending}
     />
   );
 
