@@ -19,6 +19,7 @@ import Account from "@/pages/account";
 import CompendiumPage from "@/pages/compendium";
 import CompendiumItemPage from "@/pages/compendium-item";
 import CompendiumsPage from "@/pages/compendiums";
+import Dnd35ItemCompendiumPage from "@/pages/dnd35-item-compendium";
 import RulesTomePage from "@/pages/rules-tome";
 import UpdatesPage from "@/pages/updates";
 
@@ -37,6 +38,7 @@ function AppRouter() {
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/compendiums" component={CompendiumsPage} />
+      <Route path="/compendiums/dnd35/items" component={Dnd35ItemCompendiumPage} />
       <Route path="/compendiums/dnd35/grimoire">{() => <RulesTomePage kind="grimoire" />}</Route>
       <Route path="/compendiums/dnd35/holy-tome">{() => <RulesTomePage kind="holy-tome" />}</Route>
       <Route path="/compendiums/dnd35/feat-codex">{() => <RulesTomePage kind="feat-codex" />}</Route>
