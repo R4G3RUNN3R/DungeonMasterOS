@@ -1,8 +1,8 @@
 import type { Character, Item } from "@shared/schema";
-import { DND35_CORE_FEATS, DND35_SPELLS } from "@shared/dnd35-rules/catalogue";
+import { DND35_CORE_FEATS } from "@shared/dnd35-rules/catalogue";
 import { resolveDnd35CastPreflight } from "@shared/dnd35-rules/cast-preflight-guarded";
 import type { Dnd35CastResolution, Dnd35SpellDefinition, Dnd35SpellLevel, Dnd35SpellcastingState } from "@shared/dnd35-rules/types";
-import { readStoredDnd35FeatSelections } from "./knowledge-library";
+import { listCanonicalDnd35Spells, readStoredDnd35FeatSelections } from "./knowledge-library";
 
 const ARCANE = new Set(["wizard", "sorcerer", "bard"]);
 const DIVINE = new Set(["cleric", "druid", "paladin", "ranger"]);
@@ -24,8 +24,15 @@ function modeForClass(classId: string): Dnd35SpellcastingState["mode"] { if (cla
 
 export function findDnd35CastSpell(actionText: string): Dnd35SpellDefinition | undefined {
   if (!/\b(cast|casts|casting|invoke|invokes|invoking)\b/i.test(actionText)) return undefined;
-  const matches = DND35_SPELLS.filter((spell) => normalize(actionText).includes(normalize(spell.name)));
-  return matches.length === 1 ? matches[0] : undefined;
+  const normalizedAction = normalize(actionText);
+  const matches = listCanonicalDnd35Spells().filter((spell) => normalizedAction.includes(normalize(spell.name)));
+  // Prefer the longest exact name when one spell name contains another
+  // (e.g. protection from energy vs protection from spells). Ambiguity at the
+  // same length remains unresolved rather than guessing which resource to burn.
+  matches.sort((a, b) => b.name.length - a.name.length);
+  if (!matches.length) return undefined;
+  if (matches.length > 1 && matches[0].name.length === matches[1].name.length) return undefined;
+  return matches[0];
 }
 
 function parseSpellcastingBlocks(character: Character) {
