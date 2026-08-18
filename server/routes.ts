@@ -2,7 +2,17 @@ import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { generateDMResponse, generateOpeningScene, extractWorldState } from "./dm-engine";
+import {
+  generateDMResponse,
+  generateOpeningScene,
+  extractWorldState,
+  extractCombatStart,
+  extractSurrender,
+  narrateCombatResult,
+  type ProposedCombatant,
+} from "./dm-engine";
+import { resolveAttack, defaultAttackBonusForLevel, defaultArmorClassForLevel } from "./combat-engine";
+import type { Campaign, Character } from "@shared/schema";
 import {
   createCampaignFormSchema,
   createCharacterFormSchema,
@@ -100,6 +110,185 @@ Something in the scene responds, even if imperfectly. You sense movement nearby,
 Whatever happens next, your action has pushed the moment forward.
 
 **What do you do now?**`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMBAT ORCHESTRATION
+// The DM proposes encounters/surrenders via structured tags; everything
+// here is the server's own mechanical authority — see combat-engine.ts's
+// file header for why this uses simplified, level-derived numbers rather
+// than full 3.5e BAB/AC math.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function clampInt(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+async function startEncounterIfProposed(
+  campaignId: number,
+  proposedCombatants: ProposedCombatant[] | null,
+  chars: Character[],
+): Promise<void> {
+  if (!proposedCombatants || proposedCombatants.length === 0) return;
+  if (storage.getActiveEncounter(campaignId)) return; // never stack a second encounter
+
+  const encounter = storage.createEncounter({
+    campaignId,
+    status: "active",
+    round: 1,
+    currentTurnIndex: 0,
+  });
+
+  let turnOrder = 0;
+  for (const char of chars) {
+    if (char.hp <= 0) continue; // an already-downed character doesn't join the fight
+    storage.createCombatant({
+      encounterId: encounter.id,
+      kind: "player",
+      characterId: char.id,
+      name: char.name,
+      hp: char.hp,
+      maxHp: char.maxHp,
+      attackBonus: defaultAttackBonusForLevel(char.level),
+      armorClass: defaultArmorClassForLevel(char.level),
+      damageDie: "1d6",
+      initiative: 0,
+      turnOrder: turnOrder++,
+      isDefeated: false,
+      hasFled: false,
+    });
+  }
+  for (const proposed of proposedCombatants) {
+    const hp = clampInt(proposed.hp, 1, 500);
+    const damageDie = proposed.damageDie && /^\d+d\d+(\s*[+-]\s*\d+)?$/i.test(proposed.damageDie)
+      ? proposed.damageDie
+      : "1d6";
+    storage.createCombatant({
+      encounterId: encounter.id,
+      kind: "npc",
+      characterId: null,
+      name: proposed.name,
+      hp,
+      maxHp: hp,
+      attackBonus: clampInt(proposed.attackBonus ?? 3, 0, 20),
+      armorClass: clampInt(proposed.armorClass ?? 12, 5, 40),
+      damageDie,
+      initiative: 0,
+      turnOrder: turnOrder++,
+      isDefeated: false,
+      hasFled: false,
+    });
+  }
+
+  broadcastToCampaign(campaignId, { type: "combat_started", encounterId: encounter.id });
+}
+
+function applySurrenderIfProposed(campaignId: number, surrenderedName: string | null): void {
+  if (!surrenderedName) return;
+  const encounter = storage.getActiveEncounter(campaignId);
+  if (!encounter) return;
+  const combatant = storage
+    .getCombatantsByEncounter(encounter.id)
+    .find(
+      (c) =>
+        c.kind === "npc" &&
+        !c.isDefeated &&
+        !c.hasFled &&
+        c.name.toLowerCase() === surrenderedName.toLowerCase(),
+    );
+  if (!combatant) return;
+  storage.updateCombatant(combatant.id, { hasFled: true });
+  broadcastToCampaign(campaignId, { type: "combat_updated", encounterId: encounter.id });
+}
+
+function checkEncounterEndReason(encounterId: number): "victory" | "defeat" | "flee" | null {
+  const combatants = storage.getCombatantsByEncounter(encounterId);
+  const players = combatants.filter((c) => c.kind === "player");
+  const activePlayers = players.filter((c) => !c.isDefeated && !c.hasFled);
+  const activeNpcs = combatants.filter((c) => c.kind === "npc" && !c.isDefeated && !c.hasFled);
+  if (activePlayers.length === 0) {
+    // Distinguish "everyone ran" from "everyone was struck down" -- both
+    // clear the encounter, but they mean very different things for any
+    // future feature (achievements, campaign history) reading endReason.
+    return players.some((c) => c.isDefeated) ? "defeat" : "flee";
+  }
+  if (activeNpcs.length === 0) return "victory";
+  return null;
+}
+
+function endEncounter(encounterId: number, campaignId: number, reason: string): void {
+  storage.updateEncounter(encounterId, {
+    status: "ended",
+    endReason: reason,
+    endedAt: new Date().toISOString(),
+  });
+  broadcastToCampaign(campaignId, { type: "combat_ended", encounterId, reason });
+}
+
+// Auto-resolves NPC turns until it's a player's turn or the fight ends.
+// Never invents an outcome — every hit/miss/damage number comes from
+// combat-engine.ts's dice functions; the AI is only asked to narrate a
+// result already decided.
+async function advanceCombatTurns(campaignId: number, campaign: Campaign, chars: Character[]): Promise<void> {
+  let encounter = storage.getActiveEncounter(campaignId);
+  if (!encounter) return;
+
+  for (let guard = 0; guard < 50; guard++) {
+    const endReason = checkEncounterEndReason(encounter.id);
+    if (endReason) {
+      endEncounter(encounter.id, campaignId, endReason);
+      return;
+    }
+
+    const combatants = storage.getCombatantsByEncounter(encounter.id).filter((c) => !c.isDefeated && !c.hasFled);
+    if (combatants.length === 0) return;
+
+    const current = combatants[encounter.currentTurnIndex % combatants.length];
+    if (current.kind === "player") return; // wait for the player's real action
+
+    const activePlayers = combatants.filter((c) => c.kind === "player");
+    if (activePlayers.length === 0) {
+      endEncounter(encounter.id, campaignId, "defeat");
+      return;
+    }
+    const target = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+
+    const result = resolveAttack(current.attackBonus, target.armorClass, current.damageDie);
+    if (result.hit) {
+      const newHp = Math.max(0, target.hp - result.damage);
+      storage.updateCombatant(target.id, { hp: newHp, isDefeated: newHp <= 0 });
+      if (target.characterId) {
+        storage.updateCharacter(target.characterId, { hp: newHp });
+        broadcastToCampaign(campaignId, { type: "character_updated", characterId: target.characterId });
+      }
+    }
+
+    const summary = `${current.name} attacks ${target.name}: d20 roll ${result.attackRoll} + attack bonus ${current.attackBonus} = ${result.attackTotal} vs armor class ${target.armorClass} -> ${
+      result.hit ? `HIT for ${result.damage} damage` : "MISS"
+    }${result.critical ? " (natural 20, critical hit)" : ""}${result.fumble ? " (natural 1, fumble)" : ""}.`;
+
+    let narration: string;
+    try {
+      narration = await narrateCombatResult(campaign, chars, summary);
+    } catch {
+      narration = summary;
+    }
+
+    const msg = storage.createMessage({
+      campaignId,
+      sender: "Dungeon Master",
+      senderType: "dm",
+      content: narration,
+      messageType: "narration",
+    });
+    broadcastToCampaign(campaignId, { type: "message", message: msg });
+    broadcastToCampaign(campaignId, { type: "combat_updated", encounterId: encounter.id });
+
+    const beforeAdvance = storage.getEncounter(encounter.id);
+    if (!beforeAdvance) return;
+    storage.updateEncounter(encounter.id, { currentTurnIndex: beforeAdvance.currentTurnIndex + 1 });
+    encounter = storage.getEncounter(encounter.id)!;
+  }
 }
 
 function getAIServiceIssue(error: unknown): { title: string; detail: string } | null {
@@ -1518,7 +1707,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         character.name,
       );
 
-      const { cleanContent, worldState } = extractWorldState(rawResponse);
+      const { cleanContent: contentAfterWorldState, worldState } = extractWorldState(rawResponse);
 
       if (worldState) {
         try {
@@ -1537,6 +1726,10 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         } catch {}
       }
 
+      const { cleanContent: contentAfterCombatStart, combatants: proposedCombatants } =
+        extractCombatStart(contentAfterWorldState);
+      const { cleanContent, surrenderedName } = extractSurrender(contentAfterCombatStart);
+
       const finalContent = cleanContent?.trim() || buildFallbackActionResponse(character.name, content);
 
       const dmMsg = storage.createMessage({
@@ -1551,6 +1744,13 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
 
       incrementTurnCount(req.user!.id);
+
+      (async () => {
+        const chars = storage.getCharactersByCampaign(campaignId);
+        await startEncounterIfProposed(campaignId, proposedCombatants, chars);
+        applySurrenderIfProposed(campaignId, surrenderedName);
+        await advanceCombatTurns(campaignId, campaign, chars);
+      })().catch((err) => console.error("Combat orchestration error:", err));
 
       Promise.all([
         extractItemsFromNarration(finalContent, campaignId, character.id),
@@ -1664,6 +1864,120 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         aiUnavailable: !!aiIssue,
       });
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COMBAT ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/campaigns/:id/encounter", requireAuth, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const encounter = storage.getActiveEncounter(campaignId);
+    if (!encounter) return res.json({ encounter: null, combatants: [] });
+    const combatants = storage.getCombatantsByEncounter(encounter.id);
+    return res.json({ encounter, combatants });
+  });
+
+  app.post("/api/campaigns/:id/combat/attack", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
+    const visitorId = getVisitorId(req);
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const character = storage.getCharacterByVisitor(campaignId, visitorId);
+    if (!character) return res.status(403).json({ message: "You don't have a character in this campaign" });
+
+    const encounter = storage.getActiveEncounter(campaignId);
+    if (!encounter) return res.status(400).json({ message: "There is no active encounter" });
+
+    const combatants = storage.getCombatantsByEncounter(encounter.id).filter((c) => !c.isDefeated && !c.hasFled);
+    const attacker = combatants.find((c) => c.kind === "player" && c.characterId === character.id);
+    if (!attacker) return res.status(403).json({ message: "Your character isn't in this fight" });
+
+    const current = combatants[encounter.currentTurnIndex % combatants.length];
+    if (current.id !== attacker.id) {
+      return res.status(409).json({ message: "It isn't your turn yet" });
+    }
+
+    const targetId = Number(req.body?.targetCombatantId);
+    const target = combatants.find((c) => c.id === targetId && c.kind === "npc");
+    if (!target) return res.status(400).json({ message: "Choose a valid target" });
+
+    const result = resolveAttack(attacker.attackBonus, target.armorClass, attacker.damageDie);
+    if (result.hit) {
+      const newHp = Math.max(0, target.hp - result.damage);
+      storage.updateCombatant(target.id, { hp: newHp, isDefeated: newHp <= 0 });
+    }
+
+    const summary = `${attacker.name} attacks ${target.name}: d20 roll ${result.attackRoll} + attack bonus ${attacker.attackBonus} = ${result.attackTotal} vs armor class ${target.armorClass} -> ${
+      result.hit ? `HIT for ${result.damage} damage` : "MISS"
+    }${result.critical ? " (natural 20, critical hit)" : ""}${result.fumble ? " (natural 1, fumble)" : ""}.`;
+
+    let narration: string;
+    try {
+      narration = await narrateCombatResult(campaign, storage.getCharactersByCampaign(campaignId), summary);
+    } catch {
+      narration = summary;
+    }
+
+    const msg = storage.createMessage({
+      campaignId,
+      sender: "Dungeon Master",
+      senderType: "dm",
+      content: narration,
+      messageType: "narration",
+    });
+    broadcastToCampaign(campaignId, { type: "message", message: msg });
+
+    const afterAttack = storage.getEncounter(encounter.id);
+    if (afterAttack) {
+      storage.updateEncounter(encounter.id, { currentTurnIndex: afterAttack.currentTurnIndex + 1 });
+    }
+    broadcastToCampaign(campaignId, { type: "combat_updated", encounterId: encounter.id });
+
+    incrementTurnCount(req.user!.id);
+
+    const chars = storage.getCharactersByCampaign(campaignId);
+    await advanceCombatTurns(campaignId, campaign, chars);
+
+    return res.json({ result });
+  });
+
+  app.post("/api/campaigns/:id/combat/flee", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
+    const visitorId = getVisitorId(req);
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const character = storage.getCharacterByVisitor(campaignId, visitorId);
+    if (!character) return res.status(403).json({ message: "You don't have a character in this campaign" });
+
+    const encounter = storage.getActiveEncounter(campaignId);
+    if (!encounter) return res.status(400).json({ message: "There is no active encounter" });
+
+    const combatant = storage
+      .getCombatantsByEncounter(encounter.id)
+      .find((c) => c.kind === "player" && c.characterId === character.id && !c.isDefeated && !c.hasFled);
+    if (!combatant) return res.status(403).json({ message: "Your character isn't in this fight" });
+
+    storage.updateCombatant(combatant.id, { hasFled: true });
+
+    const msg = storage.createMessage({
+      campaignId,
+      sender: "System",
+      senderType: "system",
+      content: `${character.name} flees from the fight.`,
+      messageType: "system",
+    });
+    broadcastToCampaign(campaignId, { type: "message", message: msg });
+    broadcastToCampaign(campaignId, { type: "combat_updated", encounterId: encounter.id });
+
+    incrementTurnCount(req.user!.id);
+
+    const chars = storage.getCharactersByCampaign(campaignId);
+    await advanceCombatTurns(campaignId, campaign, chars);
+
+    return res.json({ fled: true });
   });
 
   app.post("/api/campaigns/:id/start", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
