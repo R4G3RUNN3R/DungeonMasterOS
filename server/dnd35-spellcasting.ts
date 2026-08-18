@@ -1,7 +1,7 @@
 import type { Character, Item } from "@shared/schema";
 import { DND35_CORE_FEATS } from "@shared/dnd35-rules/catalogue";
 import { resolveDnd35CastPreflight } from "@shared/dnd35-rules/cast-preflight-guarded";
-import type { Dnd35CastResolution, Dnd35SpellDefinition, Dnd35SpellLevel, Dnd35SpellcastingState } from "@shared/dnd35-rules/types";
+import type { Dnd35CastResolution, Dnd35SpellDefinition, Dnd35SpellLevel, Dnd35SpellcastingMode, Dnd35SpellcastingState } from "@shared/dnd35-rules/types";
 import { listCanonicalDnd35Spells, readStoredDnd35FeatSelections } from "./knowledge-library";
 import { getDnd35Item } from "./dnd35-item-library";
 
@@ -21,7 +21,12 @@ function numberFromPool(value: unknown) {
 }
 function traditionForClass(classId: string): "arcane" | "divine" | "other" { return ARCANE.has(classId) ? "arcane" : DIVINE.has(classId) ? "divine" : "other"; }
 function castingAbilityForClass(classId: string): "int" | "wis" | "cha" { if (classId === "wizard") return "int"; if (DIVINE.has(classId)) return "wis"; return "cha"; }
-function modeForClass(classId: string): Dnd35SpellcastingState["mode"] { if (classId === "wizard") return "prepared_spellbook"; if (DIVINE.has(classId)) return "prepared_divine"; if (classId === "sorcerer" || classId === "bard") return "spontaneous_known"; return "special"; }
+function modeForClass(classId: string): Dnd35SpellcastingMode | undefined {
+  if (classId === "wizard") return "prepared_spellbook";
+  if (DIVINE.has(classId)) return "prepared_divine";
+  if (classId === "sorcerer" || classId === "bard") return "spontaneous_known";
+  return undefined;
+}
 
 export function findDnd35CastSpell(actionText: string): Dnd35SpellDefinition | undefined {
   if (!/\b(cast|casts|casting|invoke|invokes|invoking)\b/i.test(actionText)) return undefined;
@@ -73,6 +78,8 @@ function buildCastingState(character: Character, spell: Dnd35SpellDefinition): D
   const block = findCastingBlock(character, spell);
   if (!block) return undefined;
   const classId = slug(String(block.casterClass || ""));
+  const mode = modeForClass(classId);
+  if (!mode) return undefined;
   const ability = (block.castingAbility === "int" || block.castingAbility === "wis" || block.castingAbility === "cha") ? block.castingAbility : castingAbilityForClass(classId);
   const spells = Array.isArray(block.spells) ? block.spells : [];
   const spellIds = spells.map((entry: any) => slug(String(entry?.name || ""))).filter(Boolean);
@@ -91,7 +98,7 @@ function buildCastingState(character: Character, spell: Dnd35SpellDefinition): D
     tradition: traditionForClass(classId),
     castingAbility: ability,
     castingAbilityScore: Number((character as any)[ability] || 0),
-    mode: modeForClass(classId),
+    mode,
     spellbookSpellIds: classId === "wizard" ? spellIds : undefined,
     knownSpellIds,
     preparedSpells,
@@ -100,7 +107,7 @@ function buildCastingState(character: Character, spell: Dnd35SpellDefinition): D
     domains: Array.isArray(block.domains) ? block.domains.map(slug) : undefined,
     specialization: block.specialization,
     prohibitedSchools: Array.isArray(block.prohibitedSchools) ? block.prohibitedSchools.map((school: string) => normalize(school)) : undefined,
-  } as Dnd35SpellcastingState;
+  };
 }
 
 function itemWords(item: Item) {
@@ -183,7 +190,7 @@ export type CharacterSpellPreflight = {
 export function resolveCharacterDnd35SpellCast(character: Character, spell: Dnd35SpellDefinition, actionText: string, items: Item[], effects: Array<{ name: string; description: string }>): CharacterSpellPreflight {
   const casting = buildCastingState(character, spell);
   const metamagicFeatIds = requestedMetamagic(character, actionText);
-  if (!casting) return { spell, unavailableReason: `No structured D&D 3.5 spellcasting block for a class that can cast ${spell.name}.`, metamagicFeatIds };
+  if (!casting) return { spell, unavailableReason: `No supported structured D&D 3.5 spellcasting block for a class that can cast ${spell.name}.`, metamagicFeatIds };
   const effectText = effects.map((effect) => `${effect.name} ${effect.description}`).join(" ").toLowerCase();
   const featIds = readStoredDnd35FeatSelections(character).map((feat) => feat.featId);
   const resolution = resolveDnd35CastPreflight({
