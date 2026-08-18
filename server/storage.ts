@@ -29,6 +29,12 @@ import {
   userAchievements,
   type PasswordResetToken,
   passwordResetTokens,
+  type Encounter,
+  type InsertEncounter,
+  encounters,
+  type Combatant,
+  type InsertCombatant,
+  combatants,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -243,6 +249,35 @@ export function runMigrations() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS encounters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      round INTEGER NOT NULL DEFAULT 1,
+      current_turn_index INTEGER NOT NULL DEFAULT 0,
+      end_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      ended_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS combatants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      encounter_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      character_id INTEGER,
+      name TEXT NOT NULL,
+      hp INTEGER NOT NULL,
+      max_hp INTEGER NOT NULL,
+      attack_bonus INTEGER NOT NULL DEFAULT 0,
+      armor_class INTEGER NOT NULL DEFAULT 10,
+      damage_die TEXT NOT NULL DEFAULT '1d6',
+      initiative INTEGER NOT NULL DEFAULT 0,
+      turn_order INTEGER NOT NULL DEFAULT 0,
+      is_defeated INTEGER NOT NULL DEFAULT 0,
+      has_fled INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS shop_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shop_id INTEGER NOT NULL,
@@ -353,6 +388,16 @@ export interface IStorage {
   deleteActiveEffect(id: number): void;
   removeConcentration(characterId: number): ActiveEffect | undefined;
   tickEffects(characterId: number): ActiveEffect[];
+
+  // Combat
+  getActiveEncounter(campaignId: number): Encounter | undefined;
+  getEncounter(id: number): Encounter | undefined;
+  createEncounter(encounter: InsertEncounter): Encounter;
+  updateEncounter(id: number, updates: Partial<Encounter>): void;
+  getCombatantsByEncounter(encounterId: number): Combatant[];
+  getCombatant(id: number): Combatant | undefined;
+  createCombatant(combatant: InsertCombatant): Combatant;
+  updateCombatant(id: number, updates: Partial<Combatant>): void;
 
   // Achievements
   getUserAchievements(userId: number): UserAchievement[];
@@ -609,6 +654,41 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return expired;
+  }
+
+  // Combat
+  getActiveEncounter(campaignId: number): Encounter | undefined {
+    return db
+      .select()
+      .from(encounters)
+      .where(and(eq(encounters.campaignId, campaignId), eq(encounters.status, "active")))
+      .get();
+  }
+  getEncounter(id: number): Encounter | undefined {
+    return db.select().from(encounters).where(eq(encounters.id, id)).get();
+  }
+  createEncounter(encounter: InsertEncounter): Encounter {
+    return db.insert(encounters).values(encounter).returning().get();
+  }
+  updateEncounter(id: number, updates: Partial<Encounter>): void {
+    db.update(encounters).set(updates as any).where(eq(encounters.id, id)).run();
+  }
+  getCombatantsByEncounter(encounterId: number): Combatant[] {
+    return db
+      .select()
+      .from(combatants)
+      .where(eq(combatants.encounterId, encounterId))
+      .orderBy(combatants.turnOrder)
+      .all();
+  }
+  getCombatant(id: number): Combatant | undefined {
+    return db.select().from(combatants).where(eq(combatants.id, id)).get();
+  }
+  createCombatant(combatant: InsertCombatant): Combatant {
+    return db.insert(combatants).values(combatant).returning().get();
+  }
+  updateCombatant(id: number, updates: Partial<Combatant>): void {
+    db.update(combatants).set(updates as any).where(eq(combatants.id, id)).run();
   }
 
   // Achievements

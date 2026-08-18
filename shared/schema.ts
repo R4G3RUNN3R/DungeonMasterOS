@@ -350,6 +350,68 @@ export type InsertActiveEffect = z.infer<typeof insertActiveEffectSchema>;
 export type ActiveEffect = typeof activeEffects.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COMBAT ENCOUNTERS
+//
+// This branch's character model has no ability scores, AC, or BAB (see
+// server/combat-engine.ts for the full explanation) — combatant
+// attackBonus/armorClass are simplified, level-derived values, not full
+// 3.5e mechanics. The server is the sole authority over every roll and
+// HP change; the AI narrates but never decides outcomes directly (see
+// server/dm-engine.ts's [COMBAT_START]/[ATTACK]/[SURRENDER] parsing).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const encounters = sqliteTable("encounters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+
+  status: text("status").notNull().default("active"), // active | ended
+  round: integer("round").notNull().default(1),
+  currentTurnIndex: integer("current_turn_index").notNull().default(0),
+  endReason: text("end_reason"), // victory | flee | narrative | null while active
+
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  endedAt: text("ended_at"),
+});
+
+export const insertEncounterSchema = createInsertSchema(encounters).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEncounter = z.infer<typeof insertEncounterSchema>;
+export type Encounter = typeof encounters.$inferSelect;
+
+export const combatants = sqliteTable("combatants", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  encounterId: integer("encounter_id").notNull(),
+
+  kind: text("kind").notNull(), // player | npc
+  characterId: integer("character_id"), // set for kind = player
+  name: text("name").notNull(),
+
+  hp: integer("hp").notNull(),
+  maxHp: integer("max_hp").notNull(),
+  attackBonus: integer("attack_bonus").notNull().default(0),
+  armorClass: integer("armor_class").notNull().default(10),
+  damageDie: text("damage_die").notNull().default("1d6"),
+
+  initiative: integer("initiative").notNull().default(0),
+  turnOrder: integer("turn_order").notNull().default(0),
+  isDefeated: integer("is_defeated", { mode: "boolean" }).notNull().default(false),
+  hasFled: integer("has_fled", { mode: "boolean" }).notNull().default(false),
+
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertCombatantSchema = createInsertSchema(combatants).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCombatant = z.infer<typeof insertCombatantSchema>;
+export type Combatant = typeof combatants.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CAMPAIGN SNAPSHOTS / SAVE POINTS
 // For admin recovery, rewinds, and safe-point restoration.
 // ─────────────────────────────────────────────────────────────────────────────
