@@ -18,6 +18,11 @@ import {
   loadDnd35SrdFeatCorpus,
   type Dnd35ImportedFeat,
 } from "./dnd35-srd-feat-importer";
+import {
+  dnd35ItemRewardAdapter,
+  getDnd35Item,
+  getDnd35ItemLibraryStatus,
+} from "./dnd35-item-library";
 
 export type KnowledgeVolumeKind = "items" | "bestiary" | "grimoire" | "holy-tome" | "feat-codex";
 export type KnowledgeVolumeStatus = "available" | "foundation" | "cataloguing";
@@ -222,8 +227,10 @@ function listRuntimeDnd35FeatsByCategory(category: Dnd35FeatDefinition["categori
 
 export function getKnowledgeShelves(): KnowledgeShelf[] {
   const status = getDnd35KnowledgeStatus();
+  const itemStatus = getDnd35ItemLibraryStatus();
   const spellVolumeStatus: KnowledgeVolumeStatus = status.spellCorpusStatus === "srd-complete" ? "available" : "foundation";
   const featVolumeStatus: KnowledgeVolumeStatus = status.featCorpusStatus === "srd-complete" ? "available" : "foundation";
+  const itemVolumeStatus: KnowledgeVolumeStatus = itemStatus.corpusStatus === "srd-equipment" ? "foundation" : "cataloguing";
   const spellNote = status.spellCorpusStatus === "srd-complete"
     ? `Pinned Revised 3.5 SRD spell corpus loaded (${status.totalSpells} canonical spell records). Hand-hardened executable records override conservative imported effect placeholders.`
     : status.spellCorpusStatus === "srd-fallback"
@@ -234,6 +241,9 @@ export function getKnowledgeShelves(): KnowledgeShelf[] {
     : status.featCorpusStatus === "srd-fallback"
       ? "The pinned SRD feat corpus could not be loaded at startup. DungeonMasterOS is using its curated executable feat foundation rather than publishing a partial Codex."
       : "Core magic-facing feats are executable; the pinned SRD feat corpus has not been initialized yet.";
+  const itemNote = itemStatus.corpusStatus === "srd-equipment"
+    ? `Canonical Revised 3.5 SRD mundane equipment is loaded (${itemStatus.weapons} weapon/ammunition and ${itemStatus.armor} armor/shield records). Magic items, potions, scrolls and wondrous items are still being added to this same native 3.5 volume.`
+    : "The pinned 3.5 equipment corpus is not loaded. This shelf remains closed rather than substituting 5e item records.";
 
   return [
     {
@@ -243,7 +253,7 @@ export function getKnowledgeShelves(): KnowledgeShelf[] {
       title: "Dungeons & Dragons 3.5",
       active: true,
       volumes: [
-        { id: "dnd35-items", kind: "items", title: "The Item Compendium", subtitle: "Arms, armour, equipment, potions and wondrous things", status: "cataloguing", note: "The existing live item catalogue is 5e data. A true 3.5 item corpus must be ingested before this volume can become authoritative." },
+        { id: "dnd35-items", kind: "items", title: "The Item Compendium", subtitle: "Arms, armour, equipment, potions and wondrous things", href: itemStatus.corpusStatus === "srd-equipment" ? "/compendiums/dnd35/items" : undefined, status: itemVolumeStatus, recordCount: itemStatus.totalItems || undefined, note: itemNote },
         { id: "dnd35-bestiary", kind: "bestiary", title: "The Bestiary", subtitle: "Creatures, monsters and encounter records", status: "cataloguing", note: "The 3.5 bestiary corpus is still being prepared." },
         { id: "dnd35-grimoire", kind: "grimoire", title: "The Grimoire", subtitle: "Arcane spells and their exact workings", href: "/compendiums/dnd35/grimoire", status: spellVolumeStatus, recordCount: status.arcaneSpells, note: spellNote },
         { id: "dnd35-holy-tome", kind: "holy-tome", title: "The Holy Tome", subtitle: "Divine spells, domains and sacred workings", href: "/compendiums/dnd35/holy-tome", status: spellVolumeStatus, recordCount: status.divineSpells, note: spellNote },
@@ -517,5 +527,9 @@ export function buildCanonicalRulesContext(ruleset: string, actionText: string, 
 export function resolveCanonicalItemDefinition(ruleset: string, name: string) {
   const needle = normalize(name);
   if (!needle) return undefined;
+  if (ruleset === "dnd35e") {
+    const item = getDnd35Item(name);
+    return item ? dnd35ItemRewardAdapter(item) : undefined;
+  }
   return searchItemDefinitions(name, 20).find((row: any) => normalize(String(row.name || "")) === needle && String(row.ruleset || "") === ruleset);
 }
