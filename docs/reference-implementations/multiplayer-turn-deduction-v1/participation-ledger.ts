@@ -52,10 +52,25 @@ export type CampaignHistoryCard = {
   currentAccessStatus: CampaignParticipationRecord["currentAccessStatus"];
 };
 
+export type ParticipationEvidenceType = "meaningful_action" | "activity_pulse";
+
 export interface CampaignParticipationStoragePort {
   getParticipation(userId: number, campaignId: number): CampaignParticipationRecord | undefined;
   upsertParticipation(record: CampaignParticipationRecord): CampaignParticipationRecord;
   getQualifiedCampaignHistory(userId: number): CampaignParticipationRecord[];
+
+  /**
+   * Insert a unique evidence row and return true only when the evidence is new.
+   * Back this with UNIQUE(user_id, campaign_id, evidence_type, source_key).
+   */
+  tryInsertParticipationEvidence(input: {
+    userId: number;
+    campaignId: number;
+    evidenceType: ParticipationEvidenceType;
+    sourceKey: string;
+    occurredAt: string;
+    metadata?: Record<string, string | number | boolean | null>;
+  }): boolean;
 }
 
 export function qualifiesForCampaignHistory(record: CampaignParticipationRecord): boolean {
@@ -115,6 +130,11 @@ export function addCappedActiveTime(
   };
 }
 
+function qualifyIfReady(record: CampaignParticipationRecord, at: string): CampaignParticipationRecord {
+  if (record.qualifiedAt || !qualifiesForCampaignHistory(record)) return record;
+  return { ...record, qualifiedAt: at };
+}
+
 export class CampaignParticipationLedgerService {
   constructor(private readonly storage: CampaignParticipationStoragePort) {}
 
@@ -170,13 +190,16 @@ export class CampaignParticipationLedgerService {
   }
 
   /**
-   * Call only after a canonical meaningful player action has been accepted exactly once.
-   * Do not call on raw POST arrival before validation/idempotency.
+   * Call only after a canonical meaningful player action has been accepted.
+   * sourceKey MUST identify the canonical action/event, e.g. `message:1842` or `campaign_event:912`.
+   * Duplicate retries return the unchanged record and cannot inflate qualification.
    */
   recordMeaningfulAction(input: {
     userId: number;
     campaignId: number;
+    sourceKey: string;
     actionAt?: string;
+    metadata?: Record<string, string | number | boolean | null>;
   }): CampaignParticipationRecord {
     const existing = this.storage.getParticipation(input.userId, input.campaignId);
     if (!existing) {
@@ -184,40 +207,54 @@ export class CampaignParticipationLedgerService {
     }
 
     const now = input.actionAt ?? new Date().toISOString();
+    const inserted = this.storage.tryInsertParticipationEvidence({
+      userId: input.userId,
+      campaignId: input.campaignId,
+      evidenceType: "meaningful_action",
+      sourceKey: input.sourceKey,
+      occurredAt: now,
+      metadata: input.metadata,
+    });
+    if (!inserted) return existing;
+
     const withTime = addCappedActiveTime(existing, now);
-    let next: CampaignParticipationRecord = {
+    const next = qualifyIfReady({
       ...withTime,
       meaningfulActionCount: withTime.meaningfulActionCount + 1,
       firstMeaningfulActionAt: withTime.firstMeaningfulActionAt ?? now,
       lastMeaningfulActionAt: now,
       lastPlayedAt: now,
       updatedAt: now,
-    };
-
-    if (!next.qualifiedAt && qualifiesForCampaignHistory(next)) {
-      next = { ...next, qualifiedAt: now };
-    }
+    }, now);
 
     return this.storage.upsertParticipation(next);
   }
 
   /**
-   * Optional authenticated activity pulse. The client should send this only while campaign UI is visible
-   * and the user has interacted recently. It does not increment meaningful actions.
+   * Optional authenticated activity pulse. The sourceKey should be a server-issued session/time bucket,
+   * not arbitrary client text. The client should send pulses only while campaign UI is visible and the
+   * user has interacted recently. Pulses never increment meaningful actions.
    */
   recordActivityPulse(input: {
     userId: number;
     campaignId: number;
+    sourceKey: string;
     activityAt?: string;
   }): CampaignParticipationRecord | undefined {
     const existing = this.storage.getParticipation(input.userId, input.campaignId);
     if (!existing || !existing.firstMeaningfulActionAt) return existing;
 
     const now = input.activityAt ?? new Date().toISOString();
-    let next = addCappedActiveTime(existing, now);
-    if (!next.qualifiedAt && qualifiesForCampaignHistory(next)) {
-      next = { ...next, qualifiedAt: now };
-    }
+    const inserted = this.storage.tryInsertParticipationEvidence({
+      userId: input.userId,
+      campaignId: input.campaignId,
+      evidenceType: "activity_pulse",
+      sourceKey: input.sourceKey,
+      occurredAt: now,
+    });
+    if (!inserted) return existing;
+
+    const next = qualifyIfReady(addCappedActiveTime(existing, now), now);
     return this.storage.upsertParticipation(next);
   }
 
