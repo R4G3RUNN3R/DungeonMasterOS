@@ -1,0 +1,235 @@
+import type { Dnd35SourceRef, Dnd35SpellDefinition } from "../types";
+
+const srd = (section: string): Dnd35SourceRef => ({
+  sourceId: "srd-35",
+  sourceKind: "srd-open",
+  section,
+  confidence: "verified",
+});
+
+const access = (
+  classId: string,
+  level: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+  tradition: "arcane" | "divine",
+  source: Dnd35SourceRef,
+) => ({ classId, level, tradition, source });
+
+export const DND35_CORE_SRD_SAMPLE_SPELLS: Dnd35SpellDefinition[] = [
+  {
+    id: "magic-missile",
+    name: "Magic Missile",
+    edition: "3.5e",
+    school: "evocation",
+    descriptors: ["force"],
+    classAccess: [
+      access("sorcerer", 1, "arcane", srd("Magic Missile")),
+      access("wizard", 1, "arcane", srd("Magic Missile")),
+    ],
+    castingTime: { kind: "standard" },
+    components: [
+      { kind: "V", required: true },
+      { kind: "S", required: true },
+    ],
+    range: { kind: "medium", baseFeet: 100, feetPerCasterLevel: 10 },
+    targeting: {
+      delivery: ["target"],
+      targetText: "Up to five creatures, with target-count and separation limits determined by caster level and the spell rule.",
+      maxTargets: 5,
+      lineOfEffectRequired: true,
+      lineOfSightRequired: true,
+      objectAllowed: false,
+    },
+    duration: { kind: "instantaneous" },
+    savingThrow: { type: "none" },
+    spellResistance: { applies: true },
+    attackRoll: "none",
+    effects: [
+      {
+        effectId: "force-missiles",
+        kind: "damage",
+        damageType: "force",
+        dice: "1d4+1 per missile",
+        scaling: [
+          {
+            field: "missileCount",
+            operation: "step",
+            perCasterLevels: 2,
+            minimum: 1,
+            maximum: 5,
+            text: "One missile at caster level 1, plus one additional missile for every two caster levels beyond 1st, to five missiles at caster level 9+.",
+          },
+        ],
+        spellResistanceApplies: true,
+        tags: ["automatic-hit", "multiple-projectiles"],
+      },
+    ],
+    rulesSummary: "Automatically striking force projectiles; projectile count scales with caster level to a maximum of five.",
+    specialRules: ["Multiple missiles may be divided among legal targets subject to the spell's target-separation rule."],
+    sources: [srd("Magic Missile")],
+    tags: ["core", "srd", "arcane", "force", "direct-damage"],
+  },
+  {
+    id: "fireball",
+    name: "Fireball",
+    edition: "3.5e",
+    school: "evocation",
+    descriptors: ["fire"],
+    classAccess: [
+      access("sorcerer", 3, "arcane", srd("Fireball")),
+      access("wizard", 3, "arcane", srd("Fireball")),
+    ],
+    castingTime: { kind: "standard" },
+    components: [
+      { kind: "V", required: true },
+      { kind: "S", required: true },
+      { kind: "M", required: true, consumed: true, description: "Common non-costly material component; satisfied by a spell component pouch unless another rule says otherwise." },
+    ],
+    range: { kind: "long", baseFeet: 400, feetPerCasterLevel: 40 },
+    targeting: {
+      delivery: ["area", "spread"],
+      effectText: "A bead travels to the chosen point before detonating.",
+      areaText: "20-foot-radius spread",
+      radiusFeet: 20,
+      lineOfEffectRequired: true,
+      lineOfSightRequired: false,
+      objectAllowed: true,
+    },
+    duration: { kind: "instantaneous" },
+    savingThrow: { type: "reflex", outcome: "half" },
+    spellResistance: { applies: true },
+    attackRoll: "none",
+    effects: [
+      {
+        effectId: "fire-damage",
+        kind: "damage",
+        damageType: "fire",
+        dice: "1d6/caster level",
+        scaling: [
+          { field: "damageDice", operation: "dice", perCasterLevels: 1, dice: "1d6", maximum: 10 },
+        ],
+        saveApplies: true,
+        spellResistanceApplies: true,
+        tags: ["area-damage"],
+      },
+    ],
+    rulesSummary: "Long-range 20-foot-radius fire spread dealing 1d6 fire damage per caster level, capped at 10d6; Reflex half and spell resistance apply.",
+    specialRules: ["The projectile path and detonation point must satisfy the spell's obstruction and line-of-effect rules."],
+    sources: [srd("Fireball")],
+    tags: ["core", "srd", "arcane", "fire", "area", "direct-damage"],
+  },
+  {
+    id: "cure-light-wounds",
+    name: "Cure Light Wounds",
+    edition: "3.5e",
+    school: "conjuration",
+    subschool: "healing",
+    classAccess: [
+      access("bard", 1, "arcane", srd("Cure Light Wounds")),
+      access("cleric", 1, "divine", srd("Cure Light Wounds")),
+      access("druid", 1, "divine", srd("Cure Light Wounds")),
+      access("paladin", 1, "divine", srd("Cure Light Wounds")),
+      access("ranger", 2, "divine", srd("Cure Light Wounds")),
+    ],
+    domainAccess: [
+      { domainId: "healing", level: 1, source: srd("Healing Domain") },
+    ],
+    castingTime: { kind: "standard" },
+    components: [
+      { kind: "V", required: true },
+      { kind: "S", required: true },
+    ],
+    range: { kind: "touch" },
+    targeting: {
+      delivery: ["melee_touch"],
+      targetText: "Creature touched",
+      lineOfEffectRequired: true,
+      lineOfSightRequired: false,
+      objectAllowed: false,
+    },
+    duration: { kind: "instantaneous" },
+    savingThrow: { type: "will", outcome: "half", harmless: true, text: "Harmless for living creatures; undead interaction is hostile." },
+    spellResistance: { applies: true, harmless: true },
+    attackRoll: "melee_touch",
+    effects: [
+      {
+        effectId: "positive-energy-healing",
+        kind: "healing",
+        dice: "1d8",
+        scaling: [
+          { field: "healingBonus", operation: "add", perCasterLevels: 1, value: 1, maximum: 5 },
+        ],
+        tags: ["positive-energy", "living-target"],
+      },
+      {
+        effectId: "positive-energy-vs-undead",
+        kind: "damage",
+        damageType: "positive-energy",
+        dice: "1d8",
+        scaling: [
+          { field: "damageBonus", operation: "add", perCasterLevels: 1, value: 1, maximum: 5 },
+        ],
+        saveApplies: true,
+        spellResistanceApplies: true,
+        tags: ["undead-target", "conditional"],
+        rulesNote: "When used against undead, positive energy damages rather than heals and the hostile save/SR rules apply.",
+      },
+    ],
+    rulesSummary: "Touch spell that restores 1d8 + caster level (maximum +5) hit points to living creatures and instead damages undead with positive energy.",
+    sources: [srd("Cure Light Wounds"), srd("Healing Domain")],
+    tags: ["core", "srd", "arcane", "divine", "healing", "touch", "positive-energy"],
+  },
+  {
+    id: "dispel-magic",
+    name: "Dispel Magic",
+    edition: "3.5e",
+    school: "abjuration",
+    classAccess: [
+      access("bard", 3, "arcane", srd("Dispel Magic")),
+      access("cleric", 3, "divine", srd("Dispel Magic")),
+      access("druid", 4, "divine", srd("Dispel Magic")),
+      access("paladin", 3, "divine", srd("Dispel Magic")),
+      access("sorcerer", 3, "arcane", srd("Dispel Magic")),
+      access("wizard", 3, "arcane", srd("Dispel Magic")),
+    ],
+    domainAccess: [
+      { domainId: "magic", level: 3, source: srd("Magic Domain") },
+    ],
+    castingTime: { kind: "standard" },
+    components: [
+      { kind: "V", required: true },
+      { kind: "S", required: true },
+    ],
+    range: { kind: "medium", baseFeet: 100, feetPerCasterLevel: 10 },
+    targeting: {
+      delivery: ["target", "area", "burst"],
+      targetText: "One spellcaster, creature, or object, depending on dispel mode",
+      areaText: "20-foot-radius burst for area dispel mode",
+      radiusFeet: 20,
+      lineOfEffectRequired: true,
+      lineOfSightRequired: false,
+      objectAllowed: true,
+    },
+    duration: { kind: "instantaneous" },
+    savingThrow: { type: "none" },
+    spellResistance: { applies: false },
+    attackRoll: "none",
+    effects: [
+      {
+        effectId: "dispel-check",
+        kind: "dispel",
+        scaling: [
+          { field: "dispelCheckCasterLevelBonus", operation: "cap", maximum: 10, text: "Use caster level in the dispel check, capped at +10 for dispel magic." },
+        ],
+        tags: ["targeted-dispel", "area-dispel", "counterspell"],
+      },
+    ],
+    counterspells: ["dispel-magic"],
+    rulesSummary: "Performs targeted or area dispelling using a caster-level check capped at +10, and can also be used as a counterspell under the general counterspell rules.",
+    sources: [srd("Dispel Magic"), srd("Magic Domain")],
+    tags: ["core", "srd", "arcane", "divine", "abjuration", "dispel", "counterspell"],
+  },
+];
+
+export const DND35_CORE_SRD_SAMPLE_SPELLS_BY_ID = new Map(
+  DND35_CORE_SRD_SAMPLE_SPELLS.map((spell) => [spell.id, spell]),
+);
