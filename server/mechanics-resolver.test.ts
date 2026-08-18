@@ -151,6 +151,38 @@ test("resolveCheckTag: an untrained-allowed 3.5 skill can roll with zero ranks",
   assert.equal(result.rollData.statUsed, "wis.spot");
 });
 
+test("resolveCheckTag: a 5e-only skill cannot silently resolve in a D&D 3.5 campaign", async () => {
+  const storage = fakeStorage({
+    id: 11,
+    name: "Kira",
+    level: 5,
+    str: 10,
+    dex: 16,
+    con: 10,
+    int: 10,
+    wis: 14,
+    cha: 10,
+    charClass: "Rogue",
+    proficiencies: JSON.stringify(["Perception"]),
+    characterData: JSON.stringify({ dnd35Sheet: { skills: [{ name: "Spot", ranks: 8 }, { name: "Listen", ranks: 8 }] } }),
+  });
+  let prompt = "";
+  const result = await resolveCheckTag({
+    campaignId: 1,
+    rawResponse: '[CHECK]{"character":"Kira","skill":"Perception","dc":15}[/CHECK]',
+    storage: storage as any,
+    ruleset: "dnd35e",
+    rng: () => { throw new Error("RNG must not run for a non-3.5 skill tag"); },
+    narrate: async (value: string) => { prompt = value; return "The situation remains unresolved until the correct skill is used."; },
+  });
+
+  assert.ok(result);
+  assert.equal(result.rollData, null);
+  assert.equal(storage._logged.length, 0);
+  assert.match(prompt, /not a canonical core D&D 3\.5e skill/i);
+  assert.match(prompt, /Spot\/Listen\/Search/i);
+});
+
 test("resolveCheckTag: failed narration call falls back to a templated outcome description, not a throw", async () => {
   const storage = fakeStorage({ id: 7, level: 1, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, proficiencies: "[]" });
   const result = await resolveCheckTag({
