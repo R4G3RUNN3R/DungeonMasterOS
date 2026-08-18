@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Sparkles, ScrollText } from "lucide-react";
 import CompendiumBook from "@/components/CompendiumBook";
-import type { PublicDnd35Feat, PublicDnd35Spell } from "@/lib/knowledge-library";
+import type { KnowledgeLibraryResponse, PublicDnd35Feat, PublicDnd35Spell } from "@/lib/knowledge-library";
 import "@/library.css";
 
 type RulesTomeKind = "grimoire" | "holy-tome" | "feat-codex";
@@ -12,10 +12,10 @@ type Props = { kind: RulesTomeKind };
 type SpellResponse = { edition: "3.5e"; corpusStatus: string; spells: PublicDnd35Spell[] };
 type FeatResponse = { edition: "3.5e"; corpusStatus: string; feats: PublicDnd35Feat[] };
 
-const CONFIG: Record<RulesTomeKind, { title: string; subtitle: string; endpoint: string; icon: typeof BookOpen; volume: string }> = {
-  grimoire: { title: "The Grimoire", subtitle: "Arcane Spells & Workings", endpoint: "/api/knowledge/dnd35/spells?tradition=arcane", icon: Sparkles, volume: "Arcane Reference" },
-  "holy-tome": { title: "The Holy Tome", subtitle: "Divine Spells & Domains", endpoint: "/api/knowledge/dnd35/spells?tradition=divine", icon: ScrollText, volume: "Divine Reference" },
-  "feat-codex": { title: "The Feat Codex", subtitle: "Feats, Metamagic & Prerequisites", endpoint: "/api/knowledge/dnd35/feats", icon: BookOpen, volume: "Character Reference" },
+const CONFIG: Record<RulesTomeKind, { title: string; subtitle: string; endpoint: string; icon: typeof BookOpen; volume: string; volumeId: string }> = {
+  grimoire: { title: "The Grimoire", subtitle: "Arcane Spells & Workings", endpoint: "/api/knowledge/dnd35/spells?tradition=arcane", icon: Sparkles, volume: "Arcane Reference", volumeId: "dnd35-grimoire" },
+  "holy-tome": { title: "The Holy Tome", subtitle: "Divine Spells & Domains", endpoint: "/api/knowledge/dnd35/spells?tradition=divine", icon: ScrollText, volume: "Divine Reference", volumeId: "dnd35-holy-tome" },
+  "feat-codex": { title: "The Feat Codex", subtitle: "Feats, Metamagic & Prerequisites", endpoint: "/api/knowledge/dnd35/feats", icon: BookOpen, volume: "Character Reference", volumeId: "dnd35-feat-codex" },
 };
 
 function words(value: string) {
@@ -26,15 +26,31 @@ function sourceLine(sources: Array<{ abbreviation: string; section?: string; pag
   return sources.map((source) => [source.abbreviation, source.section, source.page ? `p. ${source.page}` : ""].filter(Boolean).join(" · ")).join("; ");
 }
 
+function cleanOpenRulesParagraph(value: string) {
+  return value
+    .replace(/^_(.+?):_\s*/s, "$1: ")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\\([\[\]])/g, "$1")
+    .trim();
+}
+
 function SpellPage({ spell }: { spell: PublicDnd35Spell }) {
   const classes = spell.classAccess.map((access) => `${words(access.classId)} ${access.level}`).join(", ");
   const domains = spell.domainAccess?.map((access) => `${words(access.domainId)} ${access.level}`).join(", ");
-  const components = spell.components.filter((component) => component.required).map((component) => component.kind).join(", ") || "None";
+  const components = spell.components.filter((component) => component.required).map((component) => {
+    const tradition = component.appliesToTradition ? ` (${component.appliesToTradition})` : "";
+    return `${component.kind}${tradition}`;
+  }).join(", ") || "None";
   const target = spell.targeting.targetText || spell.targeting.areaText || spell.targeting.effectText || spell.targeting.delivery.map(words).join(", ");
   const range = [words(spell.range.kind), spell.range.text].filter(Boolean).join(" — ");
   const duration = [words(spell.duration.kind), spell.duration.text].filter(Boolean).join(" — ");
   const save = spell.savingThrow.type === "none" ? "None" : `${words(spell.savingThrow.type)}${spell.savingThrow.outcome ? ` ${words(spell.savingThrow.outcome)}` : ""}`;
   const sr = spell.spellResistance.applies === true ? "Yes" : spell.spellResistance.applies === false ? "No" : "Special";
+  const ruleParagraphs = spell.rulesText
+    ?.split(/\n\s*\n/)
+    .map(cleanOpenRulesParagraph)
+    .filter(Boolean) ?? [];
 
   return (
     <article>
@@ -42,18 +58,25 @@ function SpellPage({ spell }: { spell: PublicDnd35Spell }) {
       <div className="rules-tome-subheading">{words(spell.school)}{spell.subschool ? ` (${words(spell.subschool)})` : ""}{spell.descriptors?.length ? ` [${spell.descriptors.map(words).join(", ")}]` : ""}</div>
       <div className="rules-tome-stat"><strong>Level</strong><span>{classes}{domains ? `; ${domains} domain` : ""}</span></div>
       <div className="rules-tome-stat"><strong>Components</strong><span>{components}</span></div>
-      <div className="rules-tome-stat"><strong>Casting Time</strong><span>{words(spell.castingTime.kind)}</span></div>
+      <div className="rules-tome-stat"><strong>Casting Time</strong><span>{spell.castingTime.text || words(spell.castingTime.kind)}</span></div>
       <div className="rules-tome-stat"><strong>Range</strong><span>{range}</span></div>
       <div className="rules-tome-stat"><strong>Target / Area</strong><span>{target}</span></div>
       <div className="rules-tome-stat"><strong>Duration</strong><span>{duration}</span></div>
-      <div className="rules-tome-stat"><strong>Saving Throw</strong><span>{save}{spell.savingThrow.harmless ? " (harmless where applicable)" : ""}</span></div>
-      <div className="rules-tome-stat"><strong>Spell Resistance</strong><span>{sr}</span></div>
+      <div className="rules-tome-stat"><strong>Saving Throw</strong><span>{spell.savingThrow.text || save}{spell.savingThrow.harmless && !spell.savingThrow.text ? " (harmless where applicable)" : ""}</span></div>
+      <div className="rules-tome-stat"><strong>Spell Resistance</strong><span>{spell.spellResistance.text || sr}</span></div>
       <div className="rules-tome-rule" />
-      <p className="rules-tome-copy">{spell.rulesSummary}</p>
-      {spell.specialRules?.map((rule) => <p className="rules-tome-copy" key={rule}>{rule}</p>)}
-      {spell.components.filter((component) => component.required && component.description).map((component) => (
+      {ruleParagraphs.length ? (
+        ruleParagraphs.map((paragraph, index) => <p className="rules-tome-copy" key={`${spell.id}-rule-${index}`}>{paragraph}</p>)
+      ) : (
+        <p className="rules-tome-copy">{spell.rulesSummary}</p>
+      )}
+      {!ruleParagraphs.length && spell.specialRules?.map((rule) => <p className="rules-tome-copy" key={rule}>{rule}</p>)}
+      {!ruleParagraphs.length && spell.components.filter((component) => component.required && component.description).map((component) => (
         <div className="rules-tome-warning" key={`${component.kind}-${component.description}`}><strong>{component.kind}:</strong> {component.description}</div>
       ))}
+      {spell.executionStatus === "structured" && (
+        <div className="rules-tome-warning">Canonical reference entry. Cast legality and resources are authoritative; this spell's complete outcome resolver is still being encoded server-side.</div>
+      )}
       <div className="rules-tome-source">Source: {sourceLine(spell.sources)}</div>
     </article>
   );
@@ -101,6 +124,7 @@ export default function RulesTomePage({ kind }: Props) {
   const [spread, setSpread] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const result = useQuery<SpellResponse | FeatResponse>({ queryKey: [config.endpoint] });
+  const library = useQuery<KnowledgeLibraryResponse>({ queryKey: ["/api/knowledge/library"] });
 
   const allEntries = useMemo(() => {
     if (!result.data) return [] as Array<PublicDnd35Spell | PublicDnd35Feat>;
@@ -117,13 +141,18 @@ export default function RulesTomePage({ kind }: Props) {
   const visible = entries.slice(safeSpread * pageSize, safeSpread * pageSize + pageSize);
   const selected = entries.find((entry) => entry.id === selectedId) ?? visible[0] ?? allEntries[0];
   const Icon = config.icon;
+  const dnd35Shelf = library.data?.shelves.find((shelf) => shelf.ruleset === "dnd35e");
+  const volumeState = dnd35Shelf?.volumes.find((volume) => volume.id === config.volumeId);
+  const corpusMessage = volumeState?.status === "available"
+    ? `${volumeState.recordCount ?? allEntries.length} canonical records are indexed in this volume. Imported SRD rules are authoritative reference text; hand-hardened entries additionally drive executable mechanics.`
+    : volumeState?.note || "Verified records are authoritative; entries not yet catalogued are deliberately absent rather than reconstructed from AI memory.";
 
   const leftPage = (
     <section>
       <div className="rules-tome-subheading">Dungeons & Dragons 3.5 Edition</div>
       <h1 className="rules-tome-heading">{config.title}</h1>
       <p className="rules-tome-copy">{config.subtitle}. This volume is rendered from the same canonical mechanical records used by DungeonMasterOS during play.</p>
-      <div className="rules-tome-warning">Corpus status: foundation. Verified records are authoritative; entries not yet catalogued are deliberately absent rather than reconstructed from AI memory.</div>
+      <div className="rules-tome-warning">{corpusMessage}</div>
       <input className="rules-tome-search" value={query} onChange={(event) => { setQuery(event.target.value); setSpread(0); setSelectedId(null); }} placeholder={`Search ${config.title.toLowerCase()}...`} aria-label={`Search ${config.title}`} />
       <div className="rules-tome-index">
         {visible.map((entry) => (
