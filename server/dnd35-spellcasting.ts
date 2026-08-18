@@ -112,7 +112,8 @@ function componentAccess(character: Character, items: Item[]) {
   const names = items.map(itemWords);
   const tags = items.flatMap((item) => [slug(item.name), slug(item.trueName || "")]).filter(Boolean);
   return {
-    hasSpellComponentPouch: feats.some((feat) => feat.featId === "eschew-materials") || names.some((text) => text.includes("spell component pouch") || text.includes("component pouch")),
+    hasSpellComponentPouch: names.some((text) => text.includes("spell component pouch") || text.includes("component pouch")),
+    canEschewOrdinaryMaterials: feats.some((feat) => feat.featId === "eschew-materials"),
     hasDivineFocus: names.some((text) => text.includes("holy symbol") || text.includes("divine focus") || text.includes("sacred focus")),
     itemTags: tags,
     availableXp: character.xp,
@@ -131,9 +132,6 @@ function arcaneFailurePercent(character: Character, items: Item[]) {
   const countedNames = new Set<string>();
   let total = 0;
 
-  // Canonical 3.5 reward/equipment records carry ASF directly. This is the
-  // preferred source because it is edition-specific and does not rely on an
-  // AI-authored characterData armor description.
   for (const item of equipped) {
     const canonical = canonicalDnd35ItemFromInventory(item);
     const asf = canonical?.armor?.arcaneSpellFailurePercent;
@@ -143,7 +141,6 @@ function arcaneFailurePercent(character: Character, items: Item[]) {
     }
   }
 
-  // Preserve existing manually-entered/imported 3.5 sheet armor as a fallback.
   const data = parseJson<any>(character.characterData, {});
   const armor = Array.isArray(data?.dnd35Sheet?.equipment?.armor) ? data.dnd35Sheet.equipment.armor : [];
   const equippedNames = new Set(equipped.map((item) => normalize(item.name)));
@@ -201,7 +198,6 @@ export function resolveCharacterDnd35SpellCast(character: Character, spell: Dnd3
       environment: {
         canSpeak: !/\b(silenced|mute|cannot speak|unable to speak)\b/.test(effectText),
         hasSomaticFreedom: !/\b(paralyzed|pinned|hands bound|unable to move)\b/.test(effectText),
-        threatened: false,
         antimagic: /\bantimagic\b/.test(effectText),
         lineOfEffect: true,
         lineOfSight: true,
