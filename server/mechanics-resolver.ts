@@ -8,7 +8,7 @@
 import { resolveD20, type Rng } from "./dice-engine";
 import { resolveCharacterModifier, type Ability } from "./character-stats";
 import { extractCheckTag } from "./mechanics-tags";
-import { dnd35RecordedSkillRanks, getDnd35Skill } from "@shared/dnd35-skills";
+import { dnd35RecordedSkillRanks, getDnd35Skill, type Dnd35SkillDefinition } from "@shared/dnd35-skills";
 
 export interface RollDisplayData {
   rollType: "check";
@@ -70,9 +70,12 @@ function buildUntrainedNarratePrompt(characterName: string, skillName: string) {
   return `${characterName} attempted ${skillName}, but under D&D 3.5e this is a trained-only skill and the character has 0 recorded ranks. No d20 roll is made. Narrate briefly that the character lacks the trained technique or knowledge to complete this specific skilled attempt. Do not invent a roll or numeric result.`;
 }
 
-function dnd35SkillRankModifier(character: CharacterLike, skillName: string) {
-  const definition = getDnd35Skill(skillName);
-  if (!definition || !definition.ability) return null;
+function buildInvalidDnd35SkillPrompt(characterName: string, proposedSkill: string) {
+  return `${characterName}'s action was tagged with the skill "${proposedSkill}", but that is not a canonical core D&D 3.5e skill. No d20 roll is made. Narrate the immediate fictional situation without claiming a check result and without substituting a 5e skill. The Dungeon Master must use the appropriate 3.5e skill (for example Spot/Listen/Search rather than Perception, or Hide/Move Silently rather than Stealth) when a check is actually required.`;
+}
+
+function dnd35SkillRankModifier(character: CharacterLike, definition: Dnd35SkillDefinition, skillName: string) {
+  if (!definition.ability) return null;
   const ranks = dnd35RecordedSkillRanks(character.characterData || "{}", skillName);
   return {
     definition,
@@ -88,12 +91,22 @@ export async function resolveCheckTag(params: ResolveCheckParams): Promise<Resol
   const character = params.storage.getCharacterByName(params.campaignId, tag.character);
   if (!character) return null;
 
-  const dnd35Skill =
-    params.ruleset === "dnd35e" && tag.skill && tag.skill !== "attack" && !tag.isSave
-      ? dnd35SkillRankModifier(character, tag.skill)
-      : null;
+  const isDnd35SkillCheck = params.ruleset === "dnd35e" && !!tag.skill && tag.skill !== "attack" && !tag.isSave;
+  const dnd35Definition = isDnd35SkillCheck ? getDnd35Skill(tag.skill!) : undefined;
 
-  if (dnd35Skill?.definition.trainedOnly && dnd35Skill.ranks < 1) {
+  if (isDnd35SkillCheck && !dnd35Definition) {
+    let cleanContent: string;
+    try {
+      cleanContent = await params.narrate(buildInvalidDnd35SkillPrompt(character.name || tag.character, tag.skill!));
+    } catch {
+      cleanContent = "That action cannot be resolved with the proposed skill under the campaign's D&D 3.5e rules.";
+    }
+    return { cleanContent, rollData: null };
+  }
+
+  const dnd35Skill = dnd35Definition ? dnd35SkillRankModifier(character, dnd35Definition, tag.skill!) : null;
+
+  if (dnd35Skill?.definition.trainedOnly && dnd35Skill.ranks <= 0) {
     let cleanContent: string;
     try {
       cleanContent = await params.narrate(buildUntrainedNarratePrompt(character.name || tag.character, dnd35Skill.definition.name));
