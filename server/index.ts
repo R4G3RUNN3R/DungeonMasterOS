@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { registerCompendiumRoutes } from "./compendium-routes";
+import { registerKnowledgeRoutes } from "./knowledge-routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -11,7 +12,6 @@ import { initializeCompendium } from "./compendium";
 const app = express();
 const httpServer = createServer(app);
 
-// ── Raw body for Stripe webhooks ───────────────────────────────────────────
 app.use(
   express.json({
     verify: (req: any, _res, buf) => {
@@ -22,7 +22,6 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// ── Security headers for production ───────────────────────────────────────
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
   app.use((_req, res, next) => {
@@ -34,7 +33,6 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// ── Request logging ────────────────────────────────────────────────────────
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -71,7 +69,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Run DB migrations before starting
   try {
     runMigrations();
     log("Database migrations complete", "db");
@@ -92,12 +89,14 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
-  // Public, read-only catalogue endpoints. Kept separate from campaign routes so
-  // the website compendium can evolve without touching active gameplay handlers.
+  // Read-only catalogue and Library of Knowledge routes are registered before
+  // campaign handlers. The knowledge layer also owns the narrow 3.5 feat
+  // validation guard that must run before the legacy level-up route accepts a
+  // feat selection.
   registerCompendiumRoutes(app);
+  registerKnowledgeRoutes(app);
   await registerRoutes(httpServer, app);
 
-  // Error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -106,7 +105,6 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
-  // Serve frontend
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
