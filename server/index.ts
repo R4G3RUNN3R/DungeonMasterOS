@@ -4,7 +4,9 @@ import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { registerCompendiumRoutes } from "./compendium-routes";
 import { registerKnowledgeRoutes } from "./knowledge-routes";
+import { registerDnd35ItemRoutes } from "./dnd35-item-routes";
 import { initializeDnd35KnowledgeLibrary } from "./knowledge-library";
+import { initializeDnd35ItemLibrary } from "./dnd35-item-library";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -86,14 +88,17 @@ app.use((req, res, next) => {
       );
     }
 
-    // The pinned 3.5 SRD is a knowledge dependency, not an availability
-    // dependency. If the remote source cannot be fetched, the Library keeps
-    // the curated canonical foundation instead of preventing the server from
-    // starting. Partial imports are rejected by the importers themselves.
+    // Pinned 3.5 SRD corpora are knowledge dependencies, not availability
+    // dependencies. Remote/source failures leave the server operational and
+    // make the affected shelf report fallback/cataloguing instead of silently
+    // publishing a partial rules corpus.
     try {
-      const knowledge = await initializeDnd35KnowledgeLibrary();
+      const [knowledge, items] = await Promise.all([
+        initializeDnd35KnowledgeLibrary(),
+        initializeDnd35ItemLibrary(),
+      ]);
       log(
-        `D&D 3.5 Library: spells ${knowledge.spellCorpusStatus} (${knowledge.totalSpells}; ${knowledge.arcaneSpells} arcane/${knowledge.divineSpells} divine), feats ${knowledge.featCorpusStatus} (${knowledge.totalFeats}; ${knowledge.executableFeats} executable)`,
+        `D&D 3.5 Library: spells ${knowledge.spellCorpusStatus} (${knowledge.totalSpells}; ${knowledge.arcaneSpells} arcane/${knowledge.divineSpells} divine), feats ${knowledge.featCorpusStatus} (${knowledge.totalFeats}; ${knowledge.executableFeats} executable), items ${items.corpusStatus} (${items.totalItems}; ${items.weapons} weapons/ammunition, ${items.armor} armor/shields)`,
         "knowledge",
       );
       if (knowledge.spellErrors.length) {
@@ -102,8 +107,11 @@ app.use((req, res, next) => {
       if (knowledge.featErrors.length) {
         console.warn("D&D 3.5 SRD feat import fell back to curated records:", knowledge.featErrors);
       }
+      if (items.errors.length) {
+        console.warn("D&D 3.5 SRD equipment import remains unavailable:", items.errors);
+      }
     } catch (error) {
-      console.warn("D&D 3.5 knowledge initialization failed unexpectedly; curated records remain available:", error);
+      console.warn("D&D 3.5 knowledge initialization failed unexpectedly; safe fallback records remain available:", error);
     }
   } catch (err: any) {
     console.error("Database migration failed:", err);
@@ -115,6 +123,7 @@ app.use((req, res, next) => {
   // validation guard that must run before the legacy level-up route accepts a
   // feat selection.
   registerCompendiumRoutes(app);
+  registerDnd35ItemRoutes(app);
   registerKnowledgeRoutes(app);
   await registerRoutes(httpServer, app);
 
