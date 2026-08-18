@@ -1,22 +1,24 @@
 import type { Character } from "@shared/schema";
 import {
   DND35_CORE_FEATS,
-  DND35_SPELLS,
-  getDnd35Feat,
-  getDnd35Grimoire,
-  getDnd35HolyTome,
-  getDnd35Spell,
+  DND35_SPELLS as DND35_CURATED_SPELLS,
+  getDnd35Feat as getStaticDnd35Feat,
   listDnd35FeatsByCategory,
-  searchDnd35Rules,
 } from "@shared/dnd35-rules/catalogue";
 import { DND35_SOURCE_MANIFEST } from "@shared/dnd35-rules/sources";
 import { evaluateDnd35FeatPrerequisites, type Dnd35FeatQualificationState } from "@shared/dnd35-rules/feat-prerequisites";
 import type { Dnd35FeatDefinition, Dnd35SpellDefinition, Dnd35SpellTradition } from "@shared/dnd35-rules/types";
 import { resolveCharacterModifier } from "./character-stats";
 import { searchItemDefinitions } from "./compendium";
+import {
+  DND35_SRD_SOURCE_REVISION,
+  loadDnd35SrdSpellCorpus,
+  type Dnd35ImportedSpell,
+} from "./dnd35-srd-spell-importer";
 
 export type KnowledgeVolumeKind = "items" | "bestiary" | "grimoire" | "holy-tome" | "feat-codex";
 export type KnowledgeVolumeStatus = "available" | "foundation" | "cataloguing";
+export type Dnd35SpellCorpusStatus = "foundation" | "srd-complete" | "srd-fallback";
 
 export type KnowledgeVolume = {
   id: string;
@@ -38,11 +40,113 @@ export type KnowledgeShelf = {
   volumes: KnowledgeVolume[];
 };
 
+export type Dnd35KnowledgeStatus = {
+  spellCorpusStatus: Dnd35SpellCorpusStatus;
+  totalSpells: number;
+  arcaneSpells: number;
+  divineSpells: number;
+  sourceRevision: string;
+  errors: string[];
+};
+
 const sourceById = new Map(DND35_SOURCE_MANIFEST.map((source) => [source.id, source]));
 
+let runtimeDnd35Spells: Dnd35SpellDefinition[] = [...DND35_CURATED_SPELLS];
+let runtimeSpellById = new Map(runtimeDnd35Spells.map((spell) => [spell.id, spell]));
+let runtimeSpellByName = new Map(runtimeDnd35Spells.map((spell) => [spell.name.trim().toLowerCase(), spell]));
+let spellCorpusStatus: Dnd35SpellCorpusStatus = "foundation";
+let spellCorpusErrors: string[] = [];
+
+function replaceRuntimeSpells(spells: Dnd35SpellDefinition[]) {
+  runtimeDnd35Spells = [...spells].sort((a, b) => a.name.localeCompare(b.name));
+  runtimeSpellById = new Map(runtimeDnd35Spells.map((spell) => [spell.id, spell]));
+  runtimeSpellByName = new Map(runtimeDnd35Spells.map((spell) => [spell.name.trim().toLowerCase(), spell]));
+}
+
+function mergeImportedWithCurated(imported: Dnd35ImportedSpell[]) {
+  const byId = new Map<string, Dnd35SpellDefinition>(imported.map((spell) => [spell.id, spell]));
+  for (const curated of DND35_CURATED_SPELLS) {
+    const sourceRecord = byId.get(curated.id) as Dnd35ImportedSpell | undefined;
+    byId.set(curated.id, {
+      ...(sourceRecord ?? {}),
+      ...curated,
+      // Preserve the complete open reference text from the bulk SRD record,
+      // while allowing hand-hardened mechanical effects to override the
+      // conservative imported placeholder effect.
+      ...(sourceRecord?.rulesText ? { rulesText: sourceRecord.rulesText } : {}),
+      ...(sourceRecord?.importedFrom ? { importedFrom: sourceRecord.importedFrom } : {}),
+      executionStatus: "executable",
+    } as Dnd35SpellDefinition);
+  }
+  return Array.from(byId.values());
+}
+
+export async function initializeDnd35KnowledgeLibrary() {
+  const imported = await loadDnd35SrdSpellCorpus();
+  if (!imported.ok) {
+    replaceRuntimeSpells(DND35_CURATED_SPELLS);
+    spellCorpusStatus = "srd-fallback";
+    spellCorpusErrors = imported.errors.length ? imported.errors : ["Pinned SRD spell import failed without a reported source error."];
+    return getDnd35KnowledgeStatus();
+  }
+
+  replaceRuntimeSpells(mergeImportedWithCurated(imported.spells));
+  spellCorpusStatus = "srd-complete";
+  spellCorpusErrors = [];
+  return getDnd35KnowledgeStatus();
+}
+
+export function listCanonicalDnd35Spells() {
+  return runtimeDnd35Spells;
+}
+
+export function getDnd35Spell(idOrName: string) {
+  return runtimeSpellById.get(idOrName) ?? runtimeSpellByName.get(idOrName.trim().toLowerCase());
+}
+
+export const getDnd35Feat = getStaticDnd35Feat;
+
+export function getDnd35Grimoire() {
+  return runtimeDnd35Spells.filter((spell) => spell.classAccess.some((access) => access.tradition === "arcane"));
+}
+
+export function getDnd35HolyTome() {
+  return runtimeDnd35Spells.filter((spell) => spell.classAccess.some((access) => access.tradition === "divine"));
+}
+
+export function getDnd35KnowledgeStatus(): Dnd35KnowledgeStatus {
+  return {
+    spellCorpusStatus,
+    totalSpells: runtimeDnd35Spells.length,
+    arcaneSpells: getDnd35Grimoire().length,
+    divineSpells: getDnd35HolyTome().length,
+    sourceRevision: DND35_SRD_SOURCE_REVISION,
+    errors: [...spellCorpusErrors],
+  };
+}
+
+function searchRuntimeSpells(query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  return runtimeDnd35Spells.filter((spell) => [
+    spell.id,
+    spell.name,
+    spell.school,
+    ...spell.tags,
+    spell.rulesSummary,
+    String((spell as any).rulesText ?? ""),
+  ].some((value) => String(value).toLowerCase().includes(needle)));
+}
+
 export function getKnowledgeShelves(): KnowledgeShelf[] {
-  const arcaneCount = getDnd35Grimoire().length;
-  const divineCount = getDnd35HolyTome().length;
+  const status = getDnd35KnowledgeStatus();
+  const spellVolumeStatus: KnowledgeVolumeStatus = status.spellCorpusStatus === "srd-complete" ? "available" : "foundation";
+  const spellNote = status.spellCorpusStatus === "srd-complete"
+    ? `Pinned Revised 3.5 SRD spell corpus loaded (${status.totalSpells} canonical spell records). Hand-hardened executable records override conservative imported effect placeholders.`
+    : status.spellCorpusStatus === "srd-fallback"
+      ? "The pinned SRD corpus could not be loaded at startup. DungeonMasterOS is using its curated canonical spell foundation rather than publishing a partial import."
+      : "The canonical schema is live; the pinned SRD spell corpus has not been initialized yet.";
+
   return [
     {
       id: "dnd35",
@@ -53,9 +157,9 @@ export function getKnowledgeShelves(): KnowledgeShelf[] {
       volumes: [
         { id: "dnd35-items", kind: "items", title: "The Item Compendium", subtitle: "Arms, armour, equipment, potions and wondrous things", status: "cataloguing", note: "The existing live item catalogue is 5e data. A true 3.5 item corpus must be ingested before this volume can become authoritative." },
         { id: "dnd35-bestiary", kind: "bestiary", title: "The Bestiary", subtitle: "Creatures, monsters and encounter records", status: "cataloguing", note: "The 3.5 bestiary corpus is still being prepared." },
-        { id: "dnd35-grimoire", kind: "grimoire", title: "The Grimoire", subtitle: "Arcane spells and their exact workings", href: "/compendiums/dnd35/grimoire", status: "foundation", recordCount: arcaneCount, note: "The canonical schema is live; the full SRD spell corpus is still being expanded." },
-        { id: "dnd35-holy-tome", kind: "holy-tome", title: "The Holy Tome", subtitle: "Divine spells, domains and sacred workings", href: "/compendiums/dnd35/holy-tome", status: "foundation", recordCount: divineCount, note: "The canonical schema is live; the full SRD spell corpus is still being expanded." },
-        { id: "dnd35-feat-codex", kind: "feat-codex", title: "The Feat Codex", subtitle: "Feats, prerequisites, metamagic and item creation", href: "/compendiums/dnd35/feat-codex", status: "foundation", recordCount: DND35_CORE_FEATS.length, note: "Core magic-facing feats are executable; the full PHB feat corpus is still being expanded." },
+        { id: "dnd35-grimoire", kind: "grimoire", title: "The Grimoire", subtitle: "Arcane spells and their exact workings", href: "/compendiums/dnd35/grimoire", status: spellVolumeStatus, recordCount: status.arcaneSpells, note: spellNote },
+        { id: "dnd35-holy-tome", kind: "holy-tome", title: "The Holy Tome", subtitle: "Divine spells, domains and sacred workings", href: "/compendiums/dnd35/holy-tome", status: spellVolumeStatus, recordCount: status.divineSpells, note: spellNote },
+        { id: "dnd35-feat-codex", kind: "feat-codex", title: "The Feat Codex", subtitle: "Feats, prerequisites, metamagic and item creation", href: "/compendiums/dnd35/feat-codex", status: "foundation", recordCount: DND35_CORE_FEATS.length, note: "Core magic-facing feats are executable; the full SRD feat corpus is still being expanded." },
       ],
     },
     {
@@ -99,18 +203,18 @@ export function publicDnd35Feat(feat: Dnd35FeatDefinition) {
 
 export function listPublicDnd35Spells(params: { tradition?: Dnd35SpellTradition; query?: string }) {
   const base = params.query?.trim()
-    ? searchDnd35Rules(params.query).spells
+    ? searchRuntimeSpells(params.query)
     : params.tradition === "arcane"
       ? getDnd35Grimoire()
       : params.tradition === "divine"
         ? getDnd35HolyTome()
-        : DND35_SPELLS;
+        : runtimeDnd35Spells;
   return base.map(publicDnd35Spell);
 }
 
 export function listPublicDnd35Feats(params: { category?: Dnd35FeatDefinition["categories"][number]; query?: string }) {
   const base = params.query?.trim()
-    ? searchDnd35Rules(params.query).feats
+    ? DND35_CORE_FEATS.filter((feat) => [feat.id, feat.name, ...feat.categories, ...feat.tags, feat.rulesSummary].some((value) => normalize(value).includes(normalize(params.query!))))
     : params.category
       ? listDnd35FeatsByCategory(params.category)
       : DND35_CORE_FEATS;
@@ -287,7 +391,7 @@ function includesRuleName(text: string, name: string) {
 
 export function buildCanonicalRulesContext(ruleset: string, actionText: string, characters: Character[] = []) {
   if (ruleset !== "dnd35e") return "";
-  const spells = DND35_SPELLS.filter((spell) => includesRuleName(actionText, spell.name));
+  const spells = runtimeDnd35Spells.filter((spell) => includesRuleName(actionText, spell.name));
   const feats = DND35_CORE_FEATS.filter((feat) => includesRuleName(actionText, feat.name));
   const activeFeatRecords = characters.flatMap(readStoredDnd35FeatSelections);
   if (!spells.length && !feats.length && !activeFeatRecords.length) return "";
@@ -295,7 +399,9 @@ export function buildCanonicalRulesContext(ruleset: string, actionText: string, 
   const spellLines = spells.map((spell) => {
     const access = spell.classAccess.map((entry) => `${entry.classId} ${entry.level}`).join(", ");
     const components = spell.components.filter((component) => component.required).map((component) => component.kind).join(", ") || "none";
-    return `SPELL ${spell.name}: ${spell.rulesSummary} | School ${spell.school}${spell.subschool ? ` (${spell.subschool})` : ""} | Lists ${access} | Components ${components} | Range ${spell.range.kind} | Save ${spell.savingThrow.type}${spell.savingThrow.outcome ? ` ${spell.savingThrow.outcome}` : ""} | SR ${String(spell.spellResistance.applies)}.`;
+    const rulesText = String((spell as any).rulesText ?? "").replace(/\s+/g, " ").trim();
+    const reference = rulesText ? ` | Canonical rule: ${rulesText.slice(0, 1200)}` : "";
+    return `SPELL ${spell.name}: ${spell.rulesSummary} | School ${spell.school}${spell.subschool ? ` (${spell.subschool})` : ""} | Lists ${access} | Components ${components} | Range ${spell.range.kind} | Save ${spell.savingThrow.type}${spell.savingThrow.outcome ? ` ${spell.savingThrow.outcome}` : ""} | SR ${String(spell.spellResistance.applies)}${reference}.`;
   });
   const featLines = feats.map((feat) => `FEAT ${feat.name}: ${feat.rulesSummary}${feat.prerequisiteSummary ? ` | Prerequisite: ${feat.prerequisiteSummary}` : ""}.`);
   const characterFeatLines = activeFeatRecords.map((feat) => `CHARACTER FEAT ${feat.name}: ${feat.rulesSummary}`);
@@ -303,6 +409,7 @@ export function buildCanonicalRulesContext(ruleset: string, actionText: string, 
   return [
     "CANONICAL RULES LIBRARY — D&D 3.5e SOURCE OF TRUTH:",
     "When a record below applies, its mechanics override model memory and freeform narration. Do not silently substitute a different-edition rule.",
+    "If a record is marked as reference/structured rather than executable, use its canonical text to narrate faithfully but do not invent persistent mechanical mutations that the server has not resolved.",
     ...spellLines,
     ...featLines,
     ...characterFeatLines,
@@ -314,5 +421,3 @@ export function resolveCanonicalItemDefinition(ruleset: string, name: string) {
   if (!needle) return undefined;
   return searchItemDefinitions(name, 20).find((row: any) => normalize(String(row.name || "")) === needle && String(row.ruleset || "") === ruleset);
 }
-
-export { getDnd35Feat, getDnd35Spell };
