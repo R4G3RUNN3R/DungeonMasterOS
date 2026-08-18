@@ -10,6 +10,7 @@ import type { Dnd35CastPreflightInput } from "./cast-preflight";
 
 export type Dnd35ComponentAccessState = {
   hasSpellComponentPouch?: boolean;
+  canEschewOrdinaryMaterials?: boolean;
   hasDivineFocus?: boolean;
   itemTags?: string[];
   availableXp?: number;
@@ -35,37 +36,39 @@ function componentDecision(
 ): Dnd35RuleDecision | null {
   if (!component.required) return null;
 
-  // Revised 3.5 spell stat blocks use M/DF and F/DF to mean an arcane caster
-  // supplies the material/focus while a divine caster supplies a divine focus.
-  // Bulk-imported SRD records carry that distinction explicitly so this guard
-  // must not turn the slash into an accidental AND requirement.
   if (component.appliesToTradition && component.appliesToTradition !== tradition) return null;
 
   if (component.kind === "M") {
-    const costly = (component.gpCost ?? 0) > 1;
+    const gpCost = component.gpCost ?? 0;
+    const eschewEligible = gpCost <= 1;
+    const costly = gpCost > 1;
     const specificallyTagged = Boolean(component.itemTags?.length);
+    const ordinaryAccess = access.hasSpellComponentPouch === true || (eschewEligible && access.canEschewOrdinaryMaterials === true);
+
     if (!costly && !specificallyTagged) {
-      const passed = access.hasSpellComponentPouch === true;
       return {
         code: "MATERIAL_COMPONENT",
-        passed,
+        passed: ordinaryAccess,
         blocking: true,
-        message: passed
-          ? "A spell component pouch satisfies the ordinary material component."
-          : "The spell requires an ordinary material component and no usable component pouch is recorded.",
+        message: ordinaryAccess
+          ? access.hasSpellComponentPouch
+            ? "A spell component pouch satisfies the ordinary material component."
+            : "Eschew Materials satisfies the ordinary material component."
+          : "The spell requires an ordinary material component and neither a usable component pouch nor an applicable Eschew Materials feat is recorded.",
       };
     }
-    // Eschew Materials is represented upstream by hasSpellComponentPouch for
-    // material components costing 1 gp or less. A specifically tracked costly
-    // or unusual component still needs its actual inventory tag.
-    if (!costly && specificallyTagged && access.hasSpellComponentPouch) {
+
+    if (!costly && specificallyTagged && ordinaryAccess) {
       return {
         code: "MATERIAL_COMPONENT",
         passed: true,
         blocking: true,
-        message: "A spell component pouch or equivalent ordinary-component access satisfies this material component.",
+        message: access.hasSpellComponentPouch
+          ? "A spell component pouch satisfies this ordinary material component."
+          : "Eschew Materials satisfies this material component because its encoded cost does not exceed 1 gp.",
       };
     }
+
     const passed = requiredTagsPresent(component.itemTags, access.itemTags);
     return {
       code: costly ? "COSTLY_MATERIAL_COMPONENT" : "SPECIFIC_MATERIAL_COMPONENT",
@@ -74,16 +77,14 @@ function componentDecision(
       message: passed
         ? "The required specific material component is present."
         : costly
-          ? `The spell requires its specific costly material component${component.gpCost ? ` (${component.gpCost} gp)` : ""}; generic wealth or a component pouch does not satisfy this check.`
+          ? `The spell requires its specific costly material component${component.gpCost ? ` (${component.gpCost} gp)` : ""}; generic wealth, a component pouch, and Eschew Materials do not satisfy this check.`
           : "The spell requires a specific material component that is not present in recorded inventory tags.",
     };
   }
+
   if (component.kind === "F") {
     const costly = (component.gpCost ?? 0) > 0;
     const taggedFocusPresent = requiredTagsPresent(component.itemTags, access.itemTags);
-    // In the 3.5 equipment rules, an ordinary spell component pouch includes
-    // focus components with no specifically listed cost (other than divine
-    // foci and foci too large to fit). Costly foci remain explicit inventory.
     const passed = costly ? taggedFocusPresent : access.hasSpellComponentPouch === true || taggedFocusPresent;
     return {
       code: costly ? "COSTLY_FOCUS_COMPONENT" : "FOCUS_COMPONENT",
@@ -95,9 +96,10 @@ function componentDecision(
           : "The ordinary focus is available from a spell component pouch or as an explicitly recorded focus."
         : costly
           ? `The spell requires its specific costly focus${component.gpCost ? ` (${component.gpCost} gp)` : ""}; a spell component pouch does not satisfy it.`
-          : "The spell requires an ordinary focus and no component pouch or matching focus is recorded.",
+          : "The spell requires an ordinary focus and no component pouch or matching focus is recorded. Eschew Materials does not remove focus requirements.",
     };
   }
+
   if (component.kind === "DF") {
     const passed = access.hasDivineFocus === true;
     return {
@@ -107,6 +109,7 @@ function componentDecision(
       message: passed ? "A divine focus is available." : "The spell requires a divine focus and none is recorded as available.",
     };
   }
+
   if (component.kind === "XP") {
     const cost = component.xpCost ?? 0;
     const passed = cost > 0 && (access.availableXp ?? 0) >= cost;
@@ -121,6 +124,7 @@ function componentDecision(
           : "The spell has an XP component but its XP cost is not encoded; casting remains blocked until the source record is completed.",
     };
   }
+
   return null;
 }
 
