@@ -9,8 +9,18 @@
 // populated yet — per the 3.5e character-system audit, most characters have
 // no writer for those fields today, so they correctly render as unknown
 // here rather than as a fabricated 0 or 10.
+//
+// Carry Weight (spec §16 / Phase 6) uses the character's real Strength
+// score when the 3.5e sheet has one, falling back to a documented
+// simplified level-derived capacity otherwise (shared/encumbrance.ts) —
+// never a fabricated number, but no longer a permanent null either.
 
 import type { CharacterHudModel, RulesAdapter } from "./types";
+import {
+  carryingCapacityForStrength,
+  defaultCarryingCapacityForLevel,
+  computeEncumbrance,
+} from "@shared/encumbrance";
 
 function safeParseCharacterData(raw: unknown): any {
   if (typeof raw !== "string" || !raw.trim()) return {};
@@ -32,15 +42,33 @@ function classSummaryFromSheet(identity: any, fallbackCharClass: unknown): strin
   return typeof fallbackCharClass === "string" && fallbackCharClass.trim() ? fallbackCharClass : null;
 }
 
+function buildCarryWeight(abilities: any, character: any, items: any[] | undefined) {
+  if (!Array.isArray(items)) return { current: null, max: null, tier: null };
+
+  const strScore = typeof abilities?.str?.score === "number" ? abilities.str.score : null;
+  const capacity =
+    strScore !== null
+      ? carryingCapacityForStrength(strScore)
+      : defaultCarryingCapacityForLevel(typeof character?.level === "number" ? character.level : 1);
+
+  const state = computeEncumbrance(items, capacity);
+  return {
+    current: Math.round(state.totalWeight * 10) / 10,
+    max: capacity.heavy,
+    tier: state.tier,
+  };
+}
+
 export const dnd35Adapter: RulesAdapter = {
   ruleset: "dnd35e",
 
-  buildCharacterHud(character): CharacterHudModel {
+  buildCharacterHud(character, items): CharacterHudModel {
     const characterData = safeParseCharacterData(character?.characterData);
     const sheet = characterData?.dnd35Sheet ?? {};
     const identity = sheet.identity ?? {};
     const combat = sheet.combat ?? {};
     const saves = sheet.saves ?? {};
+    const abilities = sheet.abilities ?? {};
 
     const hp =
       typeof character?.hp === "number" && typeof character?.maxHp === "number"
@@ -61,9 +89,7 @@ export const dnd35Adapter: RulesAdapter = {
       initiative: typeof combat.initiative?.total === "number" ? combat.initiative.total : null,
       speed: typeof character?.speed === "number" ? character.speed : (sheet.movement?.land ?? null),
       attacksPerRound: typeof character?.attacksPerRound === "number" ? character.attacksPerRound : null,
-      // Encumbrance has no authoritative source yet (spec §16 / Phase 6) —
-      // stays null rather than a fabricated number.
-      carryWeight: null,
+      carryWeight: buildCarryWeight(abilities, character, items),
       saves: [
         { key: "fortitude", label: "Fort", value: typeof saves.fortitude?.total === "number" ? saves.fortitude.total : null },
         { key: "reflex", label: "Ref", value: typeof saves.reflex?.total === "number" ? saves.reflex.total : null },

@@ -67,6 +67,8 @@ type Item = {
   consumable: boolean;
   equipped: boolean;
   identified: boolean;
+  weight: number;
+  carried: boolean;
 };
 
 type CampaignCurrency = { id: number; code: string; name: string; symbol: string; isPrimary: boolean };
@@ -83,6 +85,7 @@ type Props = {
   party: Array<{ id: number; name: string; race: string; charClass: string }>;
   messages: Message[];
   items: Item[];
+  onToggleCarried: (itemId: number, carried: boolean) => void;
   effects: ActiveEffectDisplay[];
   recentLoot: GrantedItemDisplay | null;
   campaignCurrencies: CampaignCurrency[];
@@ -140,6 +143,7 @@ export default function CampaignGameShell({
   party,
   messages,
   items,
+  onToggleCarried,
   effects,
   recentLoot,
   campaignCurrencies,
@@ -170,7 +174,7 @@ export default function CampaignGameShell({
   const [codexOpen, setCodexOpen] = useState(false);
   const [shopExpanded, setShopExpanded] = useState(false);
 
-  const hud = getRulesAdapter().buildCharacterHud(character);
+  const hud = getRulesAdapter().buildCharacterHud(character, items);
   const currencies = currencyDisplayList(campaignCurrencies, balances);
 
   const inCombat = encounter.encounter?.status === "active";
@@ -332,7 +336,13 @@ export default function CampaignGameShell({
         traits={character.traits}
         backstory={character.backstory}
       />
-      <InventoryOverlay open={inventoryOpen} onOpenChange={setInventoryOpen} items={items} />
+      <InventoryOverlay
+        open={inventoryOpen}
+        onOpenChange={setInventoryOpen}
+        items={items}
+        carryWeight={hud.carryWeight}
+        onToggleCarried={onToggleCarried}
+      />
       <CodexOverlay
         open={codexOpen}
         onOpenChange={setCodexOpen}

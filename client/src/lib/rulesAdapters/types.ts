@@ -18,6 +18,7 @@ export interface SaveDisplay {
 export interface CarryWeightDisplay {
   current: number | null;
   max: number | null;
+  tier: "light" | "medium" | "heavy" | "overloaded" | null;
 }
 
 export interface CharacterHudModel {
@@ -38,6 +39,6 @@ export interface CharacterHudModel {
 
 export interface RulesAdapter {
   ruleset: string;
-  /** Projects raw character (+ optional campaign) data into a display-safe HUD model. */
-  buildCharacterHud(character: any, campaignState?: any): CharacterHudModel;
+  /** Projects raw character (+ that character's items, for Carry Weight) into a display-safe HUD model. */
+  buildCharacterHud(character: any, items?: any[]): CharacterHudModel;
 }

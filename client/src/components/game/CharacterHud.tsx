@@ -25,16 +25,33 @@ type Props = {
   onOpenCodex: () => void;
 };
 
-function StatBox({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Heart }) {
+function StatBox({
+  label,
+  value,
+  icon: Icon,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  icon: typeof Heart;
+  valueClassName?: string;
+}) {
   return (
     <div className="dm-surface-raised rounded-md px-2 py-1.5 flex flex-col gap-0.5">
       <div className="dm-label flex items-center gap-1">
         <Icon className="w-3 h-3" />
         {label}
       </div>
-      <div className="text-sm font-semibold tabular-nums">{value}</div>
+      <div className={`text-sm font-semibold tabular-nums ${valueClassName ?? ""}`}>{value}</div>
     </div>
   );
+}
+
+function carryWeightValueClass(carryWeight: CharacterHudModel["carryWeight"]) {
+  const tier = carryWeight?.tier;
+  if (tier === "overloaded") return "dm-danger-text";
+  if (tier === "heavy") return "dm-amber-text";
+  return "";
 }
 
 function fmtNumberOrUnknown(value: number | null): string {
@@ -127,6 +144,7 @@ export default function CharacterHud({
                 : "—"
             }
             icon={Weight}
+            valueClassName={carryWeightValueClass(hud.carryWeight)}
           />
         </div>
 
