@@ -55,6 +55,10 @@ export type Dnd35SpellComponent = {
   xpCost?: number;
   quantity?: number;
   itemTags?: string[];
+  /** Some 3.5 stat blocks use M/DF or F/DF: the component depends on casting tradition. */
+  appliesToTradition?: Dnd35SpellTradition;
+  /** Optional identifier for components that are alternatives rather than cumulative requirements. */
+  alternativeGroup?: string;
 };
 
 export type Dnd35CastingTime = {
@@ -258,38 +262,44 @@ export type Dnd35Prerequisite =
   | { kind: "spell_level"; minimum: Dnd35SpellLevel; tradition?: Dnd35SpellTradition }
   | { kind: "spellcasting"; requirement: string }
   | { kind: "race"; raceId: string }
-  | { kind: "alignment"; allowed: string[] }
-  | { kind: "proficiency"; proficiencyId: string }
-  | { kind: "special"; rule: string };
+  | { kind: "alignment"; allowed?: string[]; forbidden?: string[] }
+  | { kind: "special"; text: string };
 
 export type Dnd35FeatParameter = {
   id: string;
-  kind: "weapon" | "skill" | "spell_school" | "spell" | "energy_type" | "class" | "other";
+  label: string;
   required: boolean;
+  multiple?: boolean;
   allowedValues?: string[];
-  sameAsPrerequisiteParameter?: string;
+  notes?: string;
 };
 
-export type Dnd35RuleModifier = {
-  modifierId: string;
+export type Dnd35FeatModifier = {
   target: string;
-  operation: "add" | "multiply" | "set" | "remove" | "allow" | "deny" | "replace" | "special";
+  operation: "add" | "multiply" | "set" | "minimum" | "maximum" | "grant" | "remove" | "special";
   value?: number | string | boolean;
   bonusType?: string;
   condition?: string;
   stackingKey?: string;
-  rulesNote?: string;
+  notes?: string;
+};
+
+export type Dnd35MetamagicTransformation = {
+  target: string;
+  operation: "add" | "multiply" | "set" | "remove" | "minimum" | "special";
+  value?: number | string | boolean;
+  condition?: string;
+  notes?: string;
 };
 
 export type Dnd35MetamagicRule = {
-  slotAdjustment: number | "variable";
-  effectiveSpellLevel: "unchanged" | "slot_level" | "special";
-  preparationTiming: "prepare" | "cast" | "either";
-  spontaneousCastingTimeAdjustment: "normal_metamagic_rule" | "not_applicable" | "special";
-  canApplyToSpontaneous: boolean | "special";
-  transformations: Dnd35RuleModifier[];
+  slotAdjustment: number | "heighten";
+  effectiveSpellLevel?: "base" | "slot_level" | "heightened_level";
+  preparationTiming: "prepared_with_spell" | "spontaneous_at_cast" | "either" | "special";
+  spontaneousCastingTimeRule?: "increase" | "unchanged" | "special";
+  transformations: Dnd35MetamagicTransformation[];
   restrictions?: string[];
-  orderNotes?: string[];
+  stackingNotes?: string[];
 };
 
 export type Dnd35FeatDefinition = {
@@ -297,14 +307,14 @@ export type Dnd35FeatDefinition = {
   name: string;
   edition: "3.5e";
   categories: Dnd35FeatCategory[];
-  prerequisites?: Dnd35Prerequisite;
+  prerequisite?: Dnd35Prerequisite;
   prerequisiteSummary?: string;
   parameters?: Dnd35FeatParameter[];
   repeatable?: boolean;
-  repeatRule?: string;
-  activation?: Dnd35CastingTime;
-  uses?: { kind: "unlimited" | "per_day" | "per_round" | "resource" | "special"; amount?: number; resourceId?: string };
-  modifiers: Dnd35RuleModifier[];
+  stacking?: "stacks" | "does_not_stack" | "special";
+  actionType?: "free" | "swift" | "immediate" | "move" | "standard" | "full_round" | "passive" | "special";
+  uses?: { kind: "unlimited" | "per_day" | "per_encounter" | "resource" | "special"; amount?: number; resourceId?: string; text?: string };
+  modifiers: Dnd35FeatModifier[];
   metamagic?: Dnd35MetamagicRule;
   rulesSummary: string;
   specialRules?: string[];
@@ -312,15 +322,9 @@ export type Dnd35FeatDefinition = {
   tags: string[];
 };
 
-export type Dnd35PreparedSpell = {
-  spellId: string;
-  slotLevel: Dnd35SpellLevel;
-  metamagicFeatIds?: string[];
-  preparedCount: number;
-  expendedCount: number;
-};
-
-export type Dnd35SpellSlotPool = Partial<Record<Dnd35SpellLevel, { maximum: number; expended: number }>>;
+export type Dnd35SpellSlotPool = { level: Dnd35SpellLevel; maximum: number; expended: number };
+export type Dnd35PreparedSpellEntry = { spellId: string; slotLevel: Dnd35SpellLevel; metamagicFeatIds?: string[]; preparedCount: number; expendedCount: number };
+export type Dnd35SpellcastingMode = "prepared_spellbook" | "spontaneous_known" | "prepared_divine" | "item_only";
 
 export type Dnd35SpellcastingState = {
   classId: string;
@@ -329,68 +333,54 @@ export type Dnd35SpellcastingState = {
   tradition: Dnd35SpellTradition;
   castingAbility: "int" | "wis" | "cha";
   castingAbilityScore: number;
-  mode: "prepared_spellbook" | "prepared_divine" | "spontaneous_known" | "hybrid" | "special";
+  mode: Dnd35SpellcastingMode;
   spellbookSpellIds?: string[];
   knownSpellIds?: string[];
-  preparedSpells?: Dnd35PreparedSpell[];
-  spellSlots: Dnd35SpellSlotPool;
-  bonusSpellSlots?: Dnd35SpellSlotPool;
+  preparedSpells?: Dnd35PreparedSpellEntry[];
+  spellSlots: Partial<Record<Dnd35SpellLevel, Dnd35SpellSlotPool>>;
+  bonusSpellSlots?: Partial<Record<Dnd35SpellLevel, Dnd35SpellSlotPool>>;
   domains?: string[];
   specialization?: string;
-  prohibitedSchools?: Dnd35SpellSchool[];
+  prohibitedSchools?: string[];
 };
 
-export type Dnd35MagicItemSpellAccess = {
+export type Dnd35ItemSpellAccess = {
   itemId: string;
   itemName: string;
-  activation: "spell_completion" | "spell_trigger" | "command_word" | "use_activated" | "consumable" | "special";
   spellId?: string;
-  casterLevel?: number;
   spellLevel?: Dnd35SpellLevel;
-  chargesRemaining?: number;
-  consumedOnUse?: boolean;
+  casterLevel: number;
+  activation: "spell_completion" | "spell_trigger" | "command_word" | "use_activated" | "potion" | "special";
   requiresClassList?: boolean;
-  allowsUseMagicDevice?: boolean;
-};
-
-export type Dnd35CastEnvironment = {
-  canSpeak: boolean;
-  hasSomaticFreedom: boolean;
-  threatened: boolean;
-  concentrationRequired?: boolean;
-  lineOfEffect?: boolean;
-  lineOfSight?: boolean;
-  distanceFeet?: number;
-  targetTags?: string[];
-  antimagic?: boolean;
-  arcaneSpellFailurePercent?: number;
+  requiresUseMagicDevice?: boolean;
+  chargesRemaining?: number;
 };
 
 export type Dnd35CastRequest = {
   spellId: string;
   castingClassId?: string;
   metamagicFeatIds?: string[];
-  itemAccess?: Dnd35MagicItemSpellAccess;
-  environment: Dnd35CastEnvironment;
+  itemAccess?: Dnd35ItemSpellAccess;
+  environment: {
+    canSpeak: boolean;
+    hasSomaticFreedom: boolean;
+    lineOfEffect?: boolean;
+    lineOfSight?: boolean;
+    antimagic?: boolean;
+    arcaneSpellFailurePercent?: number;
+  };
 };
 
-export type Dnd35RuleDecision = {
-  code: string;
-  passed: boolean;
-  blocking: boolean;
-  message: string;
-  sourceIds?: string[];
-};
-
+export type Dnd35RuleDecision = { code: string; passed: boolean; blocking: boolean; message: string };
 export type Dnd35CastResolution = {
   legal: boolean;
   baseSpellLevel?: Dnd35SpellLevel;
   slotLevel?: Dnd35SpellLevel;
   effectiveSpellLevel?: Dnd35SpellLevel;
-  casterLevel?: number;
+  casterLevel: number;
   saveDc?: number;
   attackRoll?: Dnd35SpellDefinition["attackRoll"];
-  spellResistanceCheckRequired?: boolean;
-  arcaneSpellFailureCheckRequired?: boolean;
+  spellResistanceCheckRequired: boolean;
+  arcaneSpellFailureCheckRequired: boolean;
   decisions: Dnd35RuleDecision[];
 };
