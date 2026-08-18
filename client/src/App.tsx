@@ -14,6 +14,7 @@ import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import Pricing from "@/pages/pricing";
 import HowItWorks from "@/pages/how-it-works";
+import Credits from "@/pages/credits";
 import Billing from "@/pages/billing";
 import Account from "@/pages/account";
 
@@ -31,6 +32,7 @@ function AppRouter() {
       <Route path="/" component={Landing} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/credits" component={Credits} />
 
       {/* Auth */}
       <Route path="/login">{() => <AuthPage defaultTab="login" />}</Route>
