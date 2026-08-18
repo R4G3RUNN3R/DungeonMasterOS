@@ -1,7 +1,7 @@
 import type { Campaign, CampaignCurrency, Character, Message, Item, CharacterCurrency } from "../shared/schema";
 import type { Encounter } from "../shared/schema";
 import type { EncounterParticipant } from "./combat-engine";
-import { formatCampaignMemory, parseCampaignWorldState } from "./campaign-memory";
+import { formatCampaignMemory, parseCampaignWorldState, formatCurrentSceneForPrompt } from "./campaign-memory";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
 
 // ── Authoritative party inventory grounding ─────────────────────────────────
@@ -129,7 +129,7 @@ PARTY:
 ${characters.map((character) => `${character.name} (${character.race} ${character.charClass})`).join(", ")}
 
 CURRENT ESTABLISHED SCENE — this is where the party actually is right now. Do not abandon, contradict, or narrate away from this without an in-fiction cause present in this conversation:
-${worldState.currentScene || "Not yet established — the opening scene has not been set."}
+${formatCurrentSceneForPrompt(worldState.currentScene) || "Not yet established — the opening scene has not been set."}
 
 WORLD STATE SNAPSHOT:
 ${formatWorldStateForPrompt(campaign)}

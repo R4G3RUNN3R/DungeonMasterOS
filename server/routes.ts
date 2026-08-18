@@ -7,6 +7,7 @@ import {
   generateCampaignMemoryUpdate,
   mergeCampaignWorldState,
   parseCampaignWorldState,
+  formatCurrentSceneForPrompt,
 } from "./campaign-memory";
 import { generateDMResponse, generateOpeningScene, extractWorldState, generateNpcTurnAction, buildCombatContext, type PartyInventorySnapshot } from "./dm-engine";
 import { getNarrationServiceIssue, getNarrationServiceLabel, generateNarrationText, DM_AI_PROVIDER } from "./dm-provider";
@@ -2674,10 +2675,14 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       const { cleanContent, worldState } = extractWorldState(rawResponse);
 
       if (worldState) {
-        try {
-          const current = JSON.parse(campaign.worldState || "{}");
-          storage.updateWorldState(item.campaignId, JSON.stringify({ ...current, ...worldState }));
-        } catch {}
+        // Was a raw {...current, ...worldState} spread — unlike the other two
+        // worldState write sites (main action handler, opening scene), this
+        // bypassed mergeCampaignWorldState's array-dedup and currentScene
+        // handling entirely, so a delta from item-use could wholesale
+        // replace locations/npcs/factions instead of merging them. Unified
+        // onto the same merge function every other write site already uses.
+        const merged = mergeCampaignWorldState(campaign.worldState, worldState);
+        storage.updateWorldState(item.campaignId, JSON.stringify(merged));
       }
 
       const newItems = await extractItemsFromNarration(
@@ -3100,7 +3105,7 @@ Keep it to 2-4 short paragraphs.`,
                 messages: [{ role: "user", content: prompt }],
               }),
             rng: Math.random,
-            currentScene: worldStateNow.currentScene,
+            currentScene: formatCurrentSceneForPrompt(worldStateNow.currentScene),
             broadcast: (message) => broadcastToCampaign(campaignId, { type: "message", message }),
           });
         }
@@ -3134,13 +3139,24 @@ Keep it to 2-4 short paragraphs.`,
         broadcastToCampaign(campaignId, { type: "message", message: xpMsg });
       }
 
+      // This block used to be a detached Promise.all(...).then(...) fired
+      // after the response was already queued, which meant withCampaignLock
+      // released before these mutations actually landed — a fast second
+      // submission on the same campaign could read pre-mutation inventory/
+      // currency state (2026-08-18: found while reconciling an external
+      // review's report against this codebase). Awaiting it here keeps the
+      // mutation work inside the same lock scope as the request that
+      // produced it, at the cost of the response waiting on it too — a
+      // worthwhile trade since every extractor here is keyword-gated and
+      // returns near-instantly on the (common) turn with nothing to extract.
       const campaignCurrenciesForExtraction = storage.getCampaignCurrencies(campaignId);
-      Promise.all([
-        extractItemsFromNarration(finalContent, campaignId, character.id, campaignCurrenciesForExtraction),
-        extractAbilitiesFromNarration(finalContent, campaignId, character.id),
-        extractLostItemsFromNarration(finalContent, character.id),
-        extractCurrencyChangesFromNarration(finalContent, campaignCurrenciesForExtraction),
-      ]).then(([newItems, newAbilities, lostItemIds, currencyChanges]) => {
+      try {
+        const [newItems, newAbilities, lostItemIds, currencyChanges] = await Promise.all([
+          extractItemsFromNarration(finalContent, campaignId, character.id, campaignCurrenciesForExtraction),
+          extractAbilitiesFromNarration(finalContent, campaignId, character.id),
+          extractLostItemsFromNarration(finalContent, character.id),
+          extractCurrencyChangesFromNarration(finalContent, campaignCurrenciesForExtraction),
+        ]);
         for (const newItem of newItems) {
           const created = storage.createItem(newItem);
           broadcastToCampaign(campaignId, { type: "item_granted", item: created });
@@ -3279,7 +3295,9 @@ Keep it to 2-4 short paragraphs.`,
         }
 
         queueCampaignMemoryRefresh(campaignId, chars, historyForMemory, finalContent);
-      }).catch((err) => console.error("Post-action extraction error:", err));
+      } catch (err) {
+        console.error("Post-action extraction error:", err);
+      }
 
       return res.json({ playerMessage: playerMsg, dmMessage: dmMsg, npcTurnMessages });
     } catch (error: any) {
@@ -3421,7 +3439,7 @@ Keep it to 2-4 short paragraphs.`,
             messages: [{ role: "user", content: prompt }],
           }),
         rng: Math.random,
-        currentScene: worldStateNow.currentScene,
+        currentScene: formatCurrentSceneForPrompt(worldStateNow.currentScene),
         broadcast: (message) => broadcastToCampaign(campaignId, { type: "message", message }),
       });
       broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });
@@ -3485,7 +3503,7 @@ Keep it to 2-4 short paragraphs.`,
             messages: [{ role: "user", content: prompt }],
           }),
         rng: Math.random,
-        currentScene: worldStateNow.currentScene,
+        currentScene: formatCurrentSceneForPrompt(worldStateNow.currentScene),
         broadcast: (message) => broadcastToCampaign(campaignId, { type: "message", message }),
       });
       broadcastToCampaign(campaignId, { type: "encounter_updated", encounterId: encounter.id });

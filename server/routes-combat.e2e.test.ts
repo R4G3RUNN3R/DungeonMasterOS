@@ -361,6 +361,33 @@ test("extractItemsFromNarration never double-books ordinary tracked currency as 
   );
 });
 
+test("handleAction awaits post-narration item/currency/ability extraction before responding (regression guard for a lock-scope race)", async () => {
+  // 2026-08-18: this block used to be a detached Promise.all(...).then(...)
+  // fired after res.json() was already queued, so withCampaignLock's
+  // protection window closed before the mutations it guards actually
+  // landed — a fast second submission on the same campaign could read
+  // pre-mutation inventory/currency state. Can't exercise the real timing
+  // here without a live AI provider (the extractors call the real
+  // generateNarrationText directly, not through handleAction's injectable
+  // deps), so this is a source-content guard against the fix regressing
+  // back to fire-and-forget, matching this file's existing pattern for
+  // internal, non-exported logic.
+  const routesSource = fs.readFileSync(path.join(__dirname, "routes.ts"), "utf-8");
+  const extractionBlock = routesSource.slice(
+    routesSource.indexOf("const campaignCurrenciesForExtraction = storage.getCampaignCurrencies(campaignId);"),
+  );
+  const tryIndex = extractionBlock.indexOf("try {");
+  const awaitIndex = extractionBlock.indexOf("await Promise.all([");
+  const resJsonIndex = extractionBlock.indexOf('return res.json({ playerMessage: playerMsg, dmMessage: dmMsg, npcTurnMessages });');
+
+  assert.ok(tryIndex >= 0 && awaitIndex > tryIndex, "extraction must be awaited inside a try block");
+  assert.ok(resJsonIndex > awaitIndex, "the response must be sent after the extraction/mutation work, not before it");
+  assert.ok(
+    !extractionBlock.slice(0, resJsonIndex).includes(").then(([newItems"),
+    "must not regress back to a detached .then() that escapes withCampaignLock's scope",
+  );
+});
+
 test("cleanup", () => {
   // better-sqlite3 keeps its file handle open for the life of the process,
   // and on Windows an open file can't be unlinked (EPERM) — see the same

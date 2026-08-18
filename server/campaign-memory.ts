@@ -1,5 +1,6 @@
 import type { Campaign, Character, Message } from "../shared/schema";
 import { DM_AI_PROVIDER, generateNarrationText } from "./dm-provider";
+import type { WorldStateScene } from "../shared/world-state";
 
 type NarrationTextGenerator = typeof generateNarrationText;
 
@@ -16,9 +17,39 @@ export type CampaignWorldState = {
   npcs: any[];
   factions: any[];
   flags: string[];
-  currentScene: string;
+  // WorldStateScene | string, matching shared/world-state.ts's WorldState
+  // exactly — see normalizeSceneValue below for why this needed unifying.
+  currentScene: WorldStateScene | string;
   memory: CampaignMemory;
 };
+
+// The DM system prompt's own [WORLD_STATE] instructions (see dm-engine.ts)
+// tell the model to emit currentScene as a structured {name, description}
+// object. Before 2026-08-18 this type was `currentScene: string` and the
+// merge below only ever accepted a string delta — so a model dutifully
+// following its own prompt instructions had its scene update silently
+// discarded on every turn. Fixed by accepting both shapes end-to-end,
+// matching the frontend's already-correct WorldState type.
+function normalizeSceneValue(value: unknown): WorldStateScene | string {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object") {
+    const name = typeof (value as any).name === "string" ? (value as any).name.trim() : "";
+    if (!name) return "";
+    const description = typeof (value as any).description === "string" ? (value as any).description.trim() : "";
+    return description ? { name, description } : { name };
+  }
+  return "";
+}
+
+function isSceneEmpty(scene: WorldStateScene | string): boolean {
+  return typeof scene === "string" ? scene.length === 0 : !scene.name;
+}
+
+export function formatCurrentSceneForPrompt(scene: WorldStateScene | string): string {
+  if (typeof scene === "string") return scene;
+  if (!scene || !scene.name) return "";
+  return scene.description ? `${scene.name} — ${scene.description}` : scene.name;
+}
 
 type MemoryUpdateParams = {
   campaign: Campaign;
@@ -89,7 +120,7 @@ export function parseCampaignWorldState(raw?: string | null): CampaignWorldState
       npcs: Array.isArray((base as any).npcs) ? (base as any).npcs : [],
       factions: Array.isArray((base as any).factions) ? (base as any).factions : [],
       flags: uniqueStrings(Array.isArray((base as any).flags) ? (base as any).flags : [], 12),
-      currentScene: typeof (base as any).currentScene === "string" ? (base as any).currentScene.trim() : "",
+      currentScene: normalizeSceneValue((base as any).currentScene),
       memory: normalizeMemory((base as any).memory),
     };
   } catch {
@@ -121,10 +152,10 @@ export function mergeCampaignWorldState(
     npcs: mergedNpcs,
     factions: Array.from(new Set([...(base.factions || []), ...((delta as any).factions || [])])),
     flags: uniqueStrings([...(base.flags || []), ...((delta as any).flags || [])], 12),
-    currentScene:
-      typeof (delta as any).currentScene === "string" && (delta as any).currentScene.trim()
-        ? (delta as any).currentScene.trim()
-        : base.currentScene,
+    currentScene: (() => {
+      const deltaScene = normalizeSceneValue((delta as any).currentScene);
+      return isSceneEmpty(deltaScene) ? base.currentScene : deltaScene;
+    })(),
     memory: {
       summary: deltaMemory.summary || base.memory.summary,
       activeThreads: uniqueStrings([...(base.memory.activeThreads || []), ...deltaMemory.activeThreads], 8),
@@ -227,7 +258,7 @@ Existing memory:
 ${JSON.stringify(currentWorldState.memory, null, 2)}
 
 Existing current scene (for your context only — do not restate or alter it):
-${currentWorldState.currentScene || "None recorded yet."}
+${formatCurrentSceneForPrompt(currentWorldState.currentScene) || "None recorded yet."}
 
 Recent transcript:
 ${recentHistory || "No prior transcript."}

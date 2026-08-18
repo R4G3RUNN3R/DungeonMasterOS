@@ -58,3 +58,35 @@ test("generateCampaignMemoryUpdate: a currentScene-smuggling response can never 
 
   assert.equal(merged.currentScene, "The party stands in the warehouse office.");
 });
+
+test("mergeCampaignWorldState: accepts a structured {name, description} currentScene, as the DM prompt's own [WORLD_STATE] instructions ask for", () => {
+  // 2026-08-18: dm-engine.ts's WORLD_STATE prompt section tells the model to
+  // emit currentScene as an object, but this merge used to only accept a
+  // string delta — silently discarding a model that correctly followed its
+  // own prompt. Confirmed both the object-accepting path and that it still
+  // replaces (not merges into) the prior scene, matching string behavior.
+  const base = parseCampaignWorldState(null);
+  const merged = mergeCampaignWorldState(base, {
+    currentScene: { name: "The Rusted Anchor Tavern", description: "A smoky dockside tavern" },
+  });
+
+  assert.deepEqual(merged.currentScene, { name: "The Rusted Anchor Tavern", description: "A smoky dockside tavern" });
+});
+
+test("mergeCampaignWorldState: a structured currentScene round-trips through parseCampaignWorldState after being persisted", () => {
+  const merged = mergeCampaignWorldState(parseCampaignWorldState(null), {
+    currentScene: { name: "Port Vaelis Docks" },
+  });
+  const reparsed = parseCampaignWorldState(JSON.stringify(merged));
+
+  assert.deepEqual(reparsed.currentScene, { name: "Port Vaelis Docks" });
+});
+
+test("mergeCampaignWorldState: an empty/malformed currentScene delta never overwrites an existing structured scene", () => {
+  const base = mergeCampaignWorldState(parseCampaignWorldState(null), {
+    currentScene: { name: "The Rusted Anchor Tavern" },
+  });
+  const merged = mergeCampaignWorldState(base, { currentScene: {} });
+
+  assert.deepEqual(merged.currentScene, { name: "The Rusted Anchor Tavern" });
+});
