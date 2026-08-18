@@ -1,16 +1,21 @@
 // client/src/components/game/ContextPanel.tsx
 //
-// The adaptive right-hand panel (design spec §8). Phase 1 implements the
-// two contextual states that authoritative campaign state can actually
-// drive today: default exploration and merchant. Combat/travel/NPC/loot
-// states are Phase 3-4 (spec §8.4) — the panel is structured so adding a
-// branch there later doesn't require touching the shell around it.
+// The adaptive right-hand panel (design spec §8). Selects among the
+// contextual states that authoritative campaign state can actually drive
+// today: Merchant (an active shop record), a transient Loot flash (a real
+// item_granted event), and default Exploration (persisted worldState +
+// active effects + party). Combat/travel/quest-focus states are Phase 4+
+// (spec §8.4) — the panel is structured so adding a branch there later
+// doesn't require touching the shell around it.
 //
-// State selection is driven by real data (an active shop record), never by
-// string-matching narration text, per spec §8.4's explicit requirement.
+// State selection is driven entirely by real data, never by string-
+// matching narration text, per spec §8.4's explicit requirement.
 
-import { Compass, Users } from "lucide-react";
+import type { WorldState } from "@shared/world-state";
 import MerchantContext from "./MerchantContext";
+import LocationContext from "./LocationContext";
+import LootFlash, { type GrantedItemDisplay } from "./LootFlash";
+import type { ActiveEffectDisplay } from "./ActiveConditions";
 
 type Shop = {
   merchantName: string;
@@ -34,50 +39,31 @@ type PartyMember = {
 
 type Props = {
   worldType?: string | null;
+  worldState: WorldState;
   party: PartyMember[];
+  effects: ActiveEffectDisplay[];
+  recentLoot: GrantedItemDisplay | null;
   activeShop: { shop: Shop; items: ShopItem[] } | null;
   onViewShop: () => void;
   shopExpanded: boolean;
 };
 
-function ExplorationContext({ worldType, party }: { worldType?: string | null; party: PartyMember[] }) {
-  return (
-    <div className="p-3 space-y-4">
-      <div>
-        <div className="dm-label flex items-center gap-1 mb-1.5">
-          <Compass className="w-3 h-3" />
-          Scene
-        </div>
-        <p className="text-xs text-[hsl(var(--dm-text-muted))]">
-          {worldType || "The world unfolds as you play — location and scene details will appear here as your DM establishes them."}
-        </p>
-      </div>
+export default function ContextPanel({
+  worldType,
+  worldState,
+  party,
+  effects,
+  recentLoot,
+  activeShop,
+  onViewShop,
+  shopExpanded,
+}: Props) {
+  const label = activeShop ? "Merchant" : recentLoot ? "Loot" : "Exploration";
 
-      {party.length > 0 && (
-        <div>
-          <div className="dm-label flex items-center gap-1 mb-1.5">
-            <Users className="w-3 h-3" />
-            Party
-          </div>
-          <div className="space-y-1">
-            {party.map((member) => (
-              <div key={member.id} className="dm-surface-raised rounded-md px-2 py-1.5 text-xs">
-                <span className="font-medium">{member.name}</span>
-                <span className="text-[hsl(var(--dm-text-faint))]"> · {member.race} {member.charClass}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function ContextPanel({ worldType, party, activeShop, onViewShop, shopExpanded }: Props) {
   return (
     <div className="h-full flex flex-col dm-surface border-l">
       <div className="dm-leather border-b px-3 h-9 flex items-center shrink-0">
-        <span className="dm-label">{activeShop ? "Merchant" : "Exploration"}</span>
+        <span className="dm-label">{label}</span>
       </div>
       <div className="flex-1 overflow-y-auto dm-scroll">
         {activeShop ? (
@@ -87,8 +73,10 @@ export default function ContextPanel({ worldType, party, activeShop, onViewShop,
             onViewShop={onViewShop}
             shopExpanded={shopExpanded}
           />
+        ) : recentLoot ? (
+          <LootFlash item={recentLoot} />
         ) : (
-          <ExplorationContext worldType={worldType} party={party} />
+          <LocationContext worldType={worldType} worldState={worldState} party={party} effects={effects} />
         )}
       </div>
     </div>
