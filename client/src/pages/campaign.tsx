@@ -1354,7 +1354,14 @@ export default function CampaignPage() {
         onFlee={() => fleeMutation.mutate()}
         attackPending={attackMutation.isPending || fleeMutation.isPending}
         onBack={() => navigate("/dashboard")}
-        onOpenSheet={() => navigate(`/character-sheet/${myCharacter.id}`)}
+        onOpenSheet={() => {
+          // Popup, not in-tab navigation — the campaign (and the story
+          // continuing in real time for the rest of the party) should stay
+          // live in this tab while someone looks at their sheet.
+          const url = `${window.location.origin}${window.location.pathname}#/character-sheet/${myCharacter.id}`;
+          const popup = window.open(url, `dmos-character-sheet-${myCharacter.id}`, "popup=yes,width=900,height=950,resizable=yes,scrollbars=yes");
+          popup?.focus();
+        }}
         scrollRef={scrollRef}
       />
     </>

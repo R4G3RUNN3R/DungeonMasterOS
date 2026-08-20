@@ -29,7 +29,7 @@ export function xpForLevel(level: number, ruleset: string): number {
   return XP_THRESHOLDS_5E[idx];
 }
 
-const MAX_LEVEL = 20;
+export const MAX_LEVEL = 20;
 
 export function levelForXp(xp: number, ruleset: string): number {
   let level = 1;
@@ -37,6 +37,14 @@ export function levelForXp(xp: number, ruleset: string): number {
     level += 1;
   }
   return level;
+}
+
+// null at the level cap — there's no "next" threshold to show once a
+// character can't level further, so the sheet should say so rather than
+// display a fabricated number.
+export function xpForNextLevel(currentLevel: number, ruleset: string): number | null {
+  if (currentLevel >= MAX_LEVEL) return null;
+  return xpForLevel(currentLevel + 1, ruleset);
 }
 
 // A flat XP award per defeated NPC, scaled by campaign power level — DMOS

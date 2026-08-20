@@ -9,6 +9,7 @@ function fakeStorage(overrides: Partial<Record<string, any>> = {}) {
     getCharacter: (id: number) => ({
       id,
       level: 5,
+      xp: 0,
       str: 14,
       dex: 16,
       con: 12,
@@ -239,6 +240,29 @@ test("computeFullCharacterSheet: dnd35e save totals agree exactly with resolveCh
   // "just relabel three of the six ability saves" fix would silently miss.
   assert.ok(fort.total > ref.total);
   assert.ok(will.total > ref.total);
+});
+
+test("computeFullCharacterSheet: attack.breakdown sums to attack.total, including a non-zero cinematic component", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e", combatStyle: "cinematic" }, fakeStorage({ level: 4, charClass: "Fighter" }) as any);
+  const b = sheet.attack.breakdown;
+  assert.equal(b.ability + b.baseAttack + b.effect + b.size + b.cinematic, sheet.attack.total);
+  assert.equal(b.cinematic, 20);
+});
+
+test("computeFullCharacterSheet: attack.breakdown.cinematic is 0 outside cinematic combat style", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e", combatStyle: "tactical" }, fakeStorage({ level: 4, charClass: "Fighter" }) as any);
+  assert.equal(sheet.attack.breakdown.cinematic, 0);
+});
+
+test("computeFullCharacterSheet: xp.nextLevel is the 3.5e threshold for the character's next level", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, fakeStorage({ level: 4, xp: 0 }) as any);
+  assert.equal(sheet.xp.current, 0);
+  assert.equal(sheet.xp.nextLevel, 500 * 5 * 4); // 3.5e formula: 500 * N * (N-1)
+});
+
+test("computeFullCharacterSheet: xp.nextLevel is null at the level cap", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, fakeStorage({ level: 20, xp: 0 }) as any);
+  assert.equal(sheet.xp.nextLevel, null);
 });
 
 test("computeFullCharacterSheet: a non-3.5 ruleset is not accidentally forced into Fortitude/Reflex/Will", () => {

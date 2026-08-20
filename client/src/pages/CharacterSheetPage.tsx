@@ -42,7 +42,15 @@ type Character = {
   characterData: string;
 };
 
-type Item = { id: number; weight: number; carried: boolean; equipped: boolean };
+type Item = {
+  id: number;
+  name: string;
+  itemType: string;
+  weight: number;
+  carried: boolean;
+  equipped: boolean;
+  weaponDamageDice: string | null;
+};
 
 type ParsedSection = {
   label: string;
@@ -106,6 +114,7 @@ export default function CharacterSheetPage() {
     character && itemsQuery.data
       ? getRulesAdapter().buildCharacterHud(character, itemsQuery.data, sheet?.saves)
       : null;
+  const weapons = (itemsQuery.data ?? []).filter((i) => i.itemType === "weapon" && i.equipped);
 
   const loading = characterQuery.isLoading || sheetQuery.isLoading;
   const notFound = characterQuery.isError || sheetQuery.isError;
@@ -148,9 +157,9 @@ export default function CharacterSheetPage() {
 
       {character && sheet && hud && (
         isDnd35e ? (
-          <Dnd35eSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} />
+          <Dnd35eSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} weapons={weapons} />
         ) : (
-          <GenericSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} />
+          <GenericSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} weapons={weapons} />
         )
       )}
     </div>
@@ -164,7 +173,20 @@ type SheetBodyProps = {
   raceDef: ReturnType<typeof getRace>;
   titles?: Array<{ title: string; establishedAt: string | null }>;
   featSections: ParsedSection[];
+  weapons: Item[];
 };
+
+function xpDisplay(xp: FullCharacterSheet["xp"]): string {
+  return xp.nextLevel === null ? `${xp.current} (max level)` : `${xp.current}/${xp.nextLevel}`;
+}
+
+function attackBreakdownLabel(b: FullCharacterSheet["attack"]["breakdown"]): string {
+  const parts: string[] = [`ability ${fmt(b.ability)}`, `base attack ${fmt(b.baseAttack)}`];
+  if (b.effect !== 0) parts.push(`effects ${fmt(b.effect)}`);
+  if (b.size !== 0) parts.push(`size ${fmt(b.size)}`);
+  if (b.cinematic !== 0) parts.push(`cinematic ${fmt(b.cinematic)}`);
+  return parts.join(", ");
+}
 
 const ABILITY_ORDER = ["str", "dex", "con", "int", "wis", "cha"] as const;
 
@@ -182,7 +204,7 @@ function saveAbilityHint(save: SaveEntry): string {
   return "";
 }
 
-function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections }: SheetBodyProps) {
+function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections, weapons }: SheetBodyProps) {
   const sortedSkills = sheet.skills.slice().sort((a, b) => a.name.localeCompare(b.name));
   const half = Math.ceil(sortedSkills.length / 2);
   const skillColumns = [sortedSkills.slice(0, half), sortedSkills.slice(half)];
@@ -203,7 +225,9 @@ function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections }: S
           </div>
           <div className="flex items-center gap-2">
             <div className="parchment-label text-[10px]">Experience</div>
-            <div className="parchment-badge !rounded-md !h-auto !min-w-[64px] px-2 py-1 text-sm">{character.xp}</div>
+            <div className="parchment-badge !rounded-md !h-auto !min-w-[64px] px-2 py-1 text-sm tabular-nums">
+              {xpDisplay(sheet.xp)}
+            </div>
           </div>
         </div>
 
@@ -264,6 +288,36 @@ function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections }: S
                 {" "}
                 <span className="text-xs opacity-70">· {character.attacksPerRound} attack{character.attacksPerRound === 1 ? "" : "s"}/round</span>
               </div>
+              <div className="text-[11px] opacity-60 mt-0.5">{attackBreakdownLabel(sheet.attack.breakdown)}</div>
+            </div>
+
+            {/* Weapons — equipped weapons only, so this stays empty rather
+                than listing every carried item; damage dice only shown when
+                actually recorded on the item. */}
+            <div>
+              <SectionLabel>Weapons</SectionLabel>
+              {weapons.length === 0 ? (
+                <div className="text-xs opacity-60">No weapon equipped.</div>
+              ) : (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-[10px] parchment-label opacity-70">
+                      <th className="text-left font-normal pb-1">Weapon</th>
+                      <th className="text-right font-normal pb-1">Attack</th>
+                      <th className="text-right font-normal pb-1">Damage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weapons.map((w) => (
+                      <tr key={w.id} className="border-b border-[#654a27]/25 last:border-b-0">
+                        <td className="py-1.5">{w.name}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmt(sheet.attack.total)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{w.weaponDamageDice || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
@@ -380,7 +434,7 @@ function GenericSheet({ character, sheet, hud, raceDef, titles, featSections }: 
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">XP</div>
-            <div className="text-sm font-semibold">{character.xp}</div>
+            <div className="text-sm font-semibold">{xpDisplay(sheet.xp)}</div>
           </div>
         </div>
       </Card>

@@ -22,5 +22,10 @@ export interface FullCharacterSheet {
   abilities: Record<Ability, { score: number; modifier: number }>;
   skills: Array<{ name: string; ability: Ability; total: number; proficient: boolean }>;
   saves: SaveEntry[];
-  attack: { total: number; extraAttackBonuses: number[] };
+  attack: {
+    total: number;
+    extraAttackBonuses: number[];
+    breakdown: { ability: number; baseAttack: number; effect: number; size: number; cinematic: number };
+  };
+  xp: { current: number; nextLevel: number | null };
 }

@@ -6,6 +6,7 @@
 
 import { modifierFor, proficiencyBonusForLevel } from "./dice-engine";
 import { getRace, sizeAttackAcModifier } from "@shared/races";
+import { xpForNextLevel } from "./leveling";
 
 export type Ability = "str" | "dex" | "con" | "int" | "wis" | "cha";
 
@@ -197,7 +198,7 @@ function dnd35eSaveBonus(isGoodSave: boolean, level: number): number {
 export const CINEMATIC_ROLL_BONUS = 20;
 
 interface StorageLike {
-  getCharacter(id: number): { level: number; str: number; dex: number; con: number; int: number; wis: number; cha: number; proficiencies: string; charClass?: string; attackAbility?: string; race?: string } | undefined;
+  getCharacter(id: number): { level: number; xp?: number; str: number; dex: number; con: number; int: number; wis: number; cha: number; proficiencies: string; charClass?: string; attackAbility?: string; race?: string } | undefined;
   getActiveEffectsByCharacter(characterId: number): Array<{ statMods: string }>;
   getItemsByCharacter?(characterId: number): Array<{ equipped: boolean; statMods: string }>;
 }
@@ -367,7 +368,16 @@ export interface FullCharacterSheet {
   abilities: Record<Ability, { score: number; modifier: number }>;
   skills: Array<{ name: string; ability: Ability; total: number; proficient: boolean }>;
   saves: SaveEntry[];
-  attack: { total: number; extraAttackBonuses: number[] };
+  attack: {
+    total: number;
+    extraAttackBonuses: number[];
+    // Breakdown of what's actually in `total` — so the sheet can show e.g.
+    // "+25 (ability +2, base attack +3, cinematic +20)" instead of a bare
+    // number that looks wrong next to a low character level. Same fields
+    // resolveCharacterModifier already tracks; just surfaced here.
+    breakdown: { ability: number; baseAttack: number; effect: number; size: number; cinematic: number };
+  };
+  xp: { current: number; nextLevel: number | null };
 }
 
 // 3.5e has exactly three saving throws — Fortitude (Con), Reflex (Dex), and
@@ -437,6 +447,17 @@ export function computeFullCharacterSheet(
     abilities,
     skills,
     saves,
-    attack: { total: attackResolved.total, extraAttackBonuses },
+    attack: {
+      total: attackResolved.total,
+      extraAttackBonuses,
+      breakdown: {
+        ability: attackResolved.baseModifier,
+        baseAttack: attackResolved.proficiencyBonus,
+        effect: attackResolved.effectModifier,
+        size: attackResolved.sizeBonus,
+        cinematic: attackResolved.cinematicBonus,
+      },
+    },
+    xp: { current: character.xp ?? 0, nextLevel: xpForNextLevel(character.level, opts.ruleset || "dnd5e") },
   };
 }
