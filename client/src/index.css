@@ -169,12 +169,14 @@
 
 /* Parchment character-sheet treatment (sidebar) */
 .parchment-surface {
-  background-color: #ecdfbb;
+  /* Darkened 1-2 shades from the original cream per feedback 2026-08-20 —
+     same warm tan hue, just deeper so it reads less washed-out. */
+  background-color: #ddc99b;
   background-image:
-    radial-gradient(ellipse 140% 90% at 15% 0%, rgba(255,251,235,0.55), transparent 60%),
-    radial-gradient(ellipse 120% 90% at 100% 100%, rgba(120,88,42,0.14), transparent 65%),
+    radial-gradient(ellipse 140% 90% at 15% 0%, rgba(255,251,235,0.45), transparent 60%),
+    radial-gradient(ellipse 120% 90% at 100% 100%, rgba(120,88,42,0.18), transparent 65%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
-    linear-gradient(160deg, #f6ecd2 0%, #ecdcae 50%, #e0cd98 100%);
+    linear-gradient(160deg, #eee0bd 0%, #ddc99a 50%, #cfb87e 100%);
   color: #3f2d18;
 }
 .parchment-heading {
