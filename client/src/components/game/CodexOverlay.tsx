@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ACHIEVEMENTS, type AchievementCategory } from "@shared/achievements";
+import { sceneDisplay, type WorldState } from "@shared/world-state";
 
 type ParsedSection = {
   label: string;
@@ -61,7 +62,7 @@ const CATEGORY_LABELS: Record<AchievementCategory, string> = {
 };
 const CATEGORY_ORDER: AchievementCategory[] = ["character", "combat", "social", "exploration", "meta", "secret"];
 
-function safeParseWorldState(raw?: string): { currentScene?: string; memory?: WorldMemory } {
+function safeParseWorldState(raw?: string): { currentScene?: WorldState["currentScene"]; memory?: WorldMemory } {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
@@ -131,6 +132,13 @@ export default function CodexOverlay({
 }: Props) {
   const sections = useMemo(() => safeParseSections(characterData), [characterData]);
   const parsedWorldState = useMemo(() => safeParseWorldState(worldState), [worldState]);
+  // currentScene can be a plain string (legacy) or a structured
+  // {name, description} object — the DM's own [WORLD_STATE] prompt asks for
+  // the structured form (see server/dm-engine.ts), so real campaigns hit
+  // this. Rendering the raw value directly crashed the dialog the moment a
+  // campaign had an object-shaped scene; sceneDisplay() is the same
+  // normalizer the Scene Viewport already uses for this exact duality.
+  const currentScene = useMemo(() => sceneDisplay(parsedWorldState.currentScene ?? null), [parsedWorldState.currentScene]);
 
   const grantedAbilities = useMemo(
     () =>
@@ -319,15 +327,16 @@ export default function CodexOverlay({
                 Chronicle &amp; World Knowledge
               </div>
 
-              {parsedWorldState.currentScene && (
+              {currentScene && (
                 <div className="text-sm rounded-sm border border-[hsl(var(--dm-parchment-line))] p-3 whitespace-pre-wrap">
-                  {parsedWorldState.currentScene}
+                  <div className="font-medium">{currentScene.name}</div>
+                  {currentScene.description && <div className="mt-1">{currentScene.description}</div>}
                 </div>
               )}
               {parsedWorldState.memory?.summary && (
                 <p className="text-sm leading-relaxed">{parsedWorldState.memory.summary}</p>
               )}
-              {!parsedWorldState.currentScene && !parsedWorldState.memory?.summary && (
+              {!currentScene && !parsedWorldState.memory?.summary && (
                 <p className="text-sm text-[hsl(var(--dm-parchment-muted))]">
                   The story hasn't started yet — nothing recorded.
                 </p>
