@@ -355,12 +355,43 @@ export function resolveCharacterModifier(
   };
 }
 
+export interface SaveEntry {
+  key: string;
+  label: string;
+  total: number;
+  proficient: boolean;
+}
+
 export interface FullCharacterSheet {
   ruleset: string;
   abilities: Record<Ability, { score: number; modifier: number }>;
   skills: Array<{ name: string; ability: Ability; total: number; proficient: boolean }>;
-  saves: Record<Ability, { total: number; proficient: boolean }>;
+  saves: SaveEntry[];
   attack: { total: number; extraAttackBonuses: number[] };
+}
+
+// 3.5e has exactly three saving throws — Fortitude (Con), Reflex (Dex), and
+// Will (Wis) — never one per ability. Str/Int/Cha have no corresponding
+// 3.5e save at all, so they're not computed here, not padded in as zeros.
+// Every ruleset that genuinely uses six ability-based saves (5e) keeps that
+// shape via the fallback branch in buildSaves below.
+const DND35E_SAVES: Array<{ key: string; label: string; ability: Ability }> = [
+  { key: "fortitude", label: "Fortitude", ability: "con" },
+  { key: "reflex", label: "Reflex", ability: "dex" },
+  { key: "will", label: "Will", ability: "wis" },
+];
+
+function buildSaves(characterId: number, ruleset: string | undefined, storage: StorageLike): SaveEntry[] {
+  if (ruleset === "dnd35e") {
+    return DND35E_SAVES.map(({ key, label, ability }) => {
+      const resolved = resolveCharacterModifier(characterId, ability, { isSave: true, ruleset }, storage);
+      return { key, label, total: resolved.total, proficient: resolved.proficiencyBonus > 0 };
+    });
+  }
+  return (["str", "dex", "con", "int", "wis", "cha"] as Ability[]).map((ab) => {
+    const resolved = resolveCharacterModifier(characterId, ab, { isSave: true, ruleset }, storage);
+    return { key: ab, label: ABILITY_FULL_NAMES[ab].slice(0, 3).toUpperCase(), total: resolved.total, proficient: resolved.proficiencyBonus > 0 };
+  });
 }
 
 // The single computed sheet the Character Sheet modal (and anywhere else
@@ -390,11 +421,7 @@ export function computeFullCharacterSheet(
     return { name, ability, total: resolved.total, proficient: resolved.proficiencyBonus > 0 };
   });
 
-  const saves = {} as FullCharacterSheet["saves"];
-  for (const ab of ["str", "dex", "con", "int", "wis", "cha"] as Ability[]) {
-    const resolved = resolveCharacterModifier(characterId, ab, { isSave: true, ruleset: opts.ruleset }, storage);
-    saves[ab] = { total: resolved.total, proficient: resolved.proficiencyBonus > 0 };
-  }
+  const saves = buildSaves(characterId, opts.ruleset, storage);
 
   const attackAbility = (["str", "dex", "int"].includes(character.attackAbility || "") ? character.attackAbility : "str") as Ability;
   const attackResolved = resolveCharacterModifier(characterId, attackAbility, { skill: "attack", ruleset: opts.ruleset, combatStyle: opts.combatStyle }, storage);

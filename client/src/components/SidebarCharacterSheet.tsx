@@ -1,6 +1,16 @@
+// client/src/components/SidebarCharacterSheet.tsx
+//
+// Character Overview — a quick authoritative mechanical summary, opened by
+// clicking the portrait/name in the Character HUD. This is deliberately NOT
+// the full Character Sheet (that's client/src/pages/CharacterSheetPage.tsx,
+// reached via the HUD's "Sheet" button) and it owns no launchers into
+// Inventory/Codex/Deeds — those are the HUD's own Inventory/Codex buttons
+// and the Codex's Deeds section respectively. Consider renaming this file
+// to CharacterOverview.tsx to match what it actually is.
+
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, Shield, Zap, Coins, Sword, Wifi, WifiOff, Backpack, BookOpen, ScrollText, Wind, Moon, Trophy } from "lucide-react";
+import { Heart, Shield, Zap, Coins, Sword, Wifi, WifiOff, Wind, Moon } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +19,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
-import InventoryModal from "@/components/InventoryModal";
-import CodexModal from "@/components/CodexModal";
-import CharacterSheetModal, { type FullCharacterSheet } from "@/components/CharacterSheetModal";
+import type { FullCharacterSheet } from "@/lib/characterSheetTypes";
 import LevelUpWizard from "@/components/LevelUpWizard";
-import AchievementsPanel from "@/components/AchievementsPanel";
 
 type Character = {
   id: number;
@@ -21,8 +28,6 @@ type Character = {
   name: string;
   race: string;
   charClass: string;
-  traits: string;
-  backstory: string;
   level: number;
   hp: number;
   maxHp: number;
@@ -30,7 +35,6 @@ type Character = {
   speed: number;
   attacksPerRound: number;
   status: string;
-  characterData: string;
   str: number;
   dex: number;
   con: number;
@@ -41,47 +45,23 @@ type Character = {
   xp: number;
 };
 
-type Item = {
-  id: number;
-  campaignId: number;
-  characterId: number;
-  name: string;
-  description: string;
-  itemType: string;
-  quantity: number;
-  consumable: boolean;
-  equipped: boolean;
-  identified: boolean;
-  slot: string | null;
-};
-
 type CurrencyBalance = {
   currencyCode: string;
   amount: number;
 };
 
 type CampaignCurrency = {
-  id: number;
-  campaignId: number;
   code: string;
   name: string;
   symbol: string;
   isPrimary: boolean;
-  exchangeRate: number;
 };
 
 type Props = {
   character: Character;
-  items: Item[];
   currencies: CurrencyBalance[];
   campaignCurrencies: CampaignCurrency[];
   connected?: boolean;
-  onEquip: (itemId: number, slot: string) => void;
-  onUnequip: (itemId: number) => void;
-  onUse: (itemId: number) => Promise<void>;
-  onRead: (itemId: number) => Promise<string>;
-  onSubmitReport: (description: string) => Promise<void>;
-  worldState?: string;
 };
 
 const ABILITY_LABELS: Record<string, string> = {
@@ -105,28 +85,17 @@ function formatCurrencyAmount(amount: number, def?: CampaignCurrency) {
 
 export default function SidebarCharacterSheet({
   character,
-  items,
   currencies,
   campaignCurrencies,
   connected = true,
-  onEquip,
-  onUnequip,
-  onUse,
-  onRead,
-  onSubmitReport,
-  worldState,
 }: Props) {
-  const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [codexOpen, setCodexOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [levelUpOpen, setLevelUpOpen] = useState(false);
-  const [achievementsOpen, setAchievementsOpen] = useState(false);
 
   const qc = useQueryClient();
 
-  // Shared with CharacterSheetModal via the same query key — react-query
-  // dedupes the request, so opening the modal doesn't refetch what the
-  // sidebar already has.
+  // Same query key the full Character Sheet page uses — react-query dedupes
+  // the request, so opening Overview doesn't refetch what the sheet already
+  // has cached (or vice versa).
   const { data: sheet } = useQuery<FullCharacterSheet>({
     queryKey: [`/api/characters/${character.id}/sheet`],
   });
@@ -196,41 +165,6 @@ export default function SidebarCharacterSheet({
 
       <ScrollArea className="flex-1">
         <div className="p-5 space-y-5">
-        <div className="grid grid-cols-4 gap-2">
-          <Button
-            variant="outline"
-            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
-            onClick={() => setInventoryOpen(true)}
-          >
-            <Backpack className="w-4 h-4 text-amber-700" />
-            Inventory
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
-            onClick={() => setCodexOpen(true)}
-          >
-            <BookOpen className="w-4 h-4 text-amber-700" />
-            Codex
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
-            onClick={() => setSheetOpen(true)}
-          >
-            <ScrollText className="w-4 h-4 text-amber-700" />
-            Sheet
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2 bg-amber-50/50 border-amber-800/25 text-amber-950 hover:bg-amber-50/80 px-2"
-            onClick={() => setAchievementsOpen(true)}
-          >
-            <Trophy className="w-4 h-4 text-amber-700" />
-            Deeds
-          </Button>
-        </div>
-
         <Card className="parchment-ruled p-4 space-y-4 bg-amber-50/30 border-amber-800/25 text-amber-950 shadow-none">
           <div className="parchment-label flex items-center gap-2">
             <Heart className="w-4 h-4 text-rose-700" />
@@ -299,21 +233,22 @@ export default function SidebarCharacterSheet({
             Saving Throws
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {(["str", "dex", "con", "int", "wis", "cha"] as const).map((key) => {
-              const save = sheet?.saves[key];
-              return (
+            {sheet?.saves.length ? (
+              sheet.saves.map((save) => (
                 <div
-                  key={key}
+                  key={save.key}
                   className={cn(
                     "rounded-lg border p-2 text-center",
-                    save?.proficient ? "border-amber-700/40 bg-amber-100/40" : "border-amber-800/20 bg-amber-50/40",
+                    save.proficient ? "border-amber-700/40 bg-amber-100/40" : "border-amber-800/20 bg-amber-50/40",
                   )}
                 >
-                  <div className="text-[10px] uppercase tracking-wide text-amber-900/60">{ABILITY_LABELS[key]}</div>
-                  <div className="text-sm font-semibold">{save ? (save.total >= 0 ? `+${save.total}` : save.total) : "—"}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-amber-900/60">{save.label}</div>
+                  <div className="text-sm font-semibold">{save.total >= 0 ? `+${save.total}` : save.total}</div>
                 </div>
-              );
-            })}
+              ))
+            ) : (
+              <div className="col-span-3 text-sm text-amber-900/60">Loading saves…</div>
+            )}
           </div>
         </Card>
 
@@ -378,41 +313,7 @@ export default function SidebarCharacterSheet({
         </div>
       </ScrollArea>
 
-      <InventoryModal
-        open={inventoryOpen}
-        onOpenChange={setInventoryOpen}
-        items={items}
-        onEquip={onEquip}
-        onUnequip={onUnequip}
-        onUse={onUse}
-        onRead={onRead}
-      />
-
-      <CodexModal
-        open={codexOpen}
-        onOpenChange={setCodexOpen}
-        traits={character.traits}
-        backstory={character.backstory}
-        characterData={character.characterData}
-        worldState={worldState}
-        onSubmitReport={onSubmitReport}
-      />
-
-      <CharacterSheetModal
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        characterId={character.id}
-        characterName={character.name}
-        race={character.race}
-        charClass={character.charClass}
-        level={character.level}
-        ac={character.ac}
-        characterData={character.characterData}
-      />
-
       <LevelUpWizard open={levelUpOpen} onOpenChange={setLevelUpOpen} characterId={character.id} />
-
-      <AchievementsPanel open={achievementsOpen} onOpenChange={setAchievementsOpen} />
     </div>
   );
 }

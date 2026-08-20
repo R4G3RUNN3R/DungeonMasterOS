@@ -15,7 +15,7 @@
 // simplified level-derived capacity otherwise (shared/encumbrance.ts) —
 // never a fabricated number, but no longer a permanent null either.
 
-import type { CharacterHudModel, RulesAdapter } from "./types";
+import type { AuthoritativeSaveEntry, CharacterHudModel, RulesAdapter, SaveDisplay } from "./types";
 import {
   carryingCapacityForStrength,
   defaultCarryingCapacityForLevel,
@@ -59,10 +59,27 @@ function buildCarryWeight(abilities: any, character: any, items: any[] | undefin
   };
 }
 
+// Prefer the server's authoritative save computation (same source the full
+// Character Sheet reads — see server/character-stats.ts's buildSaves) when
+// it's available. Fall back to the characterData.dnd35Sheet JSON blob only
+// while that fetch hasn't resolved yet, so the HUD doesn't flash "—" on
+// every page load; the blob is never treated as the source of truth once
+// the authoritative data has arrived.
+function buildSaveDisplay(authoritativeSaves: AuthoritativeSaveEntry[] | undefined, blobSaves: any): SaveDisplay[] {
+  if (authoritativeSaves && authoritativeSaves.length > 0) {
+    return authoritativeSaves.map((s) => ({ key: s.key, label: s.label, value: s.total }));
+  }
+  return [
+    { key: "fortitude", label: "Fort", value: typeof blobSaves.fortitude?.total === "number" ? blobSaves.fortitude.total : null },
+    { key: "reflex", label: "Ref", value: typeof blobSaves.reflex?.total === "number" ? blobSaves.reflex.total : null },
+    { key: "will", label: "Will", value: typeof blobSaves.will?.total === "number" ? blobSaves.will.total : null },
+  ];
+}
+
 export const dnd35Adapter: RulesAdapter = {
   ruleset: "dnd35e",
 
-  buildCharacterHud(character, items): CharacterHudModel {
+  buildCharacterHud(character, items, authoritativeSaves): CharacterHudModel {
     const characterData = safeParseCharacterData(character?.characterData);
     const sheet = characterData?.dnd35Sheet ?? {};
     const identity = sheet.identity ?? {};
@@ -90,11 +107,7 @@ export const dnd35Adapter: RulesAdapter = {
       speed: typeof character?.speed === "number" ? character.speed : (sheet.movement?.land ?? null),
       attacksPerRound: typeof character?.attacksPerRound === "number" ? character.attacksPerRound : null,
       carryWeight: buildCarryWeight(abilities, character, items),
-      saves: [
-        { key: "fortitude", label: "Fort", value: typeof saves.fortitude?.total === "number" ? saves.fortitude.total : null },
-        { key: "reflex", label: "Ref", value: typeof saves.reflex?.total === "number" ? saves.reflex.total : null },
-        { key: "will", label: "Will", value: typeof saves.will?.total === "number" ? saves.will.total : null },
-      ],
+      saves: buildSaveDisplay(authoritativeSaves, saves),
     };
   },
 };

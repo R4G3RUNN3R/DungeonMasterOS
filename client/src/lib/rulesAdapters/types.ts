@@ -37,8 +37,26 @@ export interface CharacterHudModel {
   saves: SaveDisplay[];
 }
 
+// The server's authoritative save computation (server/character-stats.ts's
+// FullCharacterSheet.saves) — structurally compatible, not imported, since
+// this is client code. Passing it in (rather than recomputing saves from
+// characterData here) is what keeps the HUD from ever disagreeing with the
+// full Character Sheet, or silently showing stale/never-written data.
+export interface AuthoritativeSaveEntry {
+  key: string;
+  label: string;
+  total: number;
+  proficient: boolean;
+}
+
 export interface RulesAdapter {
   ruleset: string;
-  /** Projects raw character (+ that character's items, for Carry Weight) into a display-safe HUD model. */
-  buildCharacterHud(character: any, items?: any[]): CharacterHudModel;
+  /**
+   * Projects raw character (+ that character's items, for Carry Weight) into
+   * a display-safe HUD model. `authoritativeSaves`, when available, comes
+   * from the same server computation the full Character Sheet uses; when
+   * absent (e.g. still loading), the adapter may fall back to a cached
+   * approximation rather than showing nothing.
+   */
+  buildCharacterHud(character: any, items?: any[], authoritativeSaves?: AuthoritativeSaveEntry[]): CharacterHudModel;
 }

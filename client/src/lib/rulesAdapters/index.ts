@@ -15,4 +15,4 @@ export function getRulesAdapter(ruleset?: string | null): RulesAdapter {
   return dnd35Adapter;
 }
 
-export type { RulesAdapter, CharacterHudModel, SaveDisplay, CarryWeightDisplay } from "./types";
+export type { RulesAdapter, CharacterHudModel, SaveDisplay, CarryWeightDisplay, AuthoritativeSaveEntry } from "./types";

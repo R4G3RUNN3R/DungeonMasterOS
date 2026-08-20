@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import CampaignPage from "@/pages/campaign";
+import CharacterSheetPage from "@/pages/CharacterSheetPage";
 import Landing from "@/pages/landing";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
@@ -51,6 +52,7 @@ function AppRouter() {
       <Route path="/account">{() => <ProtectedRoute component={Account} />}</Route>
       <Route path="/home">{() => <ProtectedRoute component={Home} />}</Route>
       <Route path="/campaign/:id" component={CampaignPage} />
+      <Route path="/character-sheet/:characterId">{() => <ProtectedRoute component={CharacterSheetPage} />}</Route>
 
       <Route component={NotFound} />
     </Switch>

@@ -84,7 +84,7 @@ export default function CharacterHud({
             onClick={onOpenPortrait}
             className="shrink-0 w-[76px] h-[76px] rounded-full dm-surface-raised border-2 flex items-center justify-center overflow-hidden hover:brightness-110 transition-[filter]"
             style={{ borderColor: "hsl(var(--dm-bronze))" }}
-            aria-label="Open character profile"
+            aria-label="Open character overview"
           >
             {hud.portraitUrl ? (
               <img src={hud.portraitUrl} alt={hud.name} className="w-full h-full object-cover" />

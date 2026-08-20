@@ -2330,6 +2330,20 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json(storage.getItemsByCharacter(Number(req.params.characterId)));
   });
 
+  // Standalone character identity fetch — needed by the canonical Character
+  // Sheet page, which can be opened directly by URL (e.g. "open in separate
+  // window") without campaign.tsx's React state already holding the
+  // character record. Nothing else fetches a bare character by id today;
+  // every other consumer gets it via /api/campaigns/:id/my-character.
+  app.get("/api/characters/:characterId", requireAuth, (req, res) => {
+    const visitorId = getVisitorId(req);
+    const characterId = Number(req.params.characterId);
+    const character = storage.getCharacter(characterId);
+    if (!character) return res.status(404).json({ message: "Character not found" });
+    if (character.visitorId !== visitorId) return res.status(403).json({ message: "Not your character" });
+    return res.json(character);
+  });
+
   app.get("/api/characters/:characterId/sheet", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.characterId);

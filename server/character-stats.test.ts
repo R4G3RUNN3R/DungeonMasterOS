@@ -188,7 +188,8 @@ test("computeFullCharacterSheet: assembles abilities, all 18 skills, all 6 saves
   assert.equal(sheet.abilities.str.score, 14);
   assert.equal(sheet.abilities.str.modifier, 2);
   assert.equal(sheet.skills.length, 18);
-  assert.equal(Object.keys(sheet.saves).length, 6);
+  assert.equal(sheet.saves.length, 6);
+  assert.deepEqual(sheet.saves.map((s) => s.key).sort(), ["cha", "con", "dex", "int", "str", "wis"]);
 
   const stealthSkill = sheet.skills.find((s) => s.name === "Stealth")!;
   const stealthResolved = resolveCharacterModifier(1, "dex", { skill: "Stealth" }, fakeStorage() as any);
@@ -209,6 +210,41 @@ test("computeFullCharacterSheet: dnd35e ruleset includes iterative attack bonuse
   // Fighter (full BAB), level 12 -> BAB +12 -> attacks at +12/+7/+2
   const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, fakeStorage({ level: 12, charClass: "Fighter" }) as any);
   assert.equal(sheet.attack.extraAttackBonuses.length, 2);
+});
+
+test("computeFullCharacterSheet: a dnd35e Fighter exposes exactly Fortitude/Reflex/Will, never six ability saves", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, fakeStorage({ charClass: "Fighter" }) as any);
+  assert.deepEqual(sheet.saves.map((s) => s.key), ["fortitude", "reflex", "will"]);
+  assert.deepEqual(sheet.saves.map((s) => s.label), ["Fortitude", "Reflex", "Will"]);
+});
+
+test("computeFullCharacterSheet: a dnd35e Rogue also exposes exactly Fortitude/Reflex/Will", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, fakeStorage({ charClass: "Rogue" }) as any);
+  assert.deepEqual(sheet.saves.map((s) => s.key), ["fortitude", "reflex", "will"]);
+});
+
+test("computeFullCharacterSheet: dnd35e save totals agree exactly with resolveCharacterModifier — same authoritative mechanics, not a second formula", () => {
+  const storage = fakeStorage({ level: 8, charClass: "Cleric" }) as any; // Cleric: good Fort+Will, poor Reflex
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd35e" }, storage);
+
+  const fort = resolveCharacterModifier(1, "con", { isSave: true, ruleset: "dnd35e" }, storage);
+  const ref = resolveCharacterModifier(1, "dex", { isSave: true, ruleset: "dnd35e" }, storage);
+  const will = resolveCharacterModifier(1, "wis", { isSave: true, ruleset: "dnd35e" }, storage);
+
+  assert.equal(sheet.saves.find((s) => s.key === "fortitude")!.total, fort.total);
+  assert.equal(sheet.saves.find((s) => s.key === "reflex")!.total, ref.total);
+  assert.equal(sheet.saves.find((s) => s.key === "will")!.total, will.total);
+  // Fortitude and Will are Cleric's good saves — must be strictly higher than
+  // Reflex, its poor save, at the same level. This is the regression a
+  // "just relabel three of the six ability saves" fix would silently miss.
+  assert.ok(fort.total > ref.total);
+  assert.ok(will.total > ref.total);
+});
+
+test("computeFullCharacterSheet: a non-3.5 ruleset is not accidentally forced into Fortitude/Reflex/Will", () => {
+  const sheet = computeFullCharacterSheet(1, { ruleset: "dnd5e" }, fakeStorage() as any);
+  assert.deepEqual(sheet.saves.map((s) => s.key).sort(), ["cha", "con", "dex", "int", "str", "wis"]);
+  assert.ok(!sheet.saves.some((s) => s.key === "fortitude" || s.key === "reflex" || s.key === "will"));
 });
 
 test("shared/races: racesForRuleset(dnd35e) returns exactly the 7 core PHB races", () => {

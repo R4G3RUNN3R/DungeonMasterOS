@@ -13,15 +13,16 @@
 // the total. Container/Bag-of-Holding-specific capacity logic is out of
 // scope here (spec §16 calls that out as needing its own logic).
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Backpack, Sword, Shield, Sparkles, Castle, Car, Ship, Wrench, ScrollText,
-  Link as LinkIcon, UserRound, PawPrint, Package, Archive,
+  Link as LinkIcon, UserRound, PawPrint, Package, Archive, BookOpenText,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CarryWeightDisplay } from "@/lib/rulesAdapters";
+import EquipmentPaperDoll, { EQUIPMENT_SLOTS } from "@/components/EquipmentPaperDoll";
 
 type Item = {
   id: number;
@@ -34,6 +35,7 @@ type Item = {
   identified: boolean;
   weight: number;
   carried: boolean;
+  slot: string | null;
 };
 
 type Props = {
@@ -42,7 +44,34 @@ type Props = {
   items: Item[];
   carryWeight: CarryWeightDisplay | null;
   onToggleCarried: (itemId: number, carried: boolean) => void;
+  onEquip: (itemId: number, slot: string) => void;
+  onUnequip: (itemId: number) => void;
+  onUse: (itemId: number) => Promise<void>;
+  onRead: (itemId: number) => Promise<string>;
 };
+
+const EQUIPPABLE_TYPES = new Set(["weapon", "armor", "magic", "gear"]);
+const READABLE_KEYWORDS = /\b(notice|map|letter|scroll|book|journal|document|ledger|note|contract|deed|manuscript|tome|missive)\b/i;
+
+function isReadableDocument(item: Item): boolean {
+  return READABLE_KEYWORDS.test(`${item.name} ${item.description}`);
+}
+
+function getEligibleSlots(item: Item): typeof EQUIPMENT_SLOTS {
+  const type = String(item.itemType || "").toLowerCase();
+  const name = String(item.name || "").toLowerCase();
+
+  if (type === "weapon") return EQUIPMENT_SLOTS.filter((s) => s.key === "mainHand" || s.key === "offHand");
+  if (/\b(ring|band)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "ring1" || s.key === "ring2");
+  if (/\b(amulet|necklace|pendant|cloak|cape)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "neck");
+  if (/\b(helm|helmet|hood|cap|crown|circlet)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "head");
+  if (/\b(boots?|greaves?|shoes?)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "feet");
+  if (/\b(gloves?|gauntlets?|bracers?)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "hands");
+  if (/\b(leggings?|pants?|trousers?)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "legs");
+  if (/\b(clothes?|shirt|tunic|garment|undergarment)\b/.test(name)) return EQUIPMENT_SLOTS.filter((s) => s.key === "underclothes");
+  if (type === "armor") return EQUIPMENT_SLOTS.filter((s) => s.key === "chest");
+  return [];
+}
 
 function getItemTypeMeta(itemType: string) {
   const t = String(itemType || "misc").toLowerCase();
@@ -77,9 +106,49 @@ function itemWeightLabel(item: Item): string {
   return `${rounded} lb`;
 }
 
-function ItemCard({ item, onToggleCarried }: { item: Item; onToggleCarried: (itemId: number, carried: boolean) => void }) {
+function ItemCard({
+  item,
+  onToggleCarried,
+  onEquip,
+  onUnequip,
+  onUse,
+  onRead,
+}: {
+  item: Item;
+  onToggleCarried: (itemId: number, carried: boolean) => void;
+  onEquip: (itemId: number, slot: string) => void;
+  onUnequip: (itemId: number) => void;
+  onUse: (itemId: number) => Promise<void>;
+  onRead: (itemId: number) => Promise<string>;
+}) {
   const stored = !item.carried;
   const weightLabel = itemWeightLabel(item);
+  const readable = isReadableDocument(item);
+  const eligibleSlots = getEligibleSlots(item);
+
+  const [useLoading, setUseLoading] = useState(false);
+  const [readLoading, setReadLoading] = useState(false);
+  const [readContent, setReadContent] = useState<string | null>(null);
+
+  async function handleUse() {
+    setUseLoading(true);
+    try {
+      await onUse(item.id);
+    } finally {
+      setUseLoading(false);
+    }
+  }
+
+  async function handleRead() {
+    if (readContent) return;
+    setReadLoading(true);
+    try {
+      setReadContent(await onRead(item.id));
+    } finally {
+      setReadLoading(false);
+    }
+  }
+
   return (
     <div
       className={`rounded-md px-3 py-2 text-sm dm-surface-raised border-l-2 ${
@@ -97,7 +166,7 @@ function ItemCard({ item, onToggleCarried }: { item: Item; onToggleCarried: (ite
               {item.description}
             </div>
           )}
-          <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             {weightLabel && <span className="text-[11px] text-[hsl(var(--dm-text-faint))] tabular-nums">{weightLabel}</span>}
             <Button
               type="button"
@@ -108,7 +177,64 @@ function ItemCard({ item, onToggleCarried }: { item: Item; onToggleCarried: (ite
             >
               {stored ? "Carry" : "Store"}
             </Button>
+
+            {EQUIPPABLE_TYPES.has(String(item.itemType || "").toLowerCase()) &&
+              (item.equipped ? (
+                <button
+                  type="button"
+                  className="text-[11px] dm-label hover:dm-danger-text"
+                  onClick={() => onUnequip(item.id)}
+                >
+                  Unequip
+                </button>
+              ) : (
+                eligibleSlots.length > 0 && (
+                  <select
+                    className="h-6 rounded-md border border-[hsl(var(--dm-line))] bg-transparent px-1.5 text-[11px]"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) onEquip(item.id, e.target.value);
+                    }}
+                  >
+                    <option value="">Equip to…</option>
+                    {eligibleSlots.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                )
+              ))}
+
+            {item.consumable && (
+              <button
+                type="button"
+                disabled={useLoading}
+                className="text-[11px] font-medium dm-amber-text hover:brightness-110 disabled:opacity-50 disabled:cursor-wait"
+                onClick={handleUse}
+              >
+                {useLoading ? "Using…" : "Use"}
+              </button>
+            )}
+
+            {readable && (
+              <button
+                type="button"
+                disabled={readLoading}
+                className="text-[11px] font-medium dm-amber-text hover:brightness-110 disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                onClick={handleRead}
+              >
+                <BookOpenText className="w-3 h-3" />
+                {readLoading ? "Reading…" : readContent ? "Read" : "Read"}
+              </button>
+            )}
           </div>
+
+          {readContent && (
+            <div className="mt-2 rounded-md border border-[hsl(var(--dm-line))] bg-[hsl(var(--dm-surface))] p-2.5 text-xs whitespace-pre-wrap leading-relaxed">
+              {readContent}
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-1 shrink-0 items-end">
           {stored && (
@@ -144,7 +270,7 @@ function tierClass(tier: CarryWeightDisplay["tier"]): string {
   return "text-[hsl(var(--dm-text-muted))]";
 }
 
-export default function InventoryOverlay({ open, onOpenChange, items, carryWeight, onToggleCarried }: Props) {
+export default function InventoryOverlay({ open, onOpenChange, items, carryWeight, onToggleCarried, onEquip, onUnequip, onUse, onRead }: Props) {
   const groupedItems = useMemo(() => groupItems(items), [items]);
   const equippedCount = items.filter((i) => i.equipped).length;
   const hasCarryWeight = carryWeight && carryWeight.current !== null && carryWeight.max !== null;
@@ -172,31 +298,53 @@ export default function InventoryOverlay({ open, onOpenChange, items, carryWeigh
           </div>
         </div>
 
-        <div className="p-5">
-          {groupedItems.length === 0 ? (
-            <div className="text-sm text-[hsl(var(--dm-text-muted))] py-6 text-center">
-              Nothing carried yet.
+        <div className="p-5 space-y-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium dm-heading">
+              <UserRound className="w-4 h-4" style={{ color: "hsl(var(--dm-bronze))" }} />
+              Equipped Items
             </div>
-          ) : (
-            <div className="space-y-5">
-              {groupedItems.map((group) => {
-                const Icon = group.icon;
-                return (
-                  <div key={group.label} className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium dm-heading">
-                      <Icon className="w-4 h-4" style={{ color: "hsl(var(--dm-bronze))" }} />
-                      {group.label}
-                    </div>
-                    <div className="space-y-2">
-                      {group.items.map((item) => (
-                        <ItemCard key={item.id} item={item} onToggleCarried={onToggleCarried} />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+            <EquipmentPaperDoll items={items} onUnequip={onUnequip} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium dm-heading">
+              <Backpack className="w-4 h-4" style={{ color: "hsl(var(--dm-bronze))" }} />
+              Inventory &amp; Possessions
             </div>
-          )}
+            {groupedItems.length === 0 ? (
+              <div className="text-sm text-[hsl(var(--dm-text-muted))] py-6 text-center">
+                Nothing carried yet.
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {groupedItems.map((group) => {
+                  const Icon = group.icon;
+                  return (
+                    <div key={group.label} className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium dm-heading">
+                        <Icon className="w-4 h-4" style={{ color: "hsl(var(--dm-bronze))" }} />
+                        {group.label}
+                      </div>
+                      <div className="space-y-2">
+                        {group.items.map((item) => (
+                          <ItemCard
+                            key={item.id}
+                            item={item}
+                            onToggleCarried={onToggleCarried}
+                            onEquip={onEquip}
+                            onUnequip={onUnequip}
+                            onUse={onUse}
+                            onRead={onRead}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

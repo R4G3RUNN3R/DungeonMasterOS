@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gameWs } from "@/lib/websocket";
 import { apiUrl } from "@/lib/appBase";
 
-import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import CharacterSheetView from "@/components/CharacterSheetView";
+import type { FullCharacterSheet } from "@/lib/characterSheetTypes";
 import CampaignGameShell from "@/components/game/CampaignGameShell";
 import type { ActiveEffectDisplay } from "@/components/game/ActiveConditions";
 import type { GrantedItemDisplay } from "@/components/game/LootFlash";
@@ -208,7 +208,6 @@ export default function CampaignPage() {
   const [actionInput, setActionInput] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
   const [dmThinking, setDmThinking] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [recentLoot, setRecentLoot] = useState<GrantedItemDisplay | null>(null);
   const recentLootTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -369,6 +368,15 @@ export default function CampaignPage() {
   const effectsQuery = useQuery({
     queryKey: ["/api/characters", myCharacterQuery.data?.id, "effects"],
     queryFn: () => api<ActiveEffectDisplay[]>(`/api/characters/${myCharacterQuery.data!.id}/effects`),
+    enabled: !!myCharacterQuery.data?.id,
+  });
+
+  // Same query key SidebarCharacterSheet/CharacterSheetPage use — react-query
+  // dedupes the request, so the HUD's authoritative saves and the full sheet
+  // never issue two separate fetches for the same data.
+  const sheetQuery = useQuery<FullCharacterSheet>({
+    queryKey: [`/api/characters/${myCharacterQuery.data?.id}/sheet`],
+    queryFn: () => api<FullCharacterSheet>(`/api/characters/${myCharacterQuery.data!.id}/sheet`),
     enabled: !!myCharacterQuery.data?.id,
   });
 
@@ -1312,11 +1320,18 @@ export default function CampaignPage() {
         campaignName={campaign.name}
         worldType={campaign.worldType}
         worldState={parseWorldState(campaign.worldState)}
+        worldStateRaw={campaign?.worldState}
+        onSubmitReport={handleSubmitReport}
         character={myCharacter}
+        sheetSaves={sheetQuery.data?.saves}
         party={charactersQuery.data ?? []}
         messages={messages}
         items={items}
         onToggleCarried={(itemId, carried) => toggleCarriedMutation.mutate({ itemId, carried })}
+        onEquip={handleEquip}
+        onUnequip={handleUnequip}
+        onUse={handleUseItem}
+        onRead={handleReadItem}
         effects={effectsQuery.data ?? []}
         recentLoot={recentLoot}
         campaignCurrencies={currencies}
@@ -1339,27 +1354,9 @@ export default function CampaignPage() {
         onFlee={() => fleeMutation.mutate()}
         attackPending={attackMutation.isPending || fleeMutation.isPending}
         onBack={() => navigate("/dashboard")}
-        onOpenSheet={() => setSheetOpen(true)}
+        onOpenSheet={() => navigate(`/character-sheet/${myCharacter.id}`)}
         scrollRef={scrollRef}
       />
-
-      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
-        <DialogContent className="dm-shell max-w-3xl max-h-[85vh] overflow-y-auto p-0 border-[hsl(var(--dm-line))]">
-          <SidebarCharacterSheet
-            character={myCharacter}
-            items={items}
-            currencies={balances}
-            campaignCurrencies={currencies}
-            connected={wsConnected}
-            onEquip={handleEquip}
-            onUnequip={handleUnequip}
-            onUse={handleUseItem}
-            onRead={handleReadItem}
-            onSubmitReport={handleSubmitReport}
-            worldState={campaign?.worldState}
-          />
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

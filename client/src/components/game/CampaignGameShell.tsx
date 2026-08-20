@@ -20,11 +20,11 @@ import ActionComposer from "./ActionComposer";
 import ContextActionDeck from "./ContextActionDeck";
 import MobileGameChrome from "./MobileGameChrome";
 import SceneBackdrop from "./SceneBackdrop";
-import CharacterProfileDialog from "./CharacterProfileDialog";
+import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import InventoryOverlay from "./InventoryOverlay";
 import CodexOverlay from "./CodexOverlay";
 
-import { getRulesAdapter } from "@/lib/rulesAdapters";
+import { getRulesAdapter, type AuthoritativeSaveEntry } from "@/lib/rulesAdapters";
 import { useGameLayoutPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/gameLayoutPreferences";
 import { resolveSceneAsset } from "@shared/scene-resolver";
 import type { WorldState } from "@shared/world-state";
@@ -45,15 +45,27 @@ type Message = {
 
 type Character = {
   id: number;
+  campaignId: number;
   name: string;
   race: string;
   charClass: string;
   traits: string;
   backstory: string;
+  level: number;
   hp: number;
   maxHp: number;
+  tempHp: number;
   speed: number;
   attacksPerRound: number;
+  status: string;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  ac: number;
+  xp: number;
   characterData: string;
 };
 
@@ -68,6 +80,7 @@ type Item = {
   identified: boolean;
   weight: number;
   carried: boolean;
+  slot: string | null;
 };
 
 type CampaignCurrency = { id: number; code: string; name: string; symbol: string; isPrimary: boolean };
@@ -80,11 +93,26 @@ type Props = {
   campaignName: string;
   worldType?: string | null;
   worldState: WorldState;
+  // The raw persisted JSON string, not the parsed WorldState — only this
+  // carries the campaign-memory fields (summary/threads/facts/NPC notes)
+  // the Codex's Chronicle section shows. shared/world-state.ts's parsed
+  // shape deliberately excludes them (spec §8.4: Context Panel only reads
+  // structured fields, memory is narrative-support content, not location
+  // truth) so this is threaded separately rather than widening that type.
+  worldStateRaw?: string;
+  onSubmitReport: (description: string) => Promise<void>;
   character: Character;
+  // The server's authoritative save computation (see character-stats.ts's
+  // buildSaves) — undefined while the /sheet query hasn't resolved yet.
+  sheetSaves?: AuthoritativeSaveEntry[];
   party: Array<{ id: number; name: string; race: string; charClass: string }>;
   messages: Message[];
   items: Item[];
   onToggleCarried: (itemId: number, carried: boolean) => void;
+  onEquip: (itemId: number, slot: string) => void;
+  onUnequip: (itemId: number) => void;
+  onUse: (itemId: number) => Promise<void>;
+  onRead: (itemId: number) => Promise<string>;
   effects: ActiveEffectDisplay[];
   recentLoot: GrantedItemDisplay | null;
   campaignCurrencies: CampaignCurrency[];
@@ -139,11 +167,18 @@ export default function CampaignGameShell({
   campaignName,
   worldType,
   worldState,
+  worldStateRaw,
+  onSubmitReport,
   character,
+  sheetSaves,
   party,
   messages,
   items,
   onToggleCarried,
+  onEquip,
+  onUnequip,
+  onUse,
+  onRead,
   effects,
   recentLoot,
   campaignCurrencies,
@@ -170,12 +205,12 @@ export default function CampaignGameShell({
   scrollRef,
 }: Props) {
   const { preferences, setPreset } = useGameLayoutPreferences();
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
   const [shopExpanded, setShopExpanded] = useState(false);
 
-  const hud = getRulesAdapter().buildCharacterHud(character, items);
+  const hud = getRulesAdapter().buildCharacterHud(character, items, sheetSaves);
   const currencies = currencyDisplayList(campaignCurrencies, balances);
 
   const inCombat = encounter.encounter?.status === "active";
@@ -204,7 +239,7 @@ export default function CampaignGameShell({
     <CharacterHud
       hud={hud}
       currencies={currencies}
-      onOpenPortrait={() => setProfileOpen(true)}
+      onOpenPortrait={() => setOverviewOpen(true)}
       onOpenSheet={onOpenSheet}
       onOpenInventory={() => setInventoryOpen(true)}
       onOpenCodex={() => setCodexOpen(true)}
@@ -334,26 +369,36 @@ export default function CampaignGameShell({
 
       <MobileGameChrome characterHud={characterHudNode} contextPanel={contextPanelNode} contextLabel={contextLabel} />
 
-      <CharacterProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        hud={hud}
-        traits={character.traits}
-        backstory={character.backstory}
-      />
+      <Dialog open={overviewOpen} onOpenChange={setOverviewOpen}>
+        <DialogContent className="dm-shell max-w-3xl max-h-[85vh] overflow-y-auto p-0 border-[hsl(var(--dm-line))]">
+          <SidebarCharacterSheet
+            character={character}
+            currencies={balances}
+            campaignCurrencies={campaignCurrencies}
+            connected={connected}
+          />
+        </DialogContent>
+      </Dialog>
       <InventoryOverlay
         open={inventoryOpen}
         onOpenChange={setInventoryOpen}
         items={items}
         carryWeight={hud.carryWeight}
         onToggleCarried={onToggleCarried}
+        onEquip={onEquip}
+        onUnequip={onUnequip}
+        onUse={onUse}
+        onRead={onRead}
       />
       <CodexOverlay
         open={codexOpen}
         onOpenChange={setCodexOpen}
+        characterId={character.id}
         traits={character.traits}
         backstory={character.backstory}
         characterData={character.characterData}
+        worldState={worldStateRaw}
+        onSubmitReport={onSubmitReport}
       />
 
       {shop && (
