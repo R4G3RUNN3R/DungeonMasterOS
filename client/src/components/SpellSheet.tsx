@@ -254,11 +254,13 @@ function Bubbles({ total, used, color, onToggle, maxDisplay = 20 }: {
 }
 
 // ── Slot row (standard + epic) ─────────────────────────────────────────────
-function SlotRow({ lvl, slot, isEpic, onToggle, onSetTotal, isMyChar }: {
+function SlotRow({ lvl, slot, isEpic, onToggle, onSetTotal, isMyChar, is3e, abilityMod }: {
   lvl: number; slot: SpellSlotState; isEpic: boolean;
   onToggle: (used: number) => void;
   onSetTotal: (total: number) => void;
   isMyChar: boolean;
+  is3e?: boolean;
+  abilityMod?: number | null;
 }) {
   const color = levelColor(lvl);
   const remaining = slot.total - slot.used;
@@ -276,6 +278,13 @@ function SlotRow({ lvl, slot, isEpic, onToggle, onSetTotal, isMyChar }: {
           {isEpic ? `L${lvl}` : lvl}
         </span>
       </div>
+
+      {/* Per-level 3.5e save DC */}
+      {is3e && !isEpic && (
+        abilityMod !== null && abilityMod !== undefined
+          ? <span style={{ fontSize: 7, color: C.purple, fontFamily: "serif" }}>DC {spellSaveDcFor3e(lvl, abilityMod)}</span>
+          : <span style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif" }}>DC —</span>
+      )}
 
       {/* Bubbles */}
       <div style={{ flex: 1 }}>
@@ -709,7 +718,7 @@ interface Props {
 }
 
 export default function SpellSheet({ character, isMyChar, abilities, ruleset }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [showAddSpell, setShowAddSpell] = useState(false);
   const [showAddResource, setShowAddResource] = useState(false);
   const [showAddMeta, setShowAddMeta] = useState(false);
@@ -734,6 +743,7 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns", character.campaignId, "characters"] });
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns", character.campaignId, "my-character"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
     },
   });
 
@@ -743,15 +753,22 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
   // sheet.abilities every other part of the Character Sheet uses (design
   // spec 2026-08-20), not fuzzy-matched out of characterData text.
   const resolvedAbility = resolveCastingAbilityScore(abilities, spellData.castingAbility);
-  const abilityMod = resolvedAbility?.modifier ?? 0;
+  // null when castingAbility is "Custom" (or otherwise not one of the six
+  // real abilities) — kept nullable so 3.5e-only display code can show
+  // "unknown" instead of fabricating a 0-modifier DC (never fabricate —
+  // show unknown, don't invent a value).
+  const abilityMod: number | null = resolvedAbility?.modifier ?? null;
+  // Only for the untouched 5e flat-DC/attack-bonus formula below — fixing
+  // 5e's handling of a Custom ability is out of scope for this feature.
+  const abilityModForLegacy5e = abilityMod ?? 0;
   const is3e = ruleset === "dnd35e";
   const profBonus = character.level >= 17 ? 6 : character.level >= 13 ? 5 : character.level >= 9 ? 4 : character.level >= 5 ? 3 : 2;
   // 3.5e has no single flat DC (every spell level has its own — computed
   // per-row below via spellSaveDcFor3e). This flat value only ever
   // displays for non-3.5e rulesets, where it keeps using 5e's existing
   // formula unchanged.
-  const spellSaveDC = spellData.spellSaveDC ?? (8 + profBonus + abilityMod);
-  const spellAttackBonus = spellData.spellAttackBonus ?? (profBonus + abilityMod);
+  const spellSaveDC = spellData.spellSaveDC ?? (8 + profBonus + abilityModForLegacy5e);
+  const spellAttackBonus = spellData.spellAttackBonus ?? (profBonus + abilityModForLegacy5e);
 
   const cantrips = spellData.spells.filter(s => s.level === 0);
   const standardSpells = spellData.spells.filter(s => s.level >= 1 && s.level <= 9);
@@ -847,7 +864,9 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
             {is3e ? (
               <div style={{ flex: 2, textAlign: "center" }}>
                 <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>
-                  Save DC (10 + spell level {abilityMod >= 0 ? `+ ${abilityMod}` : `- ${Math.abs(abilityMod)}`})
+                  {abilityMod === null
+                    ? "Save DC (10 + spell level + ability modifier — select a real ability above)"
+                    : `Save DC (10 + spell level ${abilityMod >= 0 ? `+ ${abilityMod}` : `- ${Math.abs(abilityMod)}`})`}
                 </div>
                 <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, fontFamily: "serif" }}>
@@ -898,6 +917,8 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
                   onToggle={used => handleSlot(lvl, used, false)}
                   onSetTotal={total => handleSetTotal(lvl, total, false)}
                   isMyChar={isMyChar}
+                  is3e={is3e}
+                  abilityMod={abilityMod}
                 />
               );
             })}
@@ -911,6 +932,7 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
                 onToggle={used => handleSlot(Number(lvl), used, true)}
                 onSetTotal={total => handleSetTotal(Number(lvl), total, true)}
                 isMyChar={isMyChar}
+                is3e={false}
               />
             ))}
             {Object.keys(spellData.epicSlots).length === 0 && (
@@ -1043,7 +1065,11 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
                       <span style={{ fontSize: 7.5, fontWeight: 700, fontFamily: "serif", color, textTransform: "uppercase", letterSpacing: "0.08em" }}>Level {lvl}</span>
                       {slot && <span style={{ fontSize: 7.5, color: rem > 0 ? color : C.inkFaint, fontFamily: "serif" }}>({rem}/{slot.total} slots)</span>}
-                      {is3e && <span style={{ fontSize: 7.5, color: C.purple, fontFamily: "serif" }}>DC {spellSaveDcFor3e(l, abilityMod)}</span>}
+                      {is3e && (
+                        <span style={{ fontSize: 7.5, color: abilityMod === null ? C.inkFaint : C.purple, fontFamily: "serif" }}>
+                          DC {abilityMod === null ? "—" : spellSaveDcFor3e(l, abilityMod)}
+                        </span>
+                      )}
                     </div>
                     {lvlSpells.map(s => (
                       <SpellRow key={s.name} spell={s} hasSlot={rem > 0} isMyChar={isMyChar}
