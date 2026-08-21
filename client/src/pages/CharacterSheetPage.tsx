@@ -16,6 +16,7 @@
 // with no backing value renders "—" rather than being fabricated to fill
 // the sheet's shape.
 
+import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, ScrollText, Sparkles } from "lucide-react";
@@ -157,7 +158,7 @@ export default function CharacterSheetPage() {
 
       {character && sheet && hud && (
         isDnd35e ? (
-          <Dnd35eSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} weapons={weapons} />
+          <Dnd35eSheetShell character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} weapons={weapons} items={itemsQuery.data ?? []} />
         ) : (
           <GenericSheet character={character} sheet={sheet} hud={hud} raceDef={raceDef} titles={titles} featSections={featSections} weapons={weapons} />
         )
@@ -204,15 +205,22 @@ function saveAbilityHint(save: SaveEntry): string {
   return "";
 }
 
-function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections, weapons }: SheetBodyProps) {
-  const sortedSkills = sheet.skills.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const half = Math.ceil(sortedSkills.length / 2);
-  const skillColumns = [sortedSkills.slice(0, half), sortedSkills.slice(half)];
+type TabKey = "sheet" | "equipment" | "spells";
+
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "sheet", label: "Sheet" },
+  { key: "equipment", label: "Equipment" },
+  { key: "spells", label: "Spells" },
+];
+
+function Dnd35eSheetShell(props: SheetBodyProps & { items: Item[] }) {
+  const [activeTab, setActiveTab] = useState<TabKey>("sheet");
+  const { character, sheet, titles } = props;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       <div className="parchment-surface parchment-ruled rounded-md shadow-lg overflow-hidden">
-        {/* Header strip */}
+        {/* Identity + XP — shared across all three tabs */}
         <div className="px-6 py-5 border-b-2 border-[#654a27]/40 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="parchment-heading text-3xl font-bold leading-tight">{character.name}</div>
@@ -231,155 +239,172 @@ function Dnd35eSheet({ character, sheet, hud, raceDef, titles, featSections, wea
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-5 p-6">
-          {/* Left rail: ability score boxes */}
-          <div className="flex md:flex-col gap-3 flex-wrap">
-            {ABILITY_ORDER.map((key) => (
-              <div key={key} className="relative flex-1 min-w-[92px] md:min-w-0">
-                <div className="border-2 border-[#654a27]/50 rounded-md bg-[#f6ecd2]/70 pt-2 pb-5 text-center">
-                  <div className="parchment-label text-[10px]">{abilityBoxLabel(key)}</div>
-                  <div className="parchment-heading text-3xl font-bold leading-none mt-1">{sheet.abilities[key].score}</div>
-                </div>
-                <div className="parchment-badge absolute left-1/2 -translate-x-1/2 -bottom-3">
-                  {fmt(sheet.abilities[key].modifier)}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Right column: combat strip, saves, attack, skills */}
-          <div className="space-y-5 mt-2 md:mt-0">
-            {/* Combat strip */}
-            <div className="grid grid-cols-4 gap-3">
-              <StatBox label="Hit Points" value={hud.hp ? `${hud.hp.current}/${hud.hp.max}` : "—"} />
-              <StatBox label="Armor Class" value={hud.ac !== null ? String(hud.ac) : "—"} />
-              <StatBox label="Initiative" value={fmt(hud.initiative)} />
-              <StatBox label="Speed" value={hud.speed !== null ? `${hud.speed} ft` : "—"} />
-            </div>
-
-            {/* Saving Throws */}
-            <div>
-              <SectionLabel>Saving Throws</SectionLabel>
-              <table className="w-full text-sm border-collapse">
-                <tbody>
-                  {sheet.saves.map((save) => (
-                    <tr key={save.key} className="border-b border-[#654a27]/25 last:border-b-0">
-                      <td className="py-1.5 parchment-label text-xs">{save.label}</td>
-                      <td className="py-1.5 text-xs opacity-70">({saveAbilityHint(save)})</td>
-                      <td className="py-1.5 text-right font-semibold tabular-nums">{fmt(save.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Attack */}
-            <div>
-              <SectionLabel>Base Attack</SectionLabel>
-              <div className="text-sm tabular-nums">
-                {fmt(sheet.attack.total)}
-                {sheet.attack.extraAttackBonuses.length > 0 && (
-                  <>
-                    {" / "}
-                    {sheet.attack.extraAttackBonuses.map((b) => fmt(b)).join(" / ")}
-                    <span className="text-xs opacity-70"> (full attack)</span>
-                  </>
-                )}
-                {" "}
-                <span className="text-xs opacity-70">· {character.attacksPerRound} attack{character.attacksPerRound === 1 ? "" : "s"}/round</span>
-              </div>
-              <div className="text-[11px] opacity-60 mt-0.5">{attackBreakdownLabel(sheet.attack.breakdown)}</div>
-            </div>
-
-            {/* Weapons — equipped weapons only, so this stays empty rather
-                than listing every carried item; damage dice only shown when
-                actually recorded on the item. */}
-            <div>
-              <SectionLabel>Weapons</SectionLabel>
-              {weapons.length === 0 ? (
-                <div className="text-xs opacity-60">No weapon equipped.</div>
-              ) : (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-[10px] parchment-label opacity-70">
-                      <th className="text-left font-normal pb-1">Weapon</th>
-                      <th className="text-right font-normal pb-1">Attack</th>
-                      <th className="text-right font-normal pb-1">Damage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {weapons.map((w) => (
-                      <tr key={w.id} className="border-b border-[#654a27]/25 last:border-b-0">
-                        <td className="py-1.5">{w.name}</td>
-                        <td className="py-1.5 text-right tabular-nums">{fmt(sheet.attack.total)}</td>
-                        <td className="py-1.5 text-right tabular-nums">{w.weaponDamageDice || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+        {/* Tab bar */}
+        <div className="px-6 pt-3 flex gap-1 border-b border-[#654a27]/25">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`parchment-label text-xs px-3 py-2 -mb-px border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-[#654a27] opacity-100"
+                  : "border-transparent opacity-60 hover:opacity-80"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        {/* Skills — ruled two-column table */}
-        <div className="px-6 pb-6">
-          <SectionLabel>Skills</SectionLabel>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-            {skillColumns.map((col, colIdx) => (
-              <table key={colIdx} className="w-full text-sm border-collapse">
-                <tbody>
-                  {col.map((skill) => (
-                    <tr key={skill.name} className="border-b border-[#654a27]/15">
-                      <td className="py-1 w-4">
-                        {skill.proficient && <span className="inline-block w-2 h-2 rounded-sm bg-[#654a27]" aria-label="Trained" />}
-                      </td>
-                      <td className="py-1">{skill.name}</td>
-                      <td className="py-1 text-xs opacity-60 w-10">({skill.ability.toUpperCase()})</td>
-                      <td className="py-1 text-right font-medium tabular-nums w-10">{fmt(skill.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ))}
-          </div>
-        </div>
-
-        {/* Racial traits + Feats */}
-        {(raceDef || featSections.length > 0) && (
-          <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {raceDef && (
-              <div className="border border-[#654a27]/30 rounded-md p-3">
-                <SectionLabel>Racial Traits — {raceDef.displayName}</SectionLabel>
-                <div className="text-xs opacity-70 mb-2">
-                  {raceDef.size === "small" ? "Small" : "Medium"} · {raceDef.speed} ft
-                  {raceDef.vision.length > 0 ? ` · ${raceDef.vision.join(", ")}` : ""}
-                </div>
-                <div className="space-y-1.5">
-                  {raceDef.traits.map((trait) => (
-                    <div key={trait.name} className="text-sm">
-                      <span className="font-semibold">{trait.name}.</span> <span className="opacity-80">{trait.description}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {featSections.length > 0 && (
-              <div className="border border-[#654a27]/30 rounded-md p-3">
-                <SectionLabel>Feats &amp; Features</SectionLabel>
-                <div className="space-y-1.5">
-                  {featSections.flatMap((section) => section.entries ?? []).map((entry, idx) => (
-                    <div key={`${entry.key || entry.name || "entry"}-${idx}`} className="text-sm">
-                      <span className="font-semibold">{entry.name || entry.key}.</span>{" "}
-                      <span className="opacity-80">{entry.description || entry.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {activeTab === "sheet" && <Dnd35eSheet {...props} />}
+        {activeTab === "equipment" && <EquipmentTab items={props.items} featSections={props.featSections} />}
+        {activeTab === "spells" && <div className="p-6 text-sm opacity-60">Spells tome coming in Task 4.</div>}
       </div>
+    </div>
+  );
+}
+
+function Dnd35eSheet({ hud, raceDef, sheet, character, weapons }: SheetBodyProps) {
+  const sortedSkills = sheet.skills.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const half = Math.ceil(sortedSkills.length / 2);
+  const skillColumns = [sortedSkills.slice(0, half), sortedSkills.slice(half)];
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-5 p-6">
+        {/* Left rail: ability score boxes */}
+        <div className="flex md:flex-col gap-3 flex-wrap">
+          {ABILITY_ORDER.map((key) => (
+            <div key={key} className="relative flex-1 min-w-[92px] md:min-w-0">
+              <div className="border-2 border-[#654a27]/50 rounded-md bg-[#f6ecd2]/70 pt-2 pb-5 text-center">
+                <div className="parchment-label text-[10px]">{abilityBoxLabel(key)}</div>
+                <div className="parchment-heading text-3xl font-bold leading-none mt-1">{sheet.abilities[key].score}</div>
+              </div>
+              <div className="parchment-badge absolute left-1/2 -translate-x-1/2 -bottom-3">
+                {fmt(sheet.abilities[key].modifier)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right column: combat strip, saves, attack, skills */}
+        <div className="space-y-5 mt-2 md:mt-0">
+          {/* Combat strip */}
+          <div className="grid grid-cols-4 gap-3">
+            <StatBox label="Hit Points" value={hud.hp ? `${hud.hp.current}/${hud.hp.max}` : "—"} />
+            <StatBox label="Armor Class" value={hud.ac !== null ? String(hud.ac) : "—"} />
+            <StatBox label="Initiative" value={fmt(hud.initiative)} />
+            <StatBox label="Speed" value={hud.speed !== null ? `${hud.speed} ft` : "—"} />
+          </div>
+
+          {/* Saving Throws */}
+          <div>
+            <SectionLabel>Saving Throws</SectionLabel>
+            <table className="w-full text-sm border-collapse">
+              <tbody>
+                {sheet.saves.map((save) => (
+                  <tr key={save.key} className="border-b border-[#654a27]/25 last:border-b-0">
+                    <td className="py-1.5 parchment-label text-xs">{save.label}</td>
+                    <td className="py-1.5 text-xs opacity-70">({saveAbilityHint(save)})</td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums">{fmt(save.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Attack */}
+          <div>
+            <SectionLabel>Base Attack</SectionLabel>
+            <div className="text-sm tabular-nums">
+              {fmt(sheet.attack.total)}
+              {sheet.attack.extraAttackBonuses.length > 0 && (
+                <>
+                  {" / "}
+                  {sheet.attack.extraAttackBonuses.map((b) => fmt(b)).join(" / ")}
+                  <span className="text-xs opacity-70"> (full attack)</span>
+                </>
+              )}
+              {" "}
+              <span className="text-xs opacity-70">· {character.attacksPerRound} attack{character.attacksPerRound === 1 ? "" : "s"}/round</span>
+            </div>
+            <div className="text-[11px] opacity-60 mt-0.5">{attackBreakdownLabel(sheet.attack.breakdown)}</div>
+          </div>
+
+          {/* Weapons — equipped weapons only, so this stays empty rather
+              than listing every carried item; damage dice only shown when
+              actually recorded on the item. */}
+          <div>
+            <SectionLabel>Weapons</SectionLabel>
+            {weapons.length === 0 ? (
+              <div className="text-xs opacity-60">No weapon equipped.</div>
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-[10px] parchment-label opacity-70">
+                    <th className="text-left font-normal pb-1">Weapon</th>
+                    <th className="text-right font-normal pb-1">Attack</th>
+                    <th className="text-right font-normal pb-1">Damage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weapons.map((w) => (
+                    <tr key={w.id} className="border-b border-[#654a27]/25 last:border-b-0">
+                      <td className="py-1.5">{w.name}</td>
+                      <td className="py-1.5 text-right tabular-nums">{fmt(sheet.attack.total)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{w.weaponDamageDice || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Skills — ruled two-column table */}
+      <div className="px-6 pb-6">
+        <SectionLabel>Skills</SectionLabel>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+          {skillColumns.map((col, colIdx) => (
+            <table key={colIdx} className="w-full text-sm border-collapse">
+              <tbody>
+                {col.map((skill) => (
+                  <tr key={skill.name} className="border-b border-[#654a27]/15">
+                    <td className="py-1 w-4">
+                      {skill.proficient && <span className="inline-block w-2 h-2 rounded-sm bg-[#654a27]" aria-label="Trained" />}
+                    </td>
+                    <td className="py-1">{skill.name}</td>
+                    <td className="py-1 text-xs opacity-60 w-10">({skill.ability.toUpperCase()})</td>
+                    <td className="py-1 text-right font-medium tabular-nums w-10">{fmt(skill.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+        </div>
+      </div>
+
+      {/* Racial traits (Feats moved to the Equipment tab) */}
+      {raceDef && (
+        <div className="px-6 pb-6">
+          <div className="border border-[#654a27]/30 rounded-md p-3">
+            <SectionLabel>Racial Traits — {raceDef.displayName}</SectionLabel>
+            <div className="text-xs opacity-70 mb-2">
+              {raceDef.size === "small" ? "Small" : "Medium"} · {raceDef.speed} ft
+              {raceDef.vision.length > 0 ? ` · ${raceDef.vision.join(", ")}` : ""}
+            </div>
+            <div className="space-y-1.5">
+              {raceDef.traits.map((trait) => (
+                <div key={trait.name} className="text-sm">
+                  <span className="font-semibold">{trait.name}.</span> <span className="opacity-80">{trait.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
