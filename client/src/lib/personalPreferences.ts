@@ -25,6 +25,7 @@
 //   a value, just the absence of one.
 
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 
 export const PERSONAL_PREFERENCES_VERSION = 1 as const;
 
@@ -71,6 +72,47 @@ interface StoredPreferences {
 
 const STORAGE_KEY = "dmos.personalPreferences.v1";
 const OLD_LAYOUT_KEY = "dmos.gameLayoutPreferences.v1";
+
+// Mirrors server/routes.ts's `personalPreferencesSchema` field-for-field
+// (kept as a separate definition rather than a shared import, since client
+// and server code aren't allowed to cross that boundary). Used to validate
+// anything read back out of localStorage before it reaches a consumer:
+// JSON.parse only rejects syntax errors, not a syntactically-valid object
+// with the wrong shape (e.g. `{}`, a partial object from a future schema
+// bump, hand-edited localStorage, or another app reusing the key) — and an
+// unvalidated `display.layoutPreset` in particular crashes the game shell
+// render (see CampaignGameShell.tsx's `LAYOUT_PRESETS[layoutPreset]` lookup).
+const layoutPresetSchema = z.enum(["wide", "reading", "cinematic"]);
+const textSizeSchema = z.enum(["sm", "md", "lg"]);
+
+const personalPreferencesV1Schema: z.ZodType<PersonalPreferencesV1> = z.object({
+  version: z.literal(1),
+  display: z.object({
+    layoutPreset: layoutPresetSchema,
+    textSize: textSizeSchema,
+    contextCollapsed: z.boolean(),
+    reducedMotion: z.boolean(),
+  }),
+  interface: z.object({
+    hudPreset: z.enum(["minimal", "standard", "tactical", "immersive", "custom"]),
+    hudOverrides: z.record(z.boolean()),
+  }),
+  mechanicalTransparency: z.enum(["narrative", "balanced", "ruleslawyer"]),
+  notifications: z.object({
+    achievementToasts: z.enum(["full", "compact", "off"]),
+  }),
+});
+
+/**
+ * Validates a value against the PersonalPreferencesV1 shape. Returns the
+ * validated data on success, or null on any mismatch — every field of the
+ * return value (when non-null) is guaranteed to be one of its valid
+ * enum values / correct type, so callers never need to re-check it.
+ */
+export function parseStoredPreferences(raw: unknown): PersonalPreferencesV1 | null {
+  const result = personalPreferencesV1Schema.safeParse(raw);
+  return result.success ? result.data : null;
+}
 
 /**
  * Carries the 3 player-visible fields from the old gameLayoutPreferences.ts
@@ -124,16 +166,38 @@ function loadLocal(): StoredPreferences {
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as StoredPreferences;
+    if (raw) {
+      const parsed = JSON.parse(raw) as { data?: unknown; updatedAt?: unknown; dirty?: unknown } | null;
+      const data = parseStoredPreferences(parsed?.data);
+      if (data) {
+        return {
+          data,
+          updatedAt: typeof parsed?.updatedAt === "string" ? parsed.updatedAt : new Date(0).toISOString(),
+          dirty: typeof parsed?.dirty === "boolean" ? parsed.dirty : false,
+        };
+      }
+      // Syntactically valid JSON but the wrong shape (missing/garbage
+      // fields) — fall through to the old-key migration / defaults below
+      // rather than trusting it.
+    }
   } catch {
     // Fall through to the old-key migration / defaults below.
   }
   try {
     const oldRaw = window.localStorage.getItem(OLD_LAYOUT_KEY);
     if (oldRaw) {
-      const old = JSON.parse(oldRaw);
+      const old = JSON.parse(oldRaw) as { preset?: unknown; contextCollapsed?: unknown; textSize?: unknown } | null;
+      const preset = layoutPresetSchema.safeParse(old?.preset);
+      const textSize = textSizeSchema.safeParse(old?.textSize);
       const migrated: StoredPreferences = {
-        data: migrateFromLayoutPreferences(old),
+        data: migrateFromLayoutPreferences({
+          preset: preset.success ? preset.data : DEFAULT_PREFERENCES.display.layoutPreset,
+          contextCollapsed:
+            typeof old?.contextCollapsed === "boolean"
+              ? old.contextCollapsed
+              : DEFAULT_PREFERENCES.display.contextCollapsed,
+          textSize: textSize.success ? textSize.data : DEFAULT_PREFERENCES.display.textSize,
+        }),
         updatedAt: new Date().toISOString(),
         // Marked dirty so the migrated value gets pushed to the server on
         // the next sync rather than silently sitting local-only forever.
