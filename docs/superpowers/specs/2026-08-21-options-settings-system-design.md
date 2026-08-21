@@ -5,7 +5,7 @@
 Two independent, never-conflated settings domains:
 
 - **Personal Options** — belongs to the user. Presentation-only. Never affects campaign mechanics or other players. Hybrid local-first + server-synced.
-- **Campaign Settings** — belongs to the campaign. Owner-controlled, server-authoritative, ruleset-namespaced, auditable. Players may view and suggest; only the owner (or an accepted suggestion) changes a value.
+- **Campaign Settings** — belongs to the campaign. Owner-controlled, server-authoritative, auditable, and ruleset-isolated as a permanent principle — though v1 ships no ruleset-specific fields at all (see Non-Goals), so there is nothing to namespace yet. Players may view and suggest; only the owner (or an accepted suggestion) changes a value.
 
 Locked architecture decisions (do not revisit without stopping to report a conflict first):
 
@@ -24,7 +24,7 @@ Each of these is deferred because the system it would control does not exist yet
 | Narration length/perspective/dialogue-placement | The DM AI prompt builder does not currently consume any narration-style parameter from personal settings; wiring this touches prompt generation, a materially different and riskier change than a settings UI | none in v1 |
 | Content preferences (gore/horror/etc.) | No moderation/content-safety infrastructure exists to enforce them | none in v1 |
 | Spectator role / multiplayer visibility settings | No campaign membership/role table exists at all; campaign participation today is inferred from `characters.campaignId`. Building this is a data-modeling project, not a settings toggle | `campaign_setting_suggestions`/`campaign_settings_history` are keyed by arbitrary setting `key` strings, so a future `multiplayer.*` key needs no schema change |
-| Ruleset-specific mechanical Rules toggles (encumbrance, ammo tracking, material components, spell-prep strictness, crafting cost/XP, death/dying detail, resurrection rules) | None of these have server enforcement today — confirmed absent from `shared/schema.ts`, `server/routes.ts`, and `server/combat-engine.ts` | a reserved, currently-empty `rulesetSettings?: Record<string, unknown>` field on the campaign settings type (see below) — populated the day a real mechanic exists to back a toggle |
+| Ruleset-specific mechanical Rules toggles (encumbrance, ammo tracking, material components, spell-prep strictness, crafting cost/XP, death/dying detail, resurrection rules) | None of these have server enforcement today — confirmed absent from `shared/schema.ts`, `server/routes.ts`, and `server/combat-engine.ts` | **none.** No `rulesetSettings` field of any kind is added to the campaign settings type in v1 — not even a placeholder. Ruleset isolation is a permanent architectural rule, not a v1 scoping convenience, so this must never become a generic `Record<string, unknown>` dumping ground. When the first real, server-enforced ruleset-specific setting exists, it is added then as a typed, discriminated-by-ruleset structure — conceptually `rulesetSettings: { dnd35e?: Dnd35CampaignSettings; dnd5e?: Dnd5CampaignSettings }`, each member itself a fully-typed interface with real fields, populated only once its mechanic is actually implemented. Adding the container type is future work done alongside that first real setting, not now. |
 | Rules Enforcement Presets (Relaxed/Standard/Strict/Custom) | These only make sense once there are ≥2 real underlying mechanical toggles to map to preset combinations; today there's nothing to preset | none — revisit once the first ruleset-specific toggle ships |
 | DM narrative-style sliders beyond the existing `tone`/`combatStyle`/`worldGenStyle`/`homebrewRules`/`customWorldPrompt` | These five fields already are the DM-style parameters that reach the AI prompt; adding more requires investigating the prompt builder's actual consumption of campaign fields, which is out of scope for this pass | none — the existing free-text `homebrewRules`/`customWorldPrompt` fields remain the escape hatch for anything not covered by the five enums |
 | Session-boundary-aware settings lock ("Between Sessions Only") | No reliable session-boundary concept exists server-side | only the "Explicitly Locked" tier ships (a plain boolean) |
@@ -92,17 +92,32 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 
 Routes (both `requireAuth`):
 
-- `GET /api/user/preferences` → returns stored row parsed, or `{version: 1, ...defaults}` if no row exists yet (no migration needed for existing users — absence is a valid state).
-- `PATCH /api/user/preferences` → validates the full incoming object against a Zod schema mirroring `PersonalPreferencesV1` (reject unknown top-level keys, reject invalid enum values), upserts the row, returns the stored value.
+- `GET /api/user/preferences` → returns `{data, updatedAt}` parsed from the stored row, or `{data: defaults, updatedAt: null}` if no row exists yet (no migration needed for existing users — absence is a valid state).
+- `PATCH /api/user/preferences` → body `{data, updatedAt}`; validates `data` against a Zod schema mirroring `PersonalPreferencesV1` (reject unknown top-level keys, reject invalid enum values), stores the client-sent `updatedAt` verbatim as the row's `updated_at` (the server never generates its own timestamp for this — see Sync algorithm below for why), upserts, returns `{data, updatedAt}`.
 
 No WebSocket broadcast — personal settings changes are never campaign-wide events, per your explicit requirement.
 
 ### Sync algorithm (client)
 
-1. On mount: read `localStorage` synchronously (key `dmos.personalPreferences.v1`), render immediately with that value (or defaults).
-2. Fire `GET /api/user/preferences` in the background. On response, if the server value differs from local, server value wins; update local state and localStorage.
-3. On any change: apply to local state + localStorage immediately (UI never waits on the network). Fire `PATCH /api/user/preferences` with the full updated object. On failure, log and leave local state as the source of truth until the next successful sync — never block or roll back the UI change.
-4. One-time migration: if `dmos.gameLayoutPreferences.v1` exists in localStorage and `dmos.personalPreferences.v1` does not, read the old key, map its 3 fields into the new schema's defaults-filled shape, write the new key, leave the old key in place untouched (cheap, avoids any data-loss risk; it simply becomes dead storage).
+Conflict resolution uses a client-stamped timestamp, not wall-clock server-arrival order — this is what stops a slow-to-land GET from clobbering a newer local change. The localStorage value is a small wrapper, not the bare preferences object:
+
+```ts
+interface StoredPreferences {
+  data: PersonalPreferencesV1;
+  updatedAt: string;   // ISO timestamp, stamped locally at the moment of the edit
+  dirty: boolean;       // true = local has changes the server has not confirmed
+}
+```
+
+The server row's `updated_at` column stores exactly the `updatedAt` the client last successfully PATCHed with (not a server-generated timestamp) — the server is a deterministic last-write-wins store keyed by client-stamped time, nothing more elaborate.
+
+1. On mount: read the `StoredPreferences` wrapper from `localStorage` (key `dmos.personalPreferences.v1`) synchronously, render `data` immediately (defaults if absent).
+2. Fire `GET /api/user/preferences` in the background. Compare the server row's `updatedAt` to the local wrapper's `updatedAt`:
+   - Server newer, and local is not `dirty` → adopt server `data`, update local wrapper, `dirty: false`.
+   - Local newer, or local is `dirty` (a change made and not yet confirmed synced) → **do not overwrite local state.** Keep rendering local `data`, and immediately re-fire the pending `PATCH` for it (see step 3) rather than accepting the GET's older value. This is the guard against losing a recent unsynced change to a stale GET response.
+3. On any change: compute new `data`, set `updatedAt = now`, `dirty: true`, write to `localStorage` and apply to UI immediately — the network is never on the critical path. Fire `PATCH /api/user/preferences` with `{data, updatedAt}`. On success, if the wrapper's `updatedAt` still equals what was just sent (no newer local edit happened while the request was in flight), mark `dirty: false`. If a newer edit happened in the meantime, leave `dirty: true` — the newest state hasn't been confirmed yet, and the next natural retry trigger covers it.
+4. Retry is lightweight and best-effort, not a queue/backoff system: re-attempt the pending PATCH on the next local change, on next mount, and on the tab regaining visibility/focus. A temporary network failure never blocks gameplay and never rolls back the local value — `dirty: true` just persists in localStorage until a retry succeeds.
+5. One-time migration: if `dmos.gameLayoutPreferences.v1` exists in localStorage and `dmos.personalPreferences.v1` does not, read the old key, map its 3 fields into the new schema's defaults-filled shape, write the new key with `dirty: true` (so it syncs to the server on first opportunity), leave the old key in place untouched (cheap, avoids any data-loss risk; it simply becomes dead storage).
 
 ## Campaign Settings
 
@@ -166,16 +181,35 @@ Plus `addColumnIfMissing("campaigns", "settings_locked", "INTEGER NOT NULL DEFAU
 
 Both new tables follow the `turnLedger` precedent (append-only, `reason`/`source`/`metadata`-shaped) already established in this codebase.
 
+### Settings Lock Semantics
+
+`settingsLocked` (boolean) gates only the *application* of a campaign-setting value change. It never gates visibility or suggestion submission, and it can never trap the owner:
+
+- **Locked + owner attempts a direct value change** (`PATCH /api/campaigns/:id`) → rejected (409 + message). This is the entire purpose of the lock: prevent an accidental or mid-session rule change.
+- **Locked + owner accepts a suggestion** (`PATCH .../suggestions/:id` with `action: "accept"`) → also rejected. Accepting a suggestion applies a value change through the exact same validated-update code path as a direct PATCH, so it is gated by the same lock check — a suggestion is not a backdoor around the lock.
+- **Locked + any player views settings** (`GET /api/campaigns/:id`, `GET .../history`) → unaffected, always allowed.
+- **Locked + any player submits a suggestion** (`POST .../suggestions`) → unaffected, always allowed. Suggestions can queue up while locked; they simply can't be *accepted* until unlocked.
+- **Owner declines a suggestion** → unaffected by lock (declining never applies a value change).
+- **Unlocking** (`PATCH .../settings/lock` with `{locked: false}`) is its own dedicated route, authority `"owner"`, and is never itself subject to the `settingsLocked` gate — the lock only gates the *other* settings-mutation routes, not the lock route itself. This is what guarantees the owner can always unlock; there is no state where the owner is unable to reach the unlock action.
+- Both locking and unlocking write a `campaign_settings_history` row (`setting_key: "settingsLocked"`, old/new boolean, `source: "owner-direct"`) — lock state changes are audited exactly like any other setting change.
+
 ### Routes
 
-- `PATCH /api/campaigns/:id` (existing route, extended): authority must be `"owner"`; if `settingsLocked` is true, reject with 423-equivalent (409 + message, matching existing error-shape conventions) unless the request is specifically unlocking; on success, write a `campaign_settings_history` row per changed key (`source: "owner-direct"`) in addition to the existing `broadcastToCampaign`.
-- `POST /api/campaigns/:id/settings/suggestions` — authority must be `"player"` or `"owner"`; body `{settingKey, proposedValue, reason?}`; server snapshots `currentValue` itself (never trusts a client-sent current value); inserts row.
+- `PATCH /api/campaigns/:id` (existing route, extended): authority must be `"owner"`; if `campaign.settingsLocked` is true, reject (409 + message) — this route never itself changes lock state (see below), so there is no "unless unlocking" exception to reason about here. On success, write a `campaign_settings_history` row per changed key (`source: "owner-direct"`) in addition to the existing `broadcastToCampaign`.
+- `POST /api/campaigns/:id/settings/suggestions` — authority must be `"player"` or `"owner"`; not gated by the lock (see Settings Lock Semantics); body `{settingKey, proposedValue, reason?}`; server snapshots `currentValue` itself (never trusts a client-sent current value); inserts row.
 - `GET /api/campaigns/:id/settings/suggestions` — authority `"player"` or `"owner"`; owner sees all, player sees their own (matches "players suggest, never see others' free-text reasons" — no stated requirement either way, so scope to what's simplest and safe: owner sees all, submitter sees their own).
-- `PATCH /api/campaigns/:id/settings/suggestions/:suggestionId` — authority must be `"owner"`; body `{action: "accept"|"decline", ownerResponse?}`. On accept: re-read the setting's current value; if it no longer matches the suggestion's stored `current_value`, mark status transition rejected and return a "stale" error instead of applying — owner must re-review, not silently overridden. On successful accept: apply via the same validated update path as the direct-PATCH route, write history with `source: "accepted-suggestion"`, `suggestion_id` set, mark suggestion `accepted`. On decline: mark `declined`, store `owner_response`, no mechanical change.
-- `GET /api/campaigns/:id/settings/history` — authority `"player"` or `"owner"` (view-only for both, matching your explicit "OTHER CAMPAIGN PLAYERS — View campaign settings" requirement).
-- `PATCH /api/campaigns/:id/settings/lock` — authority must be `"owner"`; body `{locked: boolean}`.
+- `PATCH /api/campaigns/:id/settings/suggestions/:suggestionId` — authority must be `"owner"`; body `{action: "accept"|"decline", ownerResponse?}`. On accept: if `campaign.settingsLocked` is true, reject (409, same as a direct change — see Settings Lock Semantics: acceptance never bypasses the lock). Otherwise, re-read the setting's current value; if it no longer matches the suggestion's stored `current_value`, mark status transition rejected and return a "stale" error instead of applying — owner must re-review, not silently overridden. On successful accept: apply via the same validated update path as the direct-PATCH route, write history with `source: "accepted-suggestion"`, `suggestion_id` set, mark suggestion `accepted`. On decline: mark `declined`, store `owner_response`, no mechanical change, not gated by the lock.
+- `GET /api/campaigns/:id/settings/history` — authority `"player"` or `"owner"` (view-only for both, matching your explicit "OTHER CAMPAIGN PLAYERS — View campaign settings" requirement); not gated by the lock.
+- `PATCH /api/campaigns/:id/settings/lock` — authority must be `"owner"`; body `{locked: boolean}`; **exempt from the `settingsLocked` gate by definition** — this is the route that changes that value, so it cannot be blocked by its own current state in either direction. Writes a `campaign_settings_history` row as described above.
+- `GET /api/campaigns/:id` (existing route, extended): response gains a `viewerAuthority: "owner" | "player" | "none"` field, computed server-side via `getCampaignAuthority(req, campaign)` on every fetch. This is how the client learns the requesting user's authority — see Client Authority below.
 
-All new routes reuse `getCampaignAuthority`; none introduce a fourth ownership-check implementation.
+All new and extended routes reuse `getCampaignAuthority`; none introduce a fourth ownership-check implementation.
+
+### Client Authority
+
+`getCampaignAuthority()` is a server-side authorization concept and stays exactly that — the client never reproduces or guesses ownership logic. The only thing the client does is *render from* the `viewerAuthority` field the server already includes on `GET /api/campaigns/:id` (see Routes above). `CampaignSettingsPanel`'s `isHost` prop becomes `authority === "owner"`, derived from that trusted response, not computed client-side and not passed in by a caller as a bare boolean.
+
+This distinction matters and is enforced twice, independently: the UI hiding an owner-only control (e.g. graying out "Accept/Decline" for a non-owner) is pure convenience — it makes the app pleasant to use. The server rejecting a mutation from a non-owner via `getCampaignAuthority` on every state-changing route is the actual security boundary. A non-owner who bypasses the UI entirely and calls a mutation route directly still gets a 403 from the server check, regardless of what the client believed or displayed.
 
 ### Broadcast
 
@@ -185,12 +219,12 @@ Unchanged pattern, reused: every state-changing route above calls `broadcastToCa
 
 - `CampaignGameHeader.tsx`: the existing disabled `StubHeaderButton icon={MoreHorizontal} label="Settings"` becomes a real enabled button, `onClick={onOpenOptions}`, mirroring how `onBack` is already threaded as a prop.
 - `CampaignGameShell.tsx`: new `optionsOpen` local state (sibling to `inventoryOpen`/`codexOpen`/`overviewOpen`), passed down as `onOpenOptions={() => setOptionsOpen(true)}`. Renders a new `OptionsDialog` using the same `Dialog`/`DialogContent` primitive as `CodexOverlay`/`InventoryOverlay` — not the old inline-style pattern.
-- New `client/src/components/game/OptionsDialog.tsx`: two top-level tabs, **Personal** and **Campaign**, visually distinguished (the existing `.dm-shell` parchment/leather tokens for Campaign, since it's the authoritative/mechanical side; a cleaner neutral treatment for Personal). Personal tab renders Display/Interface/Mechanical Transparency/Notifications sections reading/writing `usePersonalPreferences()`. Campaign tab embeds the resurrected `CampaignSettingsPanel` (restyled onto `Dialog` internals, `isHost` now computed from a real `authority` value fetched/derived client-side rather than trusted as a caller-supplied prop) plus new Suggestions and History sub-views. Non-owner campaign fields render read-only with a "Suggest Change" action per field, opening a small inline form (current → proposed + reason) that posts to the suggestions route.
+- New `client/src/components/game/OptionsDialog.tsx`: two top-level tabs, **Personal** and **Campaign**, visually distinguished (the existing `.dm-shell` parchment/leather tokens for Campaign, since it's the authoritative/mechanical side; a cleaner neutral treatment for Personal). Personal tab renders Display/Interface/Mechanical Transparency/Notifications sections reading/writing `usePersonalPreferences()`. Campaign tab embeds the resurrected `CampaignSettingsPanel` (restyled onto `Dialog` internals, `isHost` prop replaced by `authority === "owner"` sourced from the campaign query's `viewerAuthority` field — see Client Authority above) plus new Suggestions and History sub-views. Non-owner campaign fields render read-only with a "Suggest Change" action per field, opening a small inline form (current → proposed + reason) that posts to the suggestions route. All mutation buttons remain server-enforced regardless of what `authority` the client currently believes.
 
 ## Testing
 
-- `server/campaign-settings.test.ts` (e2e style, matching `items-use-auth.test.ts`): owner can change; non-owner 403s; invalid enum value 400s; locked campaign rejects owner-direct change; suggestion accept applies + writes history; suggestion decline does not apply; stale suggestion (setting changed after submission) rejected on accept; suggestion from a user with no character in the campaign rejected; cross-campaign suggestion-id tampering rejected.
-- `server/user-preferences.test.ts`: one user's preferences invisible to/unaffected by another user's PATCH; default returned for a user with no row; invalid shape (unknown key, bad enum) rejected with 400; persistence round-trips.
+- `server/campaign-settings.test.ts` (e2e style, matching `items-use-auth.test.ts`): owner can change; non-owner 403s; invalid enum value 400s; locked campaign rejects owner-direct change; **locked campaign also rejects accepting a pending suggestion**; **owner can unlock while locked, and the unlock itself is not blocked by the lock**; **lock and unlock both write a `campaign_settings_history` row**; suggestion accept applies + writes history; suggestion decline does not apply and is not gated by the lock; stale suggestion (setting changed after submission) rejected on accept; suggestion from a user with no character in the campaign rejected; cross-campaign suggestion-id tampering rejected; **`GET /api/campaigns/:id` returns the correct `viewerAuthority` for an owner, a player, and an unrelated user**.
+- `server/user-preferences.test.ts`: one user's preferences invisible to/unaffected by another user's PATCH; default returned for a user with no row; invalid shape (unknown key, bad enum) rejected with 400; persistence round-trips; **`GET` after `PATCH` returns exactly the `data`/`updatedAt` that was just sent** — this documents that the server is a plain last-write-wins store keyed by the client-supplied timestamp (no server-side clock guard), which is what makes the client's staleness comparison in the Sync algorithm meaningful.
 - Client: no Playwright/e2e infra exists in this repo (confirmed this session) — verification is manual local-dev-server browser testing against a seeded multi-character campaign (owner + at least one non-owner player), following the existing `node seed-script.cjs` pattern.
 
 ## Migration / Backward Compatibility
