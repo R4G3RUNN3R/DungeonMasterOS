@@ -1929,6 +1929,143 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
+  // Player-submitted suggestions to change a campaign setting. Owners resolve
+  // them via the accept/decline route below; accepting re-validates the value
+  // and re-checks the lock/staleness state at resolution time, not submit time.
+  app.post("/api/campaigns/:id/settings/suggestions", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority === "none") return res.status(403).json({ message: "Not a participant in this campaign" });
+    if (!req.user) return res.status(401).json({ message: "Login required to suggest a change" });
+
+    const parsed = z
+      .object({
+        settingKey: z.enum(["tone", "combatStyle", "rulesWeight", "powerLevel", "storyMode", "epicMode"]),
+        proposedValue: z.union([z.string(), z.boolean()]),
+        reason: z.string().max(500).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid suggestion" });
+
+    const currentValue = String((campaign as any)[parsed.data.settingKey]);
+    const row = storage.createCampaignSettingSuggestion({
+      campaignId,
+      settingKey: parsed.data.settingKey,
+      currentValue,
+      proposedValue: String(parsed.data.proposedValue),
+      submittedByUserId: req.user.id,
+      reason: parsed.data.reason,
+    });
+    broadcastToCampaign(campaignId, { type: "campaign_setting_suggestion", suggestion: row });
+    return res.status(201).json(row);
+  });
+
+  // Owners see every suggestion; players/other participants only see their own.
+  app.get("/api/campaigns/:id/settings/suggestions", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority === "none") return res.status(403).json({ message: "Not a participant in this campaign" });
+
+    const all = storage.getCampaignSettingSuggestions(campaignId);
+    const visible = authority === "owner" ? all : all.filter((s) => s.submittedByUserId === req.user?.id);
+    return res.json(visible);
+  });
+
+  // Owner-only accept/decline. Accept re-checks the lock and re-checks that the
+  // campaign's live value still matches the suggestion's snapshotted
+  // currentValue (an owner may have changed the setting directly, or accepted
+  // a different suggestion, since this one was submitted) before applying it.
+  app.patch("/api/campaigns/:id/settings/suggestions/:suggestionId", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority !== "owner") return res.status(403).json({ message: "Only the host can resolve suggestions" });
+
+    const suggestion = storage.getCampaignSettingSuggestion(Number(req.params.suggestionId));
+    if (!suggestion || suggestion.campaignId !== campaignId) {
+      return res.status(404).json({ message: "Suggestion not found" });
+    }
+    if (suggestion.status !== "pending") {
+      return res.status(409).json({ message: "Suggestion already resolved" });
+    }
+
+    const parsed = z
+      .object({
+        action: z.enum(["accept", "decline"]),
+        ownerResponse: z.string().max(500).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid body" });
+
+    if (parsed.data.action === "decline") {
+      storage.updateCampaignSettingSuggestion(suggestion.id, {
+        status: "declined",
+        ownerResponse: parsed.data.ownerResponse ?? null,
+        resolvedByUserId: req.user?.id ?? null,
+        resolvedAt: new Date().toISOString(),
+      });
+      broadcastToCampaign(campaignId, {
+        type: "campaign_setting_suggestion",
+        suggestionId: suggestion.id,
+        status: "declined",
+      });
+      return res.json({ status: "declined" });
+    }
+
+    // accept
+    if ((campaign as any).settingsLocked) {
+      return res.status(409).json({ message: "Campaign settings are locked; cannot accept a suggestion until unlocked" });
+    }
+    const liveValue = String((campaign as any)[suggestion.settingKey]);
+    if (liveValue !== suggestion.currentValue) {
+      return res
+        .status(409)
+        .json({ message: "Stale suggestion: the setting has changed since this was proposed", status: "stale" });
+    }
+
+    const fieldSchema = (campaignSettingsPatchSchema.shape as any)[suggestion.settingKey];
+    const coerced =
+      fieldSchema?._def?.typeName === "ZodBoolean" ? suggestion.proposedValue === "true" : suggestion.proposedValue;
+    const validation = campaignSettingsPatchSchema.safeParse({ [suggestion.settingKey]: coerced });
+    if (!validation.success) {
+      return res.status(400).json({ message: "Suggested value is no longer valid" });
+    }
+
+    storage.createCampaignSettingsHistory({
+      campaignId,
+      settingKey: suggestion.settingKey,
+      oldValue: liveValue,
+      newValue: String(coerced),
+      changedByUserId: req.user?.id ?? null,
+      source: "accepted-suggestion",
+      suggestionId: suggestion.id,
+    });
+    storage.updateCampaign(campaignId, { [suggestion.settingKey]: coerced } as any);
+    storage.updateCampaignSettingSuggestion(suggestion.id, {
+      status: "accepted",
+      ownerResponse: parsed.data.ownerResponse ?? null,
+      resolvedByUserId: req.user?.id ?? null,
+      resolvedAt: new Date().toISOString(),
+    });
+
+    const updated = storage.getCampaign(campaignId);
+    broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
+    broadcastToCampaign(campaignId, {
+      type: "campaign_setting_suggestion",
+      suggestionId: suggestion.id,
+      status: "accepted",
+    });
+    return res.json({ status: "accepted", campaign: updated });
+  });
+
   app.get("/api/campaigns/:id/currencies", (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);

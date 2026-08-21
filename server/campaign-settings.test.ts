@@ -238,6 +238,149 @@ test("PATCH /api/campaigns/:id/settings/lock: non-owner is rejected", async () =
   assert.equal(res.status, 403);
 });
 
+test("suggestions: player can submit, owner sees it, player sees own only", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark", reason: "too cheerful" }),
+  });
+  assert.equal(submitRes.status, 201);
+
+  const ownerToken = signToken(owner.id);
+  const ownerList = await (
+    await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+      headers: { cookie: `dmos_session=${ownerToken}` },
+    })
+  ).json();
+  assert.equal(ownerList.length, 1);
+
+  const playerList = await (
+    await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+      headers: { cookie: `dmos_session=${playerToken}` },
+    })
+  ).json();
+  assert.equal(playerList.length, 1);
+});
+
+test("suggestions: accept applies the change and writes history", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  const suggestion = await submitRes.json();
+
+  const ownerToken = signToken(owner.id);
+  const acceptRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(acceptRes.status, 200);
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.equal((reloaded as any).tone, "dark");
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  assert.ok(history.some((h) => h.source === "accepted-suggestion"));
+});
+
+test("suggestions: decline does not apply the change", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  const suggestion = await submitRes.json();
+  const ownerToken = signToken(owner.id);
+  await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "decline", ownerResponse: "not now" }),
+  });
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.notEqual((reloaded as any).tone, "dark");
+});
+
+test("suggestions: stale suggestion is rejected on accept", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  const suggestion = await submitRes.json();
+  const ownerToken = signToken(owner.id);
+  // owner changes the setting directly before reviewing the suggestion
+  await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ tone: "comedic" }),
+  });
+  const acceptRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(acceptRes.status, 409);
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.equal((reloaded as any).tone, "comedic", "stale accept must not overwrite the owner's newer direct change");
+});
+
+test("suggestions: locked campaign rejects accepting a pending suggestion", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  const suggestion = await submitRes.json();
+  storage.updateCampaign(campaign.id, { settingsLocked: true } as any);
+  const ownerToken = signToken(owner.id);
+  const acceptRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(acceptRes.status, 409);
+});
+
+test("suggestions: cross-campaign suggestion-id tampering is rejected", async () => {
+  const fixtureA = makeFixture();
+  const fixtureB = makeFixture();
+  const playerToken = signToken(fixtureA.player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${fixtureA.campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  const suggestion = await submitRes.json();
+  const ownerBToken = signToken(fixtureB.owner.id);
+  const res = await fetch(`${base}/api/campaigns/${fixtureB.campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerBToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(res.status, 404, "a suggestion must not be resolvable through a different campaign's URL");
+});
+
+test("suggestions: a user with no character in the campaign cannot submit", async () => {
+  const { outsider, campaign } = makeFixture();
+  const token = signToken(outsider.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark" }),
+  });
+  assert.equal(res.status, 403);
+});
+
 test("storage: user preferences upsert round-trips (insert then update)", () => {
   const { owner } = makeFixture();
   assert.equal(storage.getUserPreferences(owner.id), undefined);
