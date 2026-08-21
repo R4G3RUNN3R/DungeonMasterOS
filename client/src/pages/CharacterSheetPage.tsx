@@ -27,6 +27,8 @@ import { getRace } from "@shared/races";
 import { getRulesAdapter } from "@/lib/rulesAdapters";
 import type { FullCharacterSheet, SaveEntry } from "@/lib/characterSheetTypes";
 import EquipmentTab from "@/components/sheet/EquipmentTab";
+import SpellSheet from "@/components/SpellSheet";
+import "@/styles/game-shell.css";
 
 type Character = {
   id: number;
@@ -265,7 +267,11 @@ function Dnd35eSheetShell(props: SheetBodyProps & { items: Item[] }) {
 
         {activeTab === "sheet" && <Dnd35eSheet {...props} />}
         {activeTab === "equipment" && <EquipmentTab items={props.items} featSections={props.featSections} />}
-        {activeTab === "spells" && <div className="p-6 text-sm opacity-60">Spells tome coming in Task 4.</div>}
+        {activeTab === "spells" && (
+          <div className="dm-shell dm-tome p-6">
+            <SpellSheet character={character as any} isMyChar={true} abilities={sheet.abilities} ruleset={sheet.ruleset} />
+          </div>
+        )}
       </div>
     </div>
   );

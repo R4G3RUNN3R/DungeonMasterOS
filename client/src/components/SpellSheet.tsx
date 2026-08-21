@@ -19,15 +19,17 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Character } from "@shared/schema";
 import { Sparkles, Plus, Trash2, ChevronDown, ChevronUp, Zap, RefreshCw, Star } from "lucide-react";
+import type { Ability } from "@/lib/characterSheetTypes";
+import { spellSaveDcFor3e, resolveCastingAbilityScore } from "@/lib/spellMath";
 
 // ── Parchment palette ──────────────────────────────────────────────────────
 const C = {
-  paper:     "#f4e9c9",
-  paperDark: "#e8d49e",
-  ink:       "#1a0f00",
-  inkMid:    "#4a2e0e",
-  inkLight:  "#8a6830",
-  inkFaint:  "#c4a87a",
+  paper:     "hsl(var(--dm-parchment))",
+  paperDark: "hsl(var(--dm-parchment) / 0.85)",
+  ink:       "hsl(var(--dm-parchment-ink))",
+  inkMid:    "hsl(var(--dm-parchment-ink) / 0.85)",
+  inkLight:  "hsl(var(--dm-parchment-ink) / 0.65)",
+  inkFaint:  "hsl(var(--dm-parchment-ink) / 0.45)",
   crimson:   "#7a1515",
   crimsonBg: "#7a151514",
   gold:      "#b8880a",
@@ -40,9 +42,9 @@ const C = {
   metaBg:    "#3a1a5a14",
   green:     "#1a5c1a",
   greenBg:   "#1a5c1a14",
-  border:    "#c4a265",
-  borderDark:"#9a7835",
-  shadow:    "rgba(26,15,0,0.15)",
+  border:    "hsl(var(--dm-parchment-line))",
+  borderDark:"hsl(var(--dm-parchment-line) / 0.7)",
+  shadow:    "hsl(var(--dm-void) / 0.15)",
 };
 
 // ── Level colours: 1–9 standard, 10–20 epic (increasingly cosmic) ─────────
@@ -699,9 +701,14 @@ function AddMetamagicForm({ onAdd, onClose }: { onAdd: (m: MetamagicEntry) => vo
 }
 
 // ── Main SpellSheet ────────────────────────────────────────────────────────
-interface Props { character: Character; isMyChar: boolean; }
+interface Props {
+  character: Character;
+  isMyChar: boolean;
+  abilities: Record<Ability, { score: number; modifier: number }>;
+  ruleset: string;
+}
 
-export default function SpellSheet({ character, isMyChar }: Props) {
+export default function SpellSheet({ character, isMyChar, abilities, ruleset }: Props) {
   const [open, setOpen] = useState(false);
   const [showAddSpell, setShowAddSpell] = useState(false);
   const [showAddResource, setShowAddResource] = useState(false);
@@ -732,21 +739,17 @@ export default function SpellSheet({ character, isMyChar }: Props) {
 
   const save = useCallback((updated: SpellData) => saveMutation.mutate(updated), [saveMutation]);
 
-  // Derived
-  const sections: Array<{ label: string; entries: Array<{ key: string; value: string }> }> = (() => {
-    try { return JSON.parse(cd).sections || []; } catch { return []; }
-  })();
-  const abilitySection = sections.find(s => s.entries.filter(e => {
-    const k = e.key.toLowerCase().replace(/[^a-z]/g,"");
-    return ["str","dex","con","int","wis","cha","strength"].some(a => k.startsWith(a));
-  }).length >= 3);
-  const getAbility = (abbr: string) => {
-    if (!abilitySection) return 10;
-    const e = abilitySection.entries.find(e => e.key.toLowerCase().replace(/[^a-z]/g,"").startsWith(abbr.toLowerCase().slice(0,3)));
-    return parseInt(e?.value ?? "10") || 10;
-  };
+  // Derived — ability score/modifier now come from the same authoritative
+  // sheet.abilities every other part of the Character Sheet uses (design
+  // spec 2026-08-20), not fuzzy-matched out of characterData text.
+  const resolvedAbility = resolveCastingAbilityScore(abilities, spellData.castingAbility);
+  const abilityMod = resolvedAbility?.modifier ?? 0;
+  const is3e = ruleset === "dnd35e";
   const profBonus = character.level >= 17 ? 6 : character.level >= 13 ? 5 : character.level >= 9 ? 4 : character.level >= 5 ? 3 : 2;
-  const abilityMod = Math.floor((getAbility(spellData.castingAbility) - 10) / 2);
+  // 3.5e has no single flat DC (every spell level has its own — computed
+  // per-row below via spellSaveDcFor3e). This flat value only ever
+  // displays for non-3.5e rulesets, where it keeps using 5e's existing
+  // formula unchanged.
   const spellSaveDC = spellData.spellSaveDC ?? (8 + profBonus + abilityMod);
   const spellAttackBonus = spellData.spellAttackBonus ?? (profBonus + abilityMod);
 
@@ -841,18 +844,33 @@ export default function SpellSheet({ character, isMyChar }: Props) {
                 {["STR","DEX","CON","INT","WIS","CHA","Custom"].map(a => <option key={a}>{a}</option>)}
               </select>
             </div>
-            <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Save DC</div>
-              <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
-                <span style={{ fontSize: 13, fontWeight: 900, color: C.purple, fontFamily: "serif" }}>{spellSaveDC}</span>
+            {is3e ? (
+              <div style={{ flex: 2, textAlign: "center" }}>
+                <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>
+                  Save DC (10 + spell level + {abilityMod >= 0 ? `+${abilityMod}` : abilityMod})
+                </div>
+                <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, fontFamily: "serif" }}>
+                    See each spell level below — 3.5e has no single flat DC.
+                  </span>
+                </div>
               </div>
-            </div>
-            <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Atk Bonus</div>
-              <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
-                <span style={{ fontSize: 13, fontWeight: 900, color: C.purple, fontFamily: "serif" }}>{spellAttackBonus >= 0 ? `+${spellAttackBonus}` : spellAttackBonus}</span>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Save DC</div>
+                  <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: C.purple, fontFamily: "serif" }}>{spellSaveDC}</span>
+                  </div>
+                </div>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Atk Bonus</div>
+                  <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: C.purple, fontFamily: "serif" }}>{spellAttackBonus >= 0 ? `+${spellAttackBonus}` : spellAttackBonus}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* ── Rest buttons ── */}
@@ -1025,6 +1043,7 @@ export default function SpellSheet({ character, isMyChar }: Props) {
                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
                       <span style={{ fontSize: 7.5, fontWeight: 700, fontFamily: "serif", color, textTransform: "uppercase", letterSpacing: "0.08em" }}>Level {lvl}</span>
                       {slot && <span style={{ fontSize: 7.5, color: rem > 0 ? color : C.inkFaint, fontFamily: "serif" }}>({rem}/{slot.total} slots)</span>}
+                      {is3e && <span style={{ fontSize: 7.5, color: C.purple, fontFamily: "serif" }}>DC {spellSaveDcFor3e(l, abilityMod)}</span>}
                     </div>
                     {lvlSpells.map(s => (
                       <SpellRow key={s.name} spell={s} hasSlot={rem > 0} isMyChar={isMyChar}
