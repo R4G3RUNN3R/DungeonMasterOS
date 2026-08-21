@@ -1806,7 +1806,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/campaigns/:id", (req, res) => {
     const campaign = storage.getCampaign(Number(req.params.id));
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    return res.json(campaign);
+    return res.json({ ...campaign, viewerAuthority: getCampaignAuthority(req, campaign) });
   });
 
   app.patch("/api/campaigns/:id/archive", requireAuth, (req, res) => {
@@ -2072,6 +2072,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       status: "accepted",
     });
     return res.json({ status: "accepted", campaign: updated });
+  });
+
+  app.get("/api/campaigns/:id/settings/history", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority === "none") return res.status(403).json({ message: "Not a participant in this campaign" });
+
+    return res.json(storage.getCampaignSettingsHistory(campaignId));
   });
 
   app.get("/api/campaigns/:id/currencies", (req, res) => {

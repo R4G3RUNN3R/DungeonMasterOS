@@ -407,6 +407,46 @@ test("suggestions: a user with no character in the campaign cannot submit", asyn
   assert.equal(res.status, 403);
 });
 
+test("history route: returns rows in reverse-chronological order, viewable by owner and player", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const ownerToken = signToken(owner.id);
+  await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ tone: "dark" }),
+  });
+  const playerToken = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/history`, {
+    headers: { cookie: `dmos_session=${playerToken}` },
+  });
+  assert.equal(res.status, 200);
+  const rows = (await res.json()) as any[];
+  assert.equal(rows[0].settingKey, "tone");
+});
+
+test("history route: unrelated user is rejected", async () => {
+  const { outsider, campaign } = makeFixture();
+  const token = signToken(outsider.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/history`, {
+    headers: { cookie: `dmos_session=${token}` },
+  });
+  assert.equal(res.status, 403);
+});
+
+test("GET /api/campaigns/:id: viewerAuthority is correct for owner, player, and unrelated user", async () => {
+  const { owner, player, outsider, campaign } = makeFixture();
+  for (const [user, expected] of [
+    [owner, "owner"],
+    [player, "player"],
+    [outsider, "none"],
+  ] as const) {
+    const token = signToken(user.id);
+    const res = await fetch(`${base}/api/campaigns/${campaign.id}`, { headers: { cookie: `dmos_session=${token}` } });
+    const body = (await res.json()) as any;
+    assert.equal(body.viewerAuthority, expected);
+  }
+});
+
 test("storage: user preferences upsert round-trips (insert then update)", () => {
   const { owner } = makeFixture();
   assert.equal(storage.getUserPreferences(owner.id), undefined);
