@@ -847,7 +847,7 @@ export default function SpellSheet({ character, isMyChar, abilities, ruleset }: 
             {is3e ? (
               <div style={{ flex: 2, textAlign: "center" }}>
                 <div style={{ fontSize: 7, color: C.inkFaint, fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>
-                  Save DC (10 + spell level + {abilityMod >= 0 ? `+${abilityMod}` : abilityMod})
+                  Save DC (10 + spell level {abilityMod >= 0 ? `+ ${abilityMod}` : `- ${Math.abs(abilityMod)}`})
                 </div>
                 <div style={{ border: `1.5px solid ${C.purple}66`, borderRadius: 4, padding: "3px 0", background: C.purpleBg }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.purple, fontFamily: "serif" }}>
