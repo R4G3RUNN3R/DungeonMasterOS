@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/card";
 import { getRace } from "@shared/races";
 import { getRulesAdapter } from "@/lib/rulesAdapters";
 import type { FullCharacterSheet, SaveEntry } from "@/lib/characterSheetTypes";
+import EquipmentTab from "@/components/sheet/EquipmentTab";
 
 type Character = {
   id: number;
@@ -46,10 +47,15 @@ type Character = {
 type Item = {
   id: number;
   name: string;
+  description: string;
   itemType: string;
+  quantity: number;
+  consumable: boolean;
+  equipped: boolean;
+  identified: boolean;
+  slot: string | null;
   weight: number;
   carried: boolean;
-  equipped: boolean;
   weaponDamageDice: string | null;
 };
 
