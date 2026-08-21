@@ -1897,6 +1897,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
+  // Dedicated lock/unlock toggle. Deliberately does NOT check settingsLocked itself —
+  // it is the route that changes that value, so a locked campaign must never prevent
+  // the owner from unlocking it (unlike the settings PATCH route above, which does gate).
+  app.patch("/api/campaigns/:id/settings/lock", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority !== "owner") {
+      return res.status(403).json({ message: "Only the host can change the settings lock" });
+    }
+
+    const parsed = z.object({ locked: z.boolean() }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid body" });
+
+    const oldValue = (campaign as any).settingsLocked;
+    storage.updateCampaign(campaignId, { settingsLocked: parsed.data.locked } as any);
+    storage.createCampaignSettingsHistory({
+      campaignId,
+      settingKey: "settingsLocked",
+      oldValue: String(oldValue),
+      newValue: String(parsed.data.locked),
+      changedByUserId: req.user?.id ?? null,
+      source: "owner-direct",
+    });
+
+    const updated = storage.getCampaign(campaignId);
+    broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
+    return res.json(updated);
+  });
+
   app.get("/api/campaigns/:id/currencies", (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);

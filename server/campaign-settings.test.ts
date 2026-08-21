@@ -202,6 +202,42 @@ test("PATCH /api/campaigns/:id: locked campaign rejects owner-direct change", as
   assert.equal(res.status, 409);
 });
 
+test("PATCH /api/campaigns/:id/settings/lock: owner can lock and unlock; unlock is not blocked by the lock", async () => {
+  const { owner, campaign } = makeFixture();
+  const token = signToken(owner.id);
+
+  const lockRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/lock`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ locked: true }),
+  });
+  assert.equal(lockRes.status, 200);
+  assert.equal((await lockRes.json() as any).settingsLocked, true);
+
+  const unlockRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/lock`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ locked: false }),
+  });
+  assert.equal(unlockRes.status, 200, "owner must always be able to unlock even while locked");
+  assert.equal((await unlockRes.json() as any).settingsLocked, false);
+
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  const lockEvents = history.filter((h) => h.settingKey === "settingsLocked");
+  assert.equal(lockEvents.length, 2, "both lock and unlock must be audited");
+});
+
+test("PATCH /api/campaigns/:id/settings/lock: non-owner is rejected", async () => {
+  const { player, campaign } = makeFixture();
+  const token = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/lock`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ locked: true }),
+  });
+  assert.equal(res.status, 403);
+});
+
 test("storage: user preferences upsert round-trips (insert then update)", () => {
   const { owner } = makeFixture();
   assert.equal(storage.getUserPreferences(owner.id), undefined);
