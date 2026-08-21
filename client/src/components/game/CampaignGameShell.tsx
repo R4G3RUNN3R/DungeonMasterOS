@@ -25,7 +25,7 @@ import InventoryOverlay from "./InventoryOverlay";
 import CodexOverlay from "./CodexOverlay";
 
 import { getRulesAdapter, type AuthoritativeSaveEntry } from "@/lib/rulesAdapters";
-import { useGameLayoutPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/gameLayoutPreferences";
+import { usePersonalPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/personalPreferences";
 import { resolveSceneAsset } from "@shared/scene-resolver";
 import type { WorldState } from "@shared/world-state";
 import type { ActiveEffectDisplay } from "./ActiveConditions";
@@ -204,7 +204,8 @@ export default function CampaignGameShell({
   onOpenSheet,
   scrollRef,
 }: Props) {
-  const { preferences, setPreset } = useGameLayoutPreferences();
+  const { preferences: personalPreferences, setLayoutPreset } = usePersonalPreferences();
+  const layoutDims = LAYOUT_PRESETS[personalPreferences.display.layoutPreset];
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
@@ -287,8 +288,8 @@ export default function CampaignGameShell({
         className="relative z-10 flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[var(--dm-hud-w)_1fr_var(--dm-context-w)]"
         style={
           {
-            "--dm-hud-w": `minmax(220px, ${preferences.hudWidthPct}%)`,
-            "--dm-context-w": `minmax(240px, ${preferences.contextWidthPct}%)`,
+            "--dm-hud-w": `minmax(220px, ${layoutDims.hudWidthPct}%)`,
+            "--dm-context-w": `minmax(240px, ${layoutDims.contextWidthPct}%)`,
           } as CSSProperties
         }
       >
@@ -350,14 +351,14 @@ export default function CampaignGameShell({
 
       {/* Layout preset switcher — the visible tip of the player-layout-
           preference iceberg (spec §7); width proportions persist via
-          useGameLayoutPreferences. */}
+          usePersonalPreferences. */}
       <div className="hidden lg:flex absolute bottom-3 right-3 z-20 gap-1 dm-surface rounded-md p-1 border">
         {(Object.keys(PRESET_LABELS) as LayoutPreset[]).map((key) => (
           <button
             key={key}
-            onClick={() => setPreset(key)}
+            onClick={() => setLayoutPreset(key)}
             className={`text-[10px] px-2 py-1 rounded uppercase tracking-wide transition-colors ${
-              preferences.preset === key
+              personalPreferences.display.layoutPreset === key
                 ? "dm-leather dm-amber-text"
                 : "text-[hsl(var(--dm-text-faint))] hover:text-[hsl(var(--dm-text-muted))]"
             }`}
