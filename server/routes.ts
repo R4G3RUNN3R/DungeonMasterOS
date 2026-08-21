@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
+import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import {
@@ -1818,27 +1819,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(storage.getCampaign(campaignId));
   });
 
+  // Value validation for direct campaign-settings changes (PATCH /api/campaigns/:id).
+  // Enum option lists are sourced from client/src/components/CampaignSettingsPanel.tsx's
+  // TONE_OPTIONS/COMBAT_OPTIONS/RULES_OPTIONS/POWER_OPTIONS — keep in sync with that file.
+  const campaignSettingsPatchSchema = z
+    .object({
+      tone: z.enum(["dark", "heroic", "comedic", "realistic"]).optional(),
+      combatStyle: z.enum(["cinematic", "tactical", "dice"]).optional(),
+      rulesWeight: z.enum(["light", "medium", "crunchy"]).optional(),
+      powerLevel: z.enum(["low", "standard", "high", "godtier"]).optional(),
+      storyMode: z.boolean().optional(),
+      epicMode: z.boolean().optional(),
+      worldGenStyle: z.string().optional(),
+      animeWorldSource: z.string().optional(),
+      animeWorldMode: z.string().optional(),
+      name: z.string().min(1).optional(),
+    })
+    .strict();
+
   app.patch("/api/campaigns/:id", (req, res) => {
-    const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    if (campaign.hostVisitorId !== visitorId && campaign.userId !== req.user?.id) {
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority !== "owner") {
       return res.status(403).json({ message: "Only the host can change campaign settings" });
     }
 
-    const allowed = [
-      "storyMode", "epicMode", "tone", "combatStyle", "rulesWeight",
-      "powerLevel", "worldGenStyle", "animeWorldSource", "animeWorldMode", "name",
-    ];
-    const updates: any = {};
-    for (const key of allowed) {
-      if ((req.body as any)[key] !== undefined) updates[key] = (req.body as any)[key];
+    if ((campaign as any).settingsLocked) {
+      return res.status(409).json({ message: "Campaign settings are locked. Unlock them before making changes." });
     }
+
+    const parsed = campaignSettingsPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid campaign settings", errors: parsed.error.flatten() });
+    }
+    const updates = parsed.data;
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
-    storage.updateCampaign(campaignId, updates);
+
+    for (const [key, newValue] of Object.entries(updates)) {
+      const oldValue = (campaign as any)[key];
+      if (oldValue !== newValue) {
+        storage.createCampaignSettingsHistory({
+          campaignId,
+          settingKey: key,
+          oldValue: oldValue === undefined || oldValue === null ? null : String(oldValue),
+          newValue: String(newValue),
+          changedByUserId: req.user?.id ?? null,
+          source: "owner-direct",
+        });
+      }
+    }
+
+    storage.updateCampaign(campaignId, updates as any);
     const updated = storage.getCampaign(campaignId);
     broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
 

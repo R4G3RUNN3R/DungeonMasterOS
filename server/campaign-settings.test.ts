@@ -152,6 +152,56 @@ test("smoke: server still registers routes and serves an authenticated request a
   assert.equal(body.isArchived, true);
 });
 
+test("PATCH /api/campaigns/:id: owner can change a valid setting and it is audited", async () => {
+  const { owner, campaign } = makeFixture();
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ tone: "dark" }),
+  });
+  assert.equal(res.status, 200, "owner change should succeed");
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  assert.equal(history[0].settingKey, "tone");
+  assert.equal(history[0].newValue, "dark");
+});
+
+test("PATCH /api/campaigns/:id: non-owner is rejected", async () => {
+  const { player, campaign } = makeFixture();
+  const token = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ tone: "dark" }),
+  });
+  assert.equal(res.status, 403);
+});
+
+test("PATCH /api/campaigns/:id: invalid enum value is rejected, not written", async () => {
+  const { owner, campaign } = makeFixture();
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ tone: "banana" }),
+  });
+  assert.equal(res.status, 400);
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.notEqual((reloaded as any).tone, "banana");
+});
+
+test("PATCH /api/campaigns/:id: locked campaign rejects owner-direct change", async () => {
+  const { owner, campaign } = makeFixture();
+  storage.updateCampaign(campaign.id, { settingsLocked: true } as any);
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ tone: "dark" }),
+  });
+  assert.equal(res.status, 409);
+});
+
 test("storage: user preferences upsert round-trips (insert then update)", () => {
   const { owner } = makeFixture();
   assert.equal(storage.getUserPreferences(owner.id), undefined);
