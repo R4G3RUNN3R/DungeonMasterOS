@@ -66,6 +66,21 @@ export type User = typeof users.$inferSelect;
 export type PublicUser = Omit<User, "passwordHash" | "googleId">;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// USER PREFERENCES
+// One row per user. `data` is an opaque JSON blob owned by the client-side
+// preferences feature; the server only stores/returns it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: integer("user_id").primaryKey(),
+  data: text("data").notNull().default("{}"),
+  version: integer("version").notNull().default(1),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export type UserPreferencesRow = typeof userPreferences.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TURN ACCOUNTING
 // Ledger rows are append-only audit records. visibleDelta affects user-facing
 // available turns; reserveDelta tracks the internal 20% buffer we fund per grant.
@@ -151,6 +166,7 @@ export const campaigns = sqliteTable("campaigns", {
   epicMode: integer("epic_mode", { mode: "boolean" }).notNull().default(false),
   animeWorldSource: text("anime_world_source").notNull().default(""),
   animeWorldMode: text("anime_world_mode").notNull().default("inspired"),
+  settingsLocked: integer("settings_locked", { mode: "boolean" }).notNull().default(false),
 
   // Persistent world state
   worldState: text("world_state").notNull().default("{}"),
@@ -173,6 +189,51 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
 
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN SETTINGS HISTORY
+// Append-only audit trail of every campaign setting change, whether made
+// directly by the owner or applied from an accepted player suggestion.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const campaignSettingsHistory = sqliteTable("campaign_settings_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  settingKey: text("setting_key").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value").notNull(),
+  changedByUserId: integer("changed_by_user_id"),
+  source: text("source").notNull(), // 'owner-direct' | 'accepted-suggestion' | 'system'
+  suggestionId: integer("suggestion_id"),
+  note: text("note"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export type CampaignSettingsHistoryRow = typeof campaignSettingsHistory.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN SETTING SUGGESTIONS
+// Players propose a setting change; the owner accepts, declines, or the
+// player withdraws it. Accepted suggestions get mirrored into
+// campaignSettingsHistory with source "accepted-suggestion".
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const campaignSettingSuggestions = sqliteTable("campaign_setting_suggestions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  settingKey: text("setting_key").notNull(),
+  currentValue: text("current_value").notNull(),
+  proposedValue: text("proposed_value").notNull(),
+  submittedByUserId: integer("submitted_by_user_id").notNull(),
+  reason: text("reason"),
+  status: text("status").notNull().default("pending"), // pending | accepted | declined | withdrawn
+  ownerResponse: text("owner_response"),
+  resolvedByUserId: integer("resolved_by_user_id"),
+  resolvedAt: text("resolved_at"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export type CampaignSettingSuggestionRow = typeof campaignSettingSuggestions.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CAMPAIGN CURRENCIES

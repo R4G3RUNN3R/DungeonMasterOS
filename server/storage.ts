@@ -41,6 +41,11 @@ import {
   type RollLogEntry,
   type InsertRollLogEntry,
   rollLog,
+  type CampaignSettingsHistoryRow,
+  campaignSettingsHistory,
+  type CampaignSettingSuggestionRow,
+  campaignSettingSuggestions,
+  userPreferences,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -442,6 +447,43 @@ export function runMigrations() {
     ON messages (campaign_id, client_submission_id)
     WHERE client_submission_id IS NOT NULL;
   `);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS campaign_settings_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    setting_key TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT NOT NULL,
+    changed_by_user_id INTEGER,
+    source TEXT NOT NULL,
+    suggestion_id INTEGER,
+    note TEXT,
+    created_at TEXT NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS campaign_setting_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    setting_key TEXT NOT NULL,
+    current_value TEXT NOT NULL,
+    proposed_value TEXT NOT NULL,
+    submitted_by_user_id INTEGER NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    owner_response TEXT,
+    resolved_by_user_id INTEGER,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL DEFAULT '{}',
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+  );`);
+
+  addColumnIfMissing("campaigns", "settings_locked", "INTEGER NOT NULL DEFAULT 0");
 }
 
 export type TurnLedgerReason =
@@ -677,6 +719,34 @@ export interface IStorage {
   establishTitle(titleId: number): void;
   getEstablishedTitleCount(characterId: number): number;
   getEstablishedTitleCountForUser(userId: number): number;
+
+  // Campaign settings history / suggestions
+  createCampaignSettingsHistory(entry: {
+    campaignId: number;
+    settingKey: string;
+    oldValue: string | null;
+    newValue: string;
+    changedByUserId: number | null;
+    source: "owner-direct" | "accepted-suggestion" | "system";
+    suggestionId?: number;
+    note?: string;
+  }): void;
+  getCampaignSettingsHistory(campaignId: number): CampaignSettingsHistoryRow[];
+  createCampaignSettingSuggestion(entry: {
+    campaignId: number;
+    settingKey: string;
+    currentValue: string;
+    proposedValue: string;
+    submittedByUserId: number;
+    reason?: string;
+  }): CampaignSettingSuggestionRow;
+  getCampaignSettingSuggestions(campaignId: number): CampaignSettingSuggestionRow[];
+  getCampaignSettingSuggestion(suggestionId: number): CampaignSettingSuggestionRow | undefined;
+  updateCampaignSettingSuggestion(suggestionId: number, updates: Partial<CampaignSettingSuggestionRow>): void;
+
+  // User preferences
+  getUserPreferences(userId: number): { data: string; updatedAt: string } | undefined;
+  upsertUserPreferences(userId: number, data: string, updatedAt: string): void;
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -1306,6 +1376,95 @@ export class DatabaseStorage implements IStorage {
       )
       .get(userId) as { cnt: number };
     return cnt;
+  }
+
+  // Campaign settings history / suggestions
+  createCampaignSettingsHistory(entry: {
+    campaignId: number;
+    settingKey: string;
+    oldValue: string | null;
+    newValue: string;
+    changedByUserId: number | null;
+    source: "owner-direct" | "accepted-suggestion" | "system";
+    suggestionId?: number;
+    note?: string;
+  }): void {
+    db.insert(campaignSettingsHistory)
+      .values({
+        campaignId: entry.campaignId,
+        settingKey: entry.settingKey,
+        oldValue: entry.oldValue,
+        newValue: entry.newValue,
+        changedByUserId: entry.changedByUserId,
+        source: entry.source,
+        suggestionId: entry.suggestionId ?? null,
+        note: entry.note ?? null,
+      })
+      .run();
+  }
+  getCampaignSettingsHistory(campaignId: number): CampaignSettingsHistoryRow[] {
+    return db
+      .select()
+      .from(campaignSettingsHistory)
+      .where(eq(campaignSettingsHistory.campaignId, campaignId))
+      .orderBy(desc(campaignSettingsHistory.id))
+      .all();
+  }
+  createCampaignSettingSuggestion(entry: {
+    campaignId: number;
+    settingKey: string;
+    currentValue: string;
+    proposedValue: string;
+    submittedByUserId: number;
+    reason?: string;
+  }): CampaignSettingSuggestionRow {
+    return db
+      .insert(campaignSettingSuggestions)
+      .values({
+        campaignId: entry.campaignId,
+        settingKey: entry.settingKey,
+        currentValue: entry.currentValue,
+        proposedValue: entry.proposedValue,
+        submittedByUserId: entry.submittedByUserId,
+        reason: entry.reason ?? null,
+      })
+      .returning()
+      .get();
+  }
+  getCampaignSettingSuggestions(campaignId: number): CampaignSettingSuggestionRow[] {
+    return db
+      .select()
+      .from(campaignSettingSuggestions)
+      .where(eq(campaignSettingSuggestions.campaignId, campaignId))
+      .orderBy(desc(campaignSettingSuggestions.id))
+      .all();
+  }
+  getCampaignSettingSuggestion(suggestionId: number): CampaignSettingSuggestionRow | undefined {
+    return db
+      .select()
+      .from(campaignSettingSuggestions)
+      .where(eq(campaignSettingSuggestions.id, suggestionId))
+      .get();
+  }
+  updateCampaignSettingSuggestion(suggestionId: number, updates: Partial<CampaignSettingSuggestionRow>): void {
+    db.update(campaignSettingSuggestions)
+      .set(updates as any)
+      .where(eq(campaignSettingSuggestions.id, suggestionId))
+      .run();
+  }
+
+  // User preferences
+  getUserPreferences(userId: number): { data: string; updatedAt: string } | undefined {
+    const row = db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).get();
+    return row ? { data: row.data, updatedAt: row.updatedAt } : undefined;
+  }
+  upsertUserPreferences(userId: number, data: string, updatedAt: string): void {
+    const existing = db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).get();
+    if (existing) {
+      db.update(userPreferences).set({ data, updatedAt }).where(eq(userPreferences.userId, userId)).run();
+    } else {
+      db.insert(userPreferences).values({ userId, data, updatedAt }).run();
+    }
   }
 }
 

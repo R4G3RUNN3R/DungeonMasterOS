@@ -280,6 +280,23 @@ function canManageCampaign(req: Request, campaign: { userId: number | null; host
   return campaign.hostVisitorId === getVisitorId(req);
 }
 
+// Consolidated ownership/authority check for the campaign settings feature
+// (Options/Settings panel, settings history, player suggestions). Distinct
+// from canManageCampaign above — that helper stays as-is for the shop and
+// currency routes that already depend on it. New settings routes should use
+// this instead of inventing their own ownership logic.
+export type CampaignAuthority = "owner" | "player" | "none";
+
+export function getCampaignAuthority(req: Request, campaign: Campaign): CampaignAuthority {
+  if (req.user?.isAdmin || req.user?.role === "dungeon_master") return "owner";
+  if (req.user?.id && campaign.userId === req.user.id) return "owner";
+  if (campaign.hostVisitorId === getVisitorId(req)) return "owner";
+  const hasCharacter = storage
+    .getCharactersByCampaign(campaign.id)
+    .some((c) => c.userId === req.user?.id || c.visitorId === getVisitorId(req));
+  return hasCharacter ? "player" : "none";
+}
+
 function setShortLivedCookie(res: Response, name: string, value: string) {
   const isProduction = process.env.NODE_ENV === "production";
   res.cookie(name, value, {
