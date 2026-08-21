@@ -14,7 +14,8 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Campaign } from "@shared/schema";
-import { Settings, AlertTriangle, ChevronDown, ChevronUp, Check, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 // ── Option types ──────────────────────────────────────────────────────────
 
@@ -89,21 +90,12 @@ interface ConfirmProps {
 function ConfirmModal({ settingLabel, oldValue, newValue, level, onConfirm, onCancel }: ConfirmProps) {
   const w = WARN_TEXT[level];
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 200,
-      background: "rgba(0,0,0,0.75)", backdropFilter: "blur(2px)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 16,
-    }}>
-      <div style={{
-        background: "linear-gradient(160deg, #1a1108, #0d0b06)",
-        border: `2px solid ${w.border}`,
-        borderRadius: 12,
-        padding: 20,
-        maxWidth: 360,
-        width: "100%",
-        boxShadow: `0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px ${w.border}`,
-      }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <DialogContent
+        className="max-w-sm bg-gradient-to-br from-[#1a1108] to-[#0d0b06] border-2"
+        style={{ borderColor: w.border, boxShadow: `0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px ${w.border}` }}
+      >
+        <DialogTitle className="sr-only">Change {settingLabel}?</DialogTitle>
         {/* Icon + title */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div style={{
@@ -167,8 +159,8 @@ function ConfirmModal({ settingLabel, oldValue, newValue, level, onConfirm, onCa
             Yes, change it
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -315,7 +307,7 @@ function SettingRow({ label, settingKey, current, options, isToggle, toggleLabel
 // ── Main component ─────────────────────────────────────────────────────────
 interface Props {
   campaign: Campaign;
-  isHost: boolean;
+  viewerAuthority: "owner" | "player" | "none";
   campaignId: number;
 }
 
@@ -328,8 +320,8 @@ interface PendingChange {
   level: WarnLevel;
 }
 
-export default function CampaignSettingsPanel({ campaign, isHost, campaignId }: Props) {
-  const [open, setOpen] = useState(false);
+export default function CampaignSettingsPanel({ campaign, viewerAuthority, campaignId }: Props) {
+  const isHost = viewerAuthority === "owner";
   const [pending, setPending] = useState<PendingChange | null>(null);
 
   const patchMutation = useMutation({
@@ -368,87 +360,66 @@ export default function CampaignSettingsPanel({ campaign, isHost, campaignId }: 
         />
       )}
 
-      <div style={{
-        borderTop: "1px solid rgba(196,162,101,0.2)",
-        marginTop: 4,
-      }}>
-        {/* Section toggle */}
-        <button
-          onClick={() => setOpen(o => !o)}
-          style={{
-            width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "7px 12px", background: "none", border: "none", cursor: "pointer",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Settings size={10} color="#8a6830" />
-            <span style={{ fontSize: 8.5, fontWeight: 700, color: "#8a6830", fontFamily: "serif", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-              Campaign Settings
-            </span>
-            {!isHost && (
-              <span style={{ fontSize: 7, color: "#4a2e0e", fontFamily: "serif", fontStyle: "italic" }}>view only</span>
-            )}
-          </div>
-          {open ? <ChevronUp size={9} color="#4a2e0e" /> : <ChevronDown size={9} color="#4a2e0e" />}
-        </button>
-
-        {open && (
-          <div style={{ padding: "0 12px 10px" }}>
-            {isHost && (
-              <div style={{
-                fontSize: 8, color: "#b8880a", fontFamily: "serif",
-                padding: "5px 8px", marginBottom: 8,
-                background: "#b8880a0e", border: "1px solid #b8880a33",
-                borderRadius: 5, lineHeight: 1.5,
-              }}>
-                <AlertTriangle size={8} style={{ display: "inline", marginRight: 4 }} />
-                Changes take effect on the next DM response. Dramatic changes can feel jarring mid-scene.
-              </div>
-            )}
-
-            {/* ── Toggles (safe) ── */}
-            <SettingRow label="Story Mode" settingKey="storyMode"
-              current={c.storyMode || false} isToggle isHost={isHost}
-              toggleDescription="Characters can't permanently die, failures become complications"
-              onRequest={handleRequest}
-            />
-            <SettingRow label="Epic Mode" settingKey="epicMode"
-              current={c.epicMode || false} isToggle isHost={isHost}
-              toggleDescription="Epic-tier power, level cap removed, reality-scale threats"
-              onRequest={handleRequest}
-            />
-
-            <div style={{ height: 6 }} />
-
-            {/* ── Select settings ── */}
-            <SettingRow label="Tone" settingKey="tone"
-              current={c.tone} options={TONE_OPTIONS} isHost={isHost}
-              onRequest={handleRequest}
-            />
-            <SettingRow label="Combat" settingKey="combatStyle"
-              current={c.combatStyle || "cinematic"} options={COMBAT_OPTIONS} isHost={isHost}
-              onRequest={handleRequest}
-            />
-            <SettingRow label="Rules Weight" settingKey="rulesWeight"
-              current={c.rulesWeight} options={RULES_OPTIONS} isHost={isHost}
-              onRequest={handleRequest}
-            />
-            <SettingRow label="Power Level" settingKey="powerLevel"
-              current={c.powerLevel} options={POWER_OPTIONS} isHost={isHost}
-              onRequest={handleRequest}
-            />
-
-            {/* ── Warning colour key ── */}
-            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(["safe", "moderate", "dramatic"] as WarnLevel[]).map(lvl => (
-                <div key={lvl} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: WARN_TEXT[lvl].color }} />
-                  <span style={{ fontSize: 7, color: "#4a2e0e", fontFamily: "serif", textTransform: "capitalize" }}>{lvl}</span>
-                </div>
-              ))}
-            </div>
+      <div>
+        {!isHost && (
+          <div style={{ fontSize: 7, color: "#4a2e0e", fontFamily: "serif", fontStyle: "italic", marginBottom: 6 }}>
+            view only
           </div>
         )}
+
+        {isHost && (
+          <div style={{
+            fontSize: 8, color: "#b8880a", fontFamily: "serif",
+            padding: "5px 8px", marginBottom: 8,
+            background: "#b8880a0e", border: "1px solid #b8880a33",
+            borderRadius: 5, lineHeight: 1.5,
+          }}>
+            <AlertTriangle size={8} style={{ display: "inline", marginRight: 4 }} />
+            Changes take effect on the next DM response. Dramatic changes can feel jarring mid-scene.
+          </div>
+        )}
+
+        {/* ── Toggles (safe) ── */}
+        <SettingRow label="Story Mode" settingKey="storyMode"
+          current={c.storyMode || false} isToggle isHost={isHost}
+          toggleDescription="Characters can't permanently die, failures become complications"
+          onRequest={handleRequest}
+        />
+        <SettingRow label="Epic Mode" settingKey="epicMode"
+          current={c.epicMode || false} isToggle isHost={isHost}
+          toggleDescription="Epic-tier power, level cap removed, reality-scale threats"
+          onRequest={handleRequest}
+        />
+
+        <div style={{ height: 6 }} />
+
+        {/* ── Select settings ── */}
+        <SettingRow label="Tone" settingKey="tone"
+          current={c.tone} options={TONE_OPTIONS} isHost={isHost}
+          onRequest={handleRequest}
+        />
+        <SettingRow label="Combat" settingKey="combatStyle"
+          current={c.combatStyle || "cinematic"} options={COMBAT_OPTIONS} isHost={isHost}
+          onRequest={handleRequest}
+        />
+        <SettingRow label="Rules Weight" settingKey="rulesWeight"
+          current={c.rulesWeight} options={RULES_OPTIONS} isHost={isHost}
+          onRequest={handleRequest}
+        />
+        <SettingRow label="Power Level" settingKey="powerLevel"
+          current={c.powerLevel} options={POWER_OPTIONS} isHost={isHost}
+          onRequest={handleRequest}
+        />
+
+        {/* ── Warning colour key ── */}
+        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {(["safe", "moderate", "dramatic"] as WarnLevel[]).map(lvl => (
+            <div key={lvl} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: WARN_TEXT[lvl].color }} />
+              <span style={{ fontSize: 7, color: "#4a2e0e", fontFamily: "serif", textTransform: "capitalize" }}>{lvl}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );
