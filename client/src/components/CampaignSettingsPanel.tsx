@@ -14,8 +14,9 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Campaign } from "@shared/schema";
-import { AlertTriangle, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Check, Lock, Unlock } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Option types ──────────────────────────────────────────────────────────
 
@@ -323,6 +324,7 @@ interface PendingChange {
 export default function CampaignSettingsPanel({ campaign, viewerAuthority, campaignId }: Props) {
   const isHost = viewerAuthority === "owner";
   const [pending, setPending] = useState<PendingChange | null>(null);
+  const { toast } = useToast();
 
   const patchMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
@@ -331,6 +333,34 @@ export default function CampaignSettingsPanel({ campaign, viewerAuthority, campa
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
+    },
+    onError: (err: Error) => {
+      // apiRequest throws `Error("${status}: ${message}")` on a non-ok
+      // response — a 409 here means the host locked settings after this
+      // panel loaded (or a stale confirm-modal was still open). Without
+      // this, the PATCH just silently no-ops from the player's POV.
+      const locked = err.message.startsWith("409");
+      toast({
+        title: locked ? "Settings are locked" : "Couldn't change setting",
+        description: locked
+          ? "This campaign's settings are locked. Unlock them below before making changes."
+          : err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const lockMutation = useMutation({
+    mutationFn: async (locked: boolean) => {
+      const res = await apiRequest("PATCH", `/api/campaigns/${campaignId}/settings/lock`, { locked });
+      return res.json();
+    },
+    onSuccess: (_data, locked) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });
+      toast({ title: locked ? "Settings locked" : "Settings unlocked" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't change lock state", description: err.message, variant: "destructive" });
     },
   });
 
@@ -346,6 +376,7 @@ export default function CampaignSettingsPanel({ campaign, viewerAuthority, campa
   };
 
   const c = campaign as any;
+  const locked = Boolean(campaign.settingsLocked);
 
   return (
     <>
@@ -363,7 +394,7 @@ export default function CampaignSettingsPanel({ campaign, viewerAuthority, campa
       <div>
         {!isHost && (
           <div style={{ fontSize: 7, color: "#4a2e0e", fontFamily: "serif", fontStyle: "italic", marginBottom: 6 }}>
-            view only
+            view only{locked ? " — settings are locked" : ""}
           </div>
         )}
 
@@ -376,6 +407,38 @@ export default function CampaignSettingsPanel({ campaign, viewerAuthority, campa
           }}>
             <AlertTriangle size={8} style={{ display: "inline", marginRight: 4 }} />
             Changes take effect on the next DM response. Dramatic changes can feel jarring mid-scene.
+          </div>
+        )}
+
+        {isHost && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            padding: "6px 8px", marginBottom: 8,
+            background: locked ? "#8b1a1a12" : "rgba(255,255,255,0.03)",
+            border: `1px solid ${locked ? "#8b1a1a44" : "rgba(196,162,101,0.2)"}`,
+            borderRadius: 5,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {locked ? <Lock size={10} color="#c46060" /> : <Unlock size={10} color="#6daa45" />}
+              <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "serif", color: locked ? "#c46060" : "#8a6830" }}>
+                {locked ? "Settings locked" : "Settings unlocked"}
+              </span>
+            </div>
+            <button
+              onClick={() => lockMutation.mutate(!locked)}
+              disabled={lockMutation.isPending}
+              style={{
+                fontSize: 9, fontWeight: 700, fontFamily: "serif",
+                color: locked ? "#6daa45" : "#c46060",
+                background: locked ? "#1a5c1a12" : "#8b1a1a12",
+                border: `1px solid ${locked ? "#6daa4544" : "#c4606044"}`,
+                borderRadius: 4, padding: "3px 10px",
+                cursor: lockMutation.isPending ? "default" : "pointer",
+                opacity: lockMutation.isPending ? 0.6 : 1,
+              }}
+            >
+              {lockMutation.isPending ? "…" : locked ? "Unlock" : "Lock"}
+            </button>
           </div>
         )}
 

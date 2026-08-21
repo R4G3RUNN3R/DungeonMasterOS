@@ -20,6 +20,7 @@ type Props = {
   sceneLabel?: string | null;
   connected: boolean;
   onBack: () => void;
+  onOpenOptions: () => void;
 };
 
 function StubHeaderButton({ icon: Icon, label }: { icon: typeof Map; label: string }) {
@@ -44,7 +45,7 @@ function StubHeaderButton({ icon: Icon, label }: { icon: typeof Map; label: stri
   );
 }
 
-export default function CampaignGameHeader({ campaignName, sceneLabel, connected, onBack }: Props) {
+export default function CampaignGameHeader({ campaignName, sceneLabel, connected, onBack, onOpenOptions }: Props) {
   return (
     <header className="dm-leather border-b h-12 shrink-0 flex items-center justify-between px-3 gap-3 relative z-10">
       <div className="flex items-center gap-2 min-w-0">
@@ -63,7 +64,16 @@ export default function CampaignGameHeader({ campaignName, sceneLabel, connected
         <StubHeaderButton icon={Map} label="Map" />
         <StubHeaderButton icon={ScrollText} label="Journal / Quests" />
         <StubHeaderButton icon={Users} label="Party" />
-        <StubHeaderButton icon={MoreHorizontal} label="Settings" />
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onOpenOptions} aria-label="Options">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Options</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {/* Connection state stays quiet unless there's actually a problem. */}
         <span

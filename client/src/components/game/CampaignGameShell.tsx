@@ -23,6 +23,7 @@ import SceneBackdrop from "./SceneBackdrop";
 import SidebarCharacterSheet from "@/components/SidebarCharacterSheet";
 import InventoryOverlay from "./InventoryOverlay";
 import CodexOverlay from "./CodexOverlay";
+import OptionsDialog from "./OptionsDialog";
 
 import { getRulesAdapter, type AuthoritativeSaveEntry } from "@/lib/rulesAdapters";
 import { usePersonalPreferences, LAYOUT_PRESETS, type LayoutPreset } from "@/lib/personalPreferences";
@@ -209,6 +210,7 @@ export default function CampaignGameShell({
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [shopExpanded, setShopExpanded] = useState(false);
 
   const hud = getRulesAdapter().buildCharacterHud(character, items, sheetSaves);
@@ -274,7 +276,12 @@ export default function CampaignGameShell({
         blurPx={scene.asset?.suitability.suggestedBlurPx}
       />
 
-      <CampaignGameHeader campaignName={campaignName} connected={connected} onBack={onBack} />
+      <CampaignGameHeader
+        campaignName={campaignName}
+        connected={connected}
+        onBack={onBack}
+        onOpenOptions={() => setOptionsOpen(true)}
+      />
 
       {/*
         Single column below `lg` (the two asides are `hidden` there anyway —
@@ -401,6 +408,7 @@ export default function CampaignGameShell({
         worldState={worldStateRaw}
         onSubmitReport={onSubmitReport}
       />
+      <OptionsDialog open={optionsOpen} onOpenChange={setOptionsOpen} campaignId={campaignId} />
 
       {shop && (
         <Dialog open={shopExpanded} onOpenChange={setShopExpanded}>
