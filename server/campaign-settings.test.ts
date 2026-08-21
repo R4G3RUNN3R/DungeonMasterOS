@@ -287,6 +287,32 @@ test("suggestions: accept applies the change and writes history", async () => {
   assert.ok(history.some((h) => h.source === "accepted-suggestion"));
 });
 
+test("suggestions: accept coerces a boolean setting to a real boolean", async () => {
+  const { owner, player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const submitRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "storyMode", proposedValue: true }),
+  });
+  assert.equal(submitRes.status, 201);
+  const suggestion = await submitRes.json();
+
+  const ownerToken = signToken(owner.id);
+  const acceptRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(acceptRes.status, 200);
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.equal((reloaded as any).storyMode, true);
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  const entry = history.find((h) => h.source === "accepted-suggestion" && h.settingKey === "storyMode");
+  assert.ok(entry);
+  assert.equal(entry!.newValue, "true");
+});
+
 test("suggestions: decline does not apply the change", async () => {
   const { owner, player, campaign } = makeFixture();
   const playerToken = signToken(player.id);

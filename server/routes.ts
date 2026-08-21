@@ -1837,6 +1837,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
     .strict();
 
+  // Boolean-typed keys of campaignSettingsPatchSchema, kept explicit here because
+  // every field above is wrapped in .optional() (ZodOptional), so checking
+  // `_def.typeName === "ZodBoolean"` against the schema's shape never matches —
+  // see the accept branch of the suggestions route below, which coerces
+  // suggestion.proposedValue (always stored as a string) back to a real boolean
+  // for these keys before re-validating and persisting it.
+  const BOOLEAN_CAMPAIGN_SETTING_KEYS = new Set(["storyMode", "epicMode"]);
+
   app.patch("/api/campaigns/:id", (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -2031,9 +2039,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .json({ message: "Stale suggestion: the setting has changed since this was proposed", status: "stale" });
     }
 
-    const fieldSchema = (campaignSettingsPatchSchema.shape as any)[suggestion.settingKey];
-    const coerced =
-      fieldSchema?._def?.typeName === "ZodBoolean" ? suggestion.proposedValue === "true" : suggestion.proposedValue;
+    const coerced = BOOLEAN_CAMPAIGN_SETTING_KEYS.has(suggestion.settingKey)
+      ? suggestion.proposedValue === "true"
+      : suggestion.proposedValue;
     const validation = campaignSettingsPatchSchema.safeParse({ [suggestion.settingKey]: coerced });
     if (!validation.success) {
       return res.status(400).json({ message: "Suggested value is no longer valid" });
