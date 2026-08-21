@@ -1692,6 +1692,56 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // USER / ACCOUNT ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Zod schema mirroring the client-side PersonalPreferencesV1 shape (see the
+  // Options/Settings design spec). `.strict()` on the inner object rejects
+  // unknown keys so stale/typo'd client fields surface as a 400 rather than
+  // silently persisting.
+  const personalPreferencesSchema = z
+    .object({
+      version: z.literal(1),
+      display: z.object({
+        layoutPreset: z.enum(["wide", "reading", "cinematic"]),
+        textSize: z.enum(["sm", "md", "lg"]),
+        contextCollapsed: z.boolean(),
+        reducedMotion: z.boolean(),
+      }),
+      interface: z.object({
+        hudPreset: z.enum(["minimal", "standard", "tactical", "immersive", "custom"]),
+        hudOverrides: z.record(z.boolean()),
+      }),
+      mechanicalTransparency: z.enum(["narrative", "balanced", "ruleslawyer"]),
+      notifications: z.object({
+        achievementToasts: z.enum(["full", "compact", "off"]),
+      }),
+    })
+    .strict();
+
+  const userPreferencesPatchSchema = z.object({
+    data: personalPreferencesSchema,
+    updatedAt: z.string(),
+  });
+
+  app.get("/api/user/preferences", requireAuth, (req, res) => {
+    const row = storage.getUserPreferences(req.user!.id);
+    if (!row) {
+      return res.json({ data: null, updatedAt: null });
+    }
+    return res.json({ data: JSON.parse(row.data), updatedAt: row.updatedAt });
+  });
+
+  // NOTE: the client-supplied `updatedAt` is treated as authoritative and
+  // stored verbatim — the server intentionally does NOT stamp its own time
+  // here. This is required for the client's own conflict-resolution logic
+  // (built in a later task) to work correctly. Do not "fix" this.
+  app.patch("/api/user/preferences", requireAuth, (req, res) => {
+    const parsed = userPreferencesPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+    }
+    storage.upsertUserPreferences(req.user!.id, JSON.stringify(parsed.data.data), parsed.data.updatedAt);
+    return res.json({ data: parsed.data.data, updatedAt: parsed.data.updatedAt });
+  });
+
   app.get("/api/achievements", requireAuth, (req, res) => {
     const achievements = storage.getUserAchievements(req.user!.id);
     return res.json(achievements);
