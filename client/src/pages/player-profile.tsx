@@ -61,9 +61,11 @@ export default function PlayerProfilePage({
 
   const displayedUsername = localProfileEdits?.username ?? profile.username;
   const displayedAvatarUrl = localProfileEdits?.avatarUrl ?? profile.avatarUrl;
+  const unlockedShowcaseCandidates = (unlockedAchievements ?? profile.showcasedAchievements)
+    .filter((achievement) => achievement.unlocked);
   const selectedShowcase = localShowcaseIds
-    ? localShowcaseIds.flatMap((id) => unlockedAchievements?.find((achievement) => achievement.id === id) ?? [])
-    : profile.showcasedAchievements;
+    ? localShowcaseIds.flatMap((id) => unlockedShowcaseCandidates.find((achievement) => achievement.id === id) ?? [])
+    : profile.showcasedAchievements.filter((achievement) => achievement.unlocked);
   const joinedYear = memberSinceYear(profile.memberSince);
 
   const openProfileEditor = () => {
@@ -172,8 +174,8 @@ export default function PlayerProfilePage({
 
           <AchievementShowcaseSelector
             open={editShowcaseOpen}
-            achievements={unlockedAchievements ?? []}
-            selectedIds={localShowcaseIds ?? profile.showcasedAchievements.map((achievement) => achievement.id)}
+            achievements={unlockedShowcaseCandidates}
+            selectedIds={localShowcaseIds ?? unlockedShowcaseCandidates.map((achievement) => achievement.id)}
             onOpenChange={setEditShowcaseOpen}
             onSave={setLocalShowcaseIds}
           />
