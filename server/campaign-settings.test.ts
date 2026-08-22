@@ -24,6 +24,7 @@ runMigrations();
 
 const { signToken } = await import("./auth");
 const { registerRoutes, getCampaignAuthority } = await import("./routes");
+const { createCampaignFormSchema } = await import("@shared/schema");
 
 let httpServer: ReturnType<typeof createServer>;
 let base: string;
@@ -558,4 +559,95 @@ test("storage: user preferences upsert round-trips (insert then update)", () => 
   const updated = storage.getUserPreferences(owner.id);
   assert.equal(updated?.data, JSON.stringify({ theme: "light" }));
   assert.equal(updated?.updatedAt, "2026-01-02T00:00:00.000Z");
+});
+
+// ── Task 8: rulesWeight migration (Strict/Standard/Light Rules/Narrative/Freeform) ──
+
+test("rulesWeight migration: crunchy/medium/light remap to strict/standard/light_rules", () => {
+  const { owner: ownerA, campaign: campaignA } = makeFixture();
+  storage.updateCampaign(campaignA.id, { rulesWeight: "crunchy" } as any);
+  const { campaign: campaignB } = makeFixture();
+  storage.updateCampaign(campaignB.id, { rulesWeight: "medium" } as any);
+  const { campaign: campaignC } = makeFixture();
+  storage.updateCampaign(campaignC.id, { rulesWeight: "light" } as any);
+
+  runMigrations(); // idempotent — re-running applies the remap to the rows just set above
+
+  assert.equal((storage.getCampaign(campaignA.id) as any).rulesWeight, "strict");
+  assert.equal((storage.getCampaign(campaignB.id) as any).rulesWeight, "standard");
+  assert.equal((storage.getCampaign(campaignC.id) as any).rulesWeight, "light_rules");
+});
+
+test("rulesWeight migration is idempotent — running it twice does not further change already-migrated values", () => {
+  const { campaign } = makeFixture();
+  storage.updateCampaign(campaign.id, { rulesWeight: "strict" } as any);
+  runMigrations();
+  runMigrations();
+  assert.equal((storage.getCampaign(campaign.id) as any).rulesWeight, "strict");
+});
+
+test("PATCH /api/campaigns/:id accepts the new rulesWeight enum values", async () => {
+  const { owner, campaign } = makeFixture();
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ rulesWeight: "narrative" }),
+  });
+  assert.equal(res.status, 200);
+  assert.equal((storage.getCampaign(campaign.id) as any).rulesWeight, "narrative");
+});
+
+test("PATCH /api/campaigns/:id rejects the old rulesWeight enum values", async () => {
+  const { owner, campaign } = makeFixture();
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ rulesWeight: "crunchy" }),
+  });
+  assert.equal(res.status, 400, "the old enum value must no longer validate");
+});
+
+test("combatStyle is completely unaffected by the rulesWeight migration", () => {
+  const { campaign } = makeFixture();
+  storage.updateCampaign(campaign.id, { rulesWeight: "crunchy", combatStyle: "cinematic" } as any);
+  runMigrations();
+  const reloaded = storage.getCampaign(campaign.id) as any;
+  assert.equal(reloaded.rulesWeight, "strict");
+  assert.equal(reloaded.combatStyle, "cinematic", "combatStyle must never change due to this migration");
+});
+
+// ── Task 8 gap fix: campaign-creation path (createCampaignFormSchema) was found to be a
+// separate, still-3-value rulesWeight enum used by the live POST /api/campaigns endpoint,
+// not covered by campaignSettingsPatchSchema above. Tested directly against the schema
+// (rather than a full authenticated POST /api/campaigns HTTP round-trip) because that
+// route sits behind requireCanPlay/checkCampaignLimit subscription-tier middleware whose
+// setup is orthogonal to this migration; the schema is the exact artifact this task fixes.
+
+function validCreateCampaignPayload(rulesWeight: string) {
+  return {
+    name: "Test Campaign",
+    tone: "heroic",
+    rulesWeight,
+    powerLevel: "standard",
+    worldType: "original",
+    combatStyle: "cinematic",
+    worldGenStyle: "standard",
+    currencies: [{ code: "gp", name: "Gold Piece", symbol: "gp", isPrimary: true, exchangeRate: 1 }],
+  };
+}
+
+test("createCampaignFormSchema (campaign-creation path) accepts the new rulesWeight enum values", () => {
+  for (const value of ["strict", "standard", "light_rules", "narrative", "freeform"]) {
+    const result = createCampaignFormSchema.safeParse(validCreateCampaignPayload(value));
+    assert.ok(result.success, `expected "${value}" to validate, got: ${result.success ? "" : JSON.stringify(result.error.issues)}`);
+  }
+});
+
+test("createCampaignFormSchema (campaign-creation path) rejects the old rulesWeight enum values", () => {
+  for (const value of ["light", "medium", "crunchy"]) {
+    const result = createCampaignFormSchema.safeParse(validCreateCampaignPayload(value));
+    assert.equal(result.success, false, `expected old value "${value}" to no longer validate`);
+  }
 });

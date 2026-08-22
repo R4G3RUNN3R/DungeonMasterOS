@@ -32,7 +32,7 @@ type CurrencyDef = {
 type CreateCampaignPayload = {
   name: string;
   tone: "dark" | "heroic" | "comedic" | "realistic";
-  rulesWeight: "light" | "medium" | "crunchy";
+  rulesWeight: "strict" | "standard" | "light_rules" | "narrative" | "freeform";
   powerLevel: "low" | "standard" | "high" | "godtier";
   worldType: "custom" | "faerun" | "original";
   combatStyle: "cinematic" | "tactical" | "dice";
@@ -143,7 +143,7 @@ export default function HomePage() {
 
   const [name, setName] = useState("");
   const [tone, setTone] = useState<"dark" | "heroic" | "comedic" | "realistic">("heroic");
-  const [rulesWeight, setRulesWeight] = useState<"light" | "medium" | "crunchy">("medium");
+  const [rulesWeight, setRulesWeight] = useState<"strict" | "standard" | "light_rules" | "narrative" | "freeform">("standard");
   const [powerLevel, setPowerLevel] = useState<"low" | "standard" | "high" | "godtier">("standard");
   const [worldType, setWorldType] = useState<"custom" | "faerun" | "original">("original");
   const [combatStyle, setCombatStyle] = useState<"cinematic" | "tactical" | "dice">("cinematic");
@@ -331,9 +331,11 @@ export default function HomePage() {
                     onChange={(e) => setRulesWeight(e.target.value as any)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
-                    <option value="light">Light</option>
-                    <option value="medium">Medium</option>
-                    <option value="crunchy">Crunchy</option>
+                    <option value="strict">Strict</option>
+                    <option value="standard">Standard</option>
+                    <option value="light_rules">Light Rules</option>
+                    <option value="narrative">Narrative</option>
+                    <option value="freeform">Freeform</option>
                   </select>
                 </div>
 

@@ -1876,7 +1876,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     .object({
       tone: z.enum(["dark", "heroic", "comedic", "realistic"]).optional(),
       combatStyle: z.enum(["cinematic", "tactical", "dice"]).optional(),
-      rulesWeight: z.enum(["light", "medium", "crunchy"]).optional(),
+      rulesWeight: z.enum(["strict", "standard", "light_rules", "narrative", "freeform"]).optional(),
       powerLevel: z.enum(["low", "standard", "high", "godtier"]).optional(),
       storyMode: z.boolean().optional(),
       epicMode: z.boolean().optional(),

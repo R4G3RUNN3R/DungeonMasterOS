@@ -134,7 +134,7 @@ export function runMigrations() {
       user_id INTEGER,
       is_archived INTEGER NOT NULL DEFAULT 0,
       tone TEXT NOT NULL DEFAULT 'heroic',
-      rules_weight TEXT NOT NULL DEFAULT 'medium',
+      rules_weight TEXT NOT NULL DEFAULT 'standard',
       power_level TEXT NOT NULL DEFAULT 'standard',
       world_type TEXT NOT NULL DEFAULT 'original',
       combat_style TEXT NOT NULL DEFAULT 'cinematic',
@@ -502,6 +502,13 @@ export function runMigrations() {
   );`);
 
   addColumnIfMissing("campaigns", "settings_locked", "INTEGER NOT NULL DEFAULT 0");
+
+  // rulesWeight migration: crunchy/medium/light -> strict/standard/light_rules.
+  // Idempotent — an already-migrated value never matches these WHERE clauses,
+  // safe to run on every server startup.
+  sqlite.exec(`UPDATE campaigns SET rules_weight = 'strict' WHERE rules_weight = 'crunchy';`);
+  sqlite.exec(`UPDATE campaigns SET rules_weight = 'standard' WHERE rules_weight = 'medium';`);
+  sqlite.exec(`UPDATE campaigns SET rules_weight = 'light_rules' WHERE rules_weight = 'light';`);
 
   sqlite.exec(`CREATE TABLE IF NOT EXISTS rule_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -39,9 +39,11 @@ export const COMBAT_OPTIONS: SettingOption[] = [
 ];
 
 export const RULES_OPTIONS: SettingOption[] = [
-  { value: "light",  label: "Light",  description: "Story over mechanics, narrative outcomes" },
-  { value: "medium", label: "Medium", description: "Simple checks when uncertain, balanced" },
-  { value: "crunchy", label: "Crunchy", description: "Full D&D 5e — spell slots, attunement, exhaustion" },
+  { value: "strict",      label: "Strict",      description: "Full canonical rules enforcement, no discretionary bypasses" },
+  { value: "standard",    label: "Standard",     description: "Normal rules enforcement with limited DM discretion" },
+  { value: "light_rules", label: "Light Rules",  description: "Simplify or skip low-value checks, preserve important mechanics" },
+  { value: "narrative",   label: "Narrative",    description: "Prioritize story flow; non-critical mechanics may be softened" },
+  { value: "freeform",    label: "Freeform",     description: "Rules are advisory except for state-integrity constraints" },
 ];
 
 export const POWER_OPTIONS: SettingOption[] = [

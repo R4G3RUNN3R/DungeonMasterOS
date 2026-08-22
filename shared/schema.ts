@@ -154,7 +154,10 @@ export const campaigns = sqliteTable("campaigns", {
 
   // Core settings
   tone: text("tone").notNull().default("heroic"),
-  rulesWeight: text("rules_weight").notNull().default("medium"),
+  rulesWeight: text("rules_weight").notNull().default("standard"),
+  // Rules Enforcement Mode (design spec §18): strict | standard | light_rules |
+  // narrative | freeform. Independent of combatStyle (which governs HOW combat
+  // is presented) and independent of ruleset (which governs WHICH rules exist).
   powerLevel: text("power_level").notNull().default("standard"),
   worldType: text("world_type").notNull().default("original"),
   combatStyle: text("combat_style").notNull().default("cinematic"),
@@ -763,7 +766,7 @@ export const createCampaignFormSchema = z.object({
   name: z.string().min(1, "Campaign name is required").max(100),
 
   tone: z.enum(["dark", "heroic", "comedic", "realistic"]),
-  rulesWeight: z.enum(["light", "medium", "crunchy"]),
+  rulesWeight: z.enum(["strict", "standard", "light_rules", "narrative", "freeform"]),
   powerLevel: z.enum(["low", "standard", "high", "godtier"]),
 
   worldType: z.enum(["custom", "faerun", "original"]),
