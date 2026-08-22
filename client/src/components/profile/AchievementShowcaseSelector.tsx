@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PublicAchievementSummary } from "@shared/player-profile";
 
 import { AchievementMedalCard } from "@/components/profile/AchievementMedalCard";
@@ -35,6 +35,22 @@ function normalizeSelection(ids: string[], achievements: PublicAchievementSummar
   return normalizedIds;
 }
 
+function reconcilePendingSelection({
+  wasOpen,
+  open,
+  pendingSelection,
+  selectedIds,
+  achievements,
+}: {
+  wasOpen: boolean;
+  open: boolean;
+  pendingSelection: string[];
+  selectedIds: string[];
+  achievements: PublicAchievementSummary[];
+}): string[] {
+  return open && !wasOpen ? normalizeSelection(selectedIds, achievements) : pendingSelection;
+}
+
 export function AchievementShowcaseSelector({
   open,
   achievements,
@@ -43,11 +59,18 @@ export function AchievementShowcaseSelector({
   onSave,
 }: AchievementShowcaseSelectorProps) {
   const [pendingSelection, setPendingSelection] = useState(() => normalizeSelection(selectedIds, achievements));
+  const previousOpen = useRef(open);
 
   useEffect(() => {
-    if (open) {
-      setPendingSelection(normalizeSelection(selectedIds, achievements));
-    }
+    const nextSelection = reconcilePendingSelection({
+      wasOpen: previousOpen.current,
+      open,
+      pendingSelection,
+      selectedIds,
+      achievements,
+    });
+    previousOpen.current = open;
+    if (nextSelection !== pendingSelection) setPendingSelection(nextSelection);
   }, [open, selectedIds, achievements]);
 
   const toggleAchievement = (id: string) => {
@@ -117,3 +140,7 @@ export function AchievementShowcaseSelector({
     </Dialog>
   );
 }
+
+export const __testing__ = {
+  reconcilePendingSelection,
+};

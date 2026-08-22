@@ -29,6 +29,26 @@ type LocalProfileEdits = {
   avatarUrl: string | null;
 };
 
+function initialShowcaseSelection(
+  localSelection: string[] | null,
+  showcasedAchievements: PublicAchievementSummary[],
+  unlockedCandidates: PublicAchievementSummary[],
+): string[] {
+  const candidateIds = new Set(unlockedCandidates.map((achievement) => achievement.id));
+  const selectionSource = localSelection ?? showcasedAchievements.map((achievement) => achievement.id);
+  const selection: string[] = [];
+  const seenIds = new Set<string>();
+
+  for (const id of selectionSource) {
+    if (!candidateIds.has(id) || seenIds.has(id)) continue;
+    seenIds.add(id);
+    selection.push(id);
+    if (selection.length === 3) break;
+  }
+
+  return selection;
+}
+
 function memberSinceYear(memberSince: string): number | null {
   const year = new Date(memberSince).getFullYear();
   return Number.isFinite(year) ? year : null;
@@ -63,6 +83,11 @@ export default function PlayerProfilePage({
   const displayedAvatarUrl = localProfileEdits?.avatarUrl ?? profile.avatarUrl;
   const unlockedShowcaseCandidates = (unlockedAchievements ?? profile.showcasedAchievements)
     .filter((achievement) => achievement.unlocked);
+  const selectedShowcaseIds = initialShowcaseSelection(
+    localShowcaseIds,
+    profile.showcasedAchievements,
+    unlockedShowcaseCandidates,
+  );
   const selectedShowcase = localShowcaseIds
     ? localShowcaseIds.flatMap((id) => unlockedShowcaseCandidates.find((achievement) => achievement.id === id) ?? [])
     : profile.showcasedAchievements.filter((achievement) => achievement.unlocked);
@@ -175,7 +200,7 @@ export default function PlayerProfilePage({
           <AchievementShowcaseSelector
             open={editShowcaseOpen}
             achievements={unlockedShowcaseCandidates}
-            selectedIds={localShowcaseIds ?? unlockedShowcaseCandidates.map((achievement) => achievement.id)}
+            selectedIds={selectedShowcaseIds}
             onOpenChange={setEditShowcaseOpen}
             onSave={setLocalShowcaseIds}
           />
@@ -184,3 +209,7 @@ export default function PlayerProfilePage({
     </main>
   );
 }
+
+export const __testing__ = {
+  initialShowcaseSelection,
+};
