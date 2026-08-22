@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { resetPreferencesForNewIdentity } from "@/lib/personalPreferences";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -264,8 +265,8 @@ export default function Dashboard() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => { await apiRequest("POST", "/api/auth/logout"); },
-    onSuccess: () => { queryClient.clear(); navigate("/"); },
-    onError: () => { queryClient.clear(); navigate("/"); },
+    onSuccess: () => { resetPreferencesForNewIdentity(); queryClient.clear(); navigate("/"); },
+    onError: () => { resetPreferencesForNewIdentity(); queryClient.clear(); navigate("/"); },
   });
 
   const archiveMutation = useMutation({

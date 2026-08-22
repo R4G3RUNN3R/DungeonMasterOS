@@ -4,6 +4,7 @@ import {
   shouldAdoptServerValue,
   migrateFromLayoutPreferences,
   parseStoredPreferences,
+  resetPreferencesForNewIdentity,
   DEFAULT_PREFERENCES,
   __testing__,
 } from "./personalPreferences";
@@ -194,4 +195,66 @@ test("shared store: an unsubscribed listener is no longer notified", () => {
   __testing__.commit((d) => ({ ...d, display: { ...d.display, reducedMotion: true } }));
 
   assert.equal(notified, 0, "an unsubscribed listener must not fire on a later commit");
+});
+
+// --- resetPreferencesForNewIdentity: the identity-change regression fix ---
+//
+// storeState and globalEffectsStarted are module-scoped, not user-scoped.
+// This app changes authenticated identity via client-side navigation with
+// no full page reload (logout/login/signup), so without a reset at those
+// transitions, a second user logging in on the same page load would
+// silently inherit the first user's cached local preferences (and their
+// next edit would PATCH that stale, first-user-derived value onto their
+// own server row). resetPreferencesForNewIdentity() is called at all three
+// identity-transition points (dashboard.tsx's logout onSuccess/onError,
+// auth.tsx's login and signup onSuccess) to close that gap.
+//
+// This test calls the real exported function directly rather than a
+// test-only wrapper: resetPreferencesForNewIdentity() calls loadLocal(),
+// whose very first check is `typeof window === "undefined"`, which is true
+// in this plain node:test environment (no jsdom/DOM shim here) — so it
+// deterministically falls back to DEFAULT_PREFERENCES, the same as
+// __testing__.reset()'s own default. That makes the real export safe and
+// meaningful to exercise directly here.
+test("resetPreferencesForNewIdentity: returns the store to defaults and notifies every subscriber", () => {
+  __testing__.reset();
+
+  // Simulate a prior user's session having drifted the store away from
+  // defaults before the identity changes (e.g. user A customized their
+  // layout, then logged out).
+  __testing__.commit((d) => ({
+    ...d,
+    display: { ...d.display, layoutPreset: "cinematic", reducedMotion: true },
+    notifications: { achievementToasts: "off" },
+  }));
+  assert.notDeepEqual(
+    __testing__.getSnapshot(),
+    DEFAULT_PREFERENCES,
+    "sanity check: the prior commit actually moved the store away from defaults",
+  );
+
+  // Register subscribers, standing in for mounted hook instances' re-render
+  // callbacks (e.g. CampaignGameShell, OptionsDialog) that must be told the
+  // store just changed.
+  let instanceAnotified = 0;
+  let instanceBnotified = 0;
+  const unsubA = __testing__.subscribe(() => {
+    instanceAnotified++;
+  });
+  const unsubB = __testing__.subscribe(() => {
+    instanceBnotified++;
+  });
+
+  resetPreferencesForNewIdentity();
+
+  assert.deepEqual(
+    __testing__.getSnapshot(),
+    DEFAULT_PREFERENCES,
+    "the store must return to a clean default state so the next mount's GET reconciles against the new identity, not the old one's cached value",
+  );
+  assert.equal(instanceAnotified, 1, "every subscribed instance must be notified of the reset");
+  assert.equal(instanceBnotified, 1, "every subscribed instance must be notified of the reset");
+
+  unsubA();
+  unsubB();
 });

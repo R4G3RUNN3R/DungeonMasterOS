@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { resetPreferencesForNewIdentity } from "@/lib/personalPreferences";
 import { apiUrl } from "@/lib/appBase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +85,7 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
       return res.json();
     },
     onSuccess: () => {
+      resetPreferencesForNewIdentity();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       navigate("/dashboard");
     },
@@ -99,6 +101,7 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
       return res.json();
     },
     onSuccess: () => {
+      resetPreferencesForNewIdentity();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       navigate("/dashboard");
     },

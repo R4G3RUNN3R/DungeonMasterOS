@@ -343,6 +343,37 @@ function startGlobalEffectsOnce(): void {
   });
 }
 
+/**
+ * Resets the shared preferences store back to a fresh, un-reconciled state
+ * and clears the "global effects already started" guard, so the next
+ * usePersonalPreferences() mount re-runs the GET reconciliation against
+ * whichever user is now authenticated.
+ *
+ * `storeState` and `globalEffectsStarted` are module-scoped (see "Module-
+ * level shared store" above), which makes them scoped to the page session,
+ * not to any one authenticated user. This app changes identity via
+ * client-side navigation with no full page reload (logout, login, signup),
+ * so without this reset, a second user logging in on the same page load
+ * would silently inherit the first user's cached local preferences —
+ * because `startGlobalEffectsOnce()` already ran and permanently no-ops —
+ * and the second user's next edit would PATCH that first-user-derived
+ * value onto their own server row, clobbering whatever they'd actually
+ * saved. Call this at every point the app's authenticated identity changes
+ * without a full page reload — logout, login, and signup — so one user's
+ * cached preferences can never leak into or be silently overwritten by
+ * another user's session.
+ *
+ * Does NOT clear localStorage (that's user-agnostic device state and
+ * doesn't need clearing) — only the in-memory module state that was scoped
+ * to the previous identity. The next mount's GET reconciliation will
+ * correctly resolve local-vs-server for whichever user is now logged in.
+ */
+export function resetPreferencesForNewIdentity(): void {
+  storeState = loadLocal();
+  globalEffectsStarted = false;
+  for (const listener of listeners) listener();
+}
+
 export function usePersonalPreferences() {
   // Idempotent (see startGlobalEffectsOnce's guard) — safe to call from
   // every mounted instance's effect; only the first one across the page
