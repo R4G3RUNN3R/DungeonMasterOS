@@ -832,13 +832,17 @@ export interface IStorage {
   // is the one and only path anything in this codebase should use for that
   // question; never call isSourceEnabledForCampaign directly against a bare
   // context assembled elsewhere.
-  setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void;
-  setCampaignCustomSources(campaignId: number, sourceIds: number[]): void;
-  // Atomically applies a source-selection patch: validates customSourceIds
-  // (existence + ruleset match) before writing anything, and wraps both the
-  // preset write and the custom-source-set write in a single transaction so a
-  // downstream validation failure can never leave sourcePreset committed
-  // without a matching campaign_enabled_sources set.
+  //
+  // setCampaignSourceSelection is the ONLY public write path for source
+  // selection. The lower-level preset/custom-source writes it composes are
+  // private DatabaseStorage methods, not part of this interface, specifically
+  // so nothing outside this class can write one half of the state without
+  // the other — that's exactly the partial-write bug this composite exists
+  // to prevent. Atomically applies a source-selection patch: validates
+  // customSourceIds (existence + ruleset match) before writing anything, and
+  // wraps every write in a single transaction so a downstream validation
+  // failure can never leave sourcePreset committed without a matching
+  // campaign_enabled_sources set.
   setCampaignSourceSelection(
     campaignId: number,
     updates: { sourcePreset?: SourcePreset; customSourceIds?: number[]; setting?: string },
@@ -1621,12 +1625,17 @@ export class DatabaseStorage implements IStorage {
       .run();
   }
 
-  // Campaign source selection (Task 5)
-  setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void {
+  // Campaign source selection (Task 5) — both of these are intentionally
+  // `private` and NOT declared on IStorage. setCampaignSourceSelection below
+  // is the only public write path; calling either of these independently
+  // would let one half of the source-selection state (preset vs.
+  // custom-source rows) be written without the other, silently reintroducing
+  // the partial-write bug the composite/transaction exists to prevent.
+  private setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void {
     db.update(campaigns).set({ sourcePreset: preset }).where(eq(campaigns.id, campaignId)).run();
   }
 
-  setCampaignCustomSources(campaignId: number, sourceIds: number[]): void {
+  private setCampaignCustomSources(campaignId: number, sourceIds: number[]): void {
     const campaign = db.select().from(campaigns).where(eq(campaigns.id, campaignId)).get();
     if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
 

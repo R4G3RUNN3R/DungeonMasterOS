@@ -2,9 +2,15 @@
 //
 // Task 5: persistence + resolver for campaign source selection
 // (all_official/core_only/custom). Exercises storage.getCampaignEnabledSources
-// as the one authoritative resolver, storage.setCampaignCustomSources'
-// wrong-ruleset/nonexistent-id rejection, and the authority-gated
-// PATCH /api/campaigns/:id/sources route end-to-end over real HTTP.
+// as the one authoritative resolver, storage.setCampaignSourceSelection's
+// wrong-ruleset/nonexistent-id rejection and atomicity, and the
+// authority-gated PATCH /api/campaigns/:id/sources route end-to-end over
+// real HTTP.
+//
+// setCampaignSourcePreset/setCampaignCustomSources are private on
+// DatabaseStorage (not part of IStorage) — setCampaignSourceSelection is
+// the only public write path, so every test below that used to call the
+// primitives directly now goes through the composite instead.
 //
 // Fixture pattern (express() + createServer() + registerRoutes() + real
 // fetch(), temp SQLite via DATABASE_URL, signToken()+cookie auth) mirrors
@@ -154,8 +160,7 @@ test("custom mode is frozen -- a source registered after selection does not sile
     provenanceClassification: "wotc_official",
     licenseClassification: "all_rights_reserved",
   });
-  storage.setCampaignSourcePreset(campaign.id, "custom");
-  storage.setCampaignCustomSources(campaign.id, [kept.id]);
+  storage.setCampaignSourceSelection(campaign.id, { sourcePreset: "custom", customSourceIds: [kept.id] });
 
   const lateArrival = storage.createRuleSource({
     sourceKey: `dnd35e-custom-late-${Date.now()}`,
@@ -172,7 +177,7 @@ test("custom mode is frozen -- a source registered after selection does not sile
   assert.ok(!enabled.some((s) => s.id === lateArrival.id));
 });
 
-test("setCampaignCustomSources rejects a source from a different ruleset", () => {
+test("setCampaignSourceSelection rejects a source from a different ruleset", () => {
   const wrongRuleset = storage.createRuleSource({
     sourceKey: `dnd5e-wrong-ruleset-${Date.now()}`,
     title: "5e Source",
@@ -183,12 +188,51 @@ test("setCampaignCustomSources rejects a source from a different ruleset", () =>
     licenseClassification: "all_rights_reserved",
   });
   const { campaign } = makeFixture("dnd35e");
-  assert.throws(() => storage.setCampaignCustomSources(campaign.id, [wrongRuleset.id]));
+  assert.throws(() => storage.setCampaignSourceSelection(campaign.id, { customSourceIds: [wrongRuleset.id] }));
 });
 
-test("setCampaignCustomSources rejects a nonexistent source id", () => {
+test("setCampaignSourceSelection rejects a nonexistent source id", () => {
   const { campaign } = makeFixture("dnd35e");
-  assert.throws(() => storage.setCampaignCustomSources(campaign.id, [999999999]));
+  assert.throws(() => storage.setCampaignSourceSelection(campaign.id, { customSourceIds: [999999999] }));
+});
+
+test("setCampaignSourceSelection is atomic through the only supported public path: a rejected customSourceIds entry rolls back the whole call, including a sourcePreset present in the same call", () => {
+  const real = storage.createRuleSource({
+    sourceKey: `dnd35e-storage-atomic-real-${Date.now()}`,
+    title: "Real Source",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "core-rulebook",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { campaign } = makeFixture("dnd35e");
+
+  // Establish a known-good baseline through the same public path.
+  storage.setCampaignSourceSelection(campaign.id, { sourcePreset: "custom", customSourceIds: [real.id] });
+  const before = storage.getCampaign(campaign.id);
+  assert.equal(before?.sourcePreset, "custom");
+  const beforeEnabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(beforeEnabled.some((s) => s.id === real.id));
+
+  // A single call mixing a valid preset change with an invalid custom
+  // source id must leave BOTH halves of the state untouched — proving
+  // the transaction genuinely spans the whole composite, not just the
+  // customSourceIds half.
+  assert.throws(() =>
+    storage.setCampaignSourceSelection(campaign.id, {
+      sourcePreset: "all_official",
+      customSourceIds: [real.id, 999999999],
+    }),
+  );
+
+  const after = storage.getCampaign(campaign.id);
+  assert.equal(after?.sourcePreset, "custom", "sourcePreset must not have been committed from the rejected call");
+  const afterEnabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(
+    afterEnabled.some((s) => s.id === real.id),
+    "the pre-existing custom set must survive the rejected call unchanged",
+  );
 });
 
 test("PATCH /api/campaigns/:id/sources rejects a wrong-ruleset source ID over HTTP as 400", async () => {
@@ -266,7 +310,7 @@ test("PATCH /api/campaigns/:id/sources: unknown campaign id 404s", async () => {
   assert.equal(res.status, 404);
 });
 
-test("PATCH /api/campaigns/:id/sources: setCampaignCustomSources replaces (not appends) the enabled set on each call", async () => {
+test("PATCH /api/campaigns/:id/sources: a new custom selection replaces (not appends) the previous enabled set", async () => {
   const { owner, campaign } = makeFixture("dnd35e");
   const a = storage.createRuleSource({
     sourceKey: `dnd35e-replace-a-${Date.now()}`,
