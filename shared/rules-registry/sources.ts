@@ -53,6 +53,13 @@ export const ruleSources = sqliteTable("rule_sources", {
 
 export type RuleSource = typeof ruleSources.$inferSelect;
 
+// Added by Task 5 — the campaign source-selection resolver and the
+// custom-source validator both need id-based lookup; getRuleSource(sourceKey)
+// above is key-based and insufficient for either. Implemented as
+// DatabaseStorage.getRuleSourceById in server/storage.ts, matching where
+// getRuleSource itself lives — this file holds types/table/input-shape only,
+// not storage methods.
+
 export interface CreateRuleSourceInput {
   sourceKey: string;
   title: string;

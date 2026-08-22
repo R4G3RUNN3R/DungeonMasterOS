@@ -159,6 +159,13 @@ export const campaigns = sqliteTable("campaigns", {
   worldType: text("world_type").notNull().default("original"),
   combatStyle: text("combat_style").notNull().default("cinematic"),
   ruleset: text("ruleset").notNull().default("dnd5e"),
+  setting: text("setting").notNull().default("generic"),
+  // Active campaign setting for source scoping (design spec §5) — e.g. "generic",
+  // "eberron", "forgotten-realms". Distinct from worldType/worldGenStyle, which
+  // describe narrative flavor, not which rule_sources rows apply. Free-text like
+  // rule_sources.setting, not an enum, so new settings never require a migration.
+  sourcePreset: text("source_preset").notNull().default("all_official"),
+  // "all_official" | "core_only" | "custom" — see shared/rules-registry/source-enablement.ts.
   storyMode: integer("story_mode", { mode: "boolean" }).notNull().default(false),
   worldGenStyle: text("world_gen_style").notNull().default("standard"),
   homebrewRules: text("homebrew_rules").notNull().default(""),
@@ -189,6 +196,21 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
 
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN ENABLED SOURCES
+// Persists the explicit source-id set for a campaign in "custom" sourcePreset
+// mode (design spec §5, Task 5). Irrelevant for "all_official"/"core_only",
+// which are computed fresh from rule_sources on every read — see
+// storage.getCampaignEnabledSources.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const campaignEnabledSources = sqliteTable("campaign_enabled_sources", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  sourceId: integer("source_id").notNull(),
+});
+export type CampaignEnabledSource = typeof campaignEnabledSources.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CAMPAIGN SETTINGS HISTORY

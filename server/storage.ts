@@ -46,12 +46,18 @@ import {
   type CampaignSettingSuggestionRow,
   campaignSettingSuggestions,
   userPreferences,
+  campaignEnabledSources,
 } from "@shared/schema";
 import {
   ruleSources,
   type RuleSource,
   type CreateRuleSourceInput,
 } from "@shared/rules-registry/sources";
+import {
+  isSourceEnabledForCampaign,
+  type SourcePreset,
+  type CampaignSourceContext,
+} from "@shared/rules-registry/source-enablement";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
@@ -421,6 +427,8 @@ export function runMigrations() {
   addColumnIfMissing("campaigns", "last_played_at", "TEXT");
   addColumnIfMissing("campaigns", "latest_snapshot_id", "INTEGER");
   addColumnIfMissing("campaigns", "active_shop_id", "INTEGER");
+  addColumnIfMissing("campaigns", "setting", "TEXT NOT NULL DEFAULT 'generic'");
+  addColumnIfMissing("campaigns", "source_preset", "TEXT NOT NULL DEFAULT 'all_official'");
 
   addColumnIfMissing("characters", "user_id", "INTEGER");
   addColumnIfMissing("characters", "temp_hp", "INTEGER NOT NULL DEFAULT 0");
@@ -512,6 +520,15 @@ export function runMigrations() {
 
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_rule_sources_ruleset_setting
     ON rule_sources(ruleset, setting);`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS campaign_enabled_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_enabled_sources_campaign_id
+    ON campaign_enabled_sources(campaign_id);`);
 }
 
 export type TurnLedgerReason =
@@ -779,8 +796,18 @@ export interface IStorage {
   // Rules Source Registry
   createRuleSource(entry: CreateRuleSourceInput): RuleSource;
   getRuleSource(sourceKey: string): RuleSource | undefined;
+  getRuleSourceById(id: number): RuleSource | undefined;
   listRuleSources(filter?: { ruleset?: string; setting?: string }): RuleSource[];
   updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void;
+
+  // Campaign source selection (Task 5) — the persisted, authoritative
+  // resolver for "what sources can this campaign see." getCampaignEnabledSources
+  // is the one and only path anything in this codebase should use for that
+  // question; never call isSourceEnabledForCampaign directly against a bare
+  // context assembled elsewhere.
+  setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void;
+  setCampaignCustomSources(campaignId: number, sourceIds: number[]): void;
+  getCampaignEnabledSources(campaignId: number): RuleSource[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -1525,6 +1552,10 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(ruleSources).where(eq(ruleSources.sourceKey, sourceKey)).get();
   }
 
+  getRuleSourceById(id: number): RuleSource | undefined {
+    return db.select().from(ruleSources).where(eq(ruleSources.id, id)).get();
+  }
+
   listRuleSources(filter?: { ruleset?: string; setting?: string }): RuleSource[] {
     const conditions = [];
     if (filter?.ruleset) conditions.push(eq(ruleSources.ruleset, filter.ruleset));
@@ -1541,6 +1572,59 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, updatedAt: new Date().toISOString() })
       .where(eq(ruleSources.sourceKey, sourceKey))
       .run();
+  }
+
+  // Campaign source selection (Task 5)
+  setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void {
+    db.update(campaigns).set({ sourcePreset: preset }).where(eq(campaigns.id, campaignId)).run();
+  }
+
+  setCampaignCustomSources(campaignId: number, sourceIds: number[]): void {
+    const campaign = db.select().from(campaigns).where(eq(campaigns.id, campaignId)).get();
+    if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
+
+    for (const sourceId of sourceIds) {
+      const source = this.getRuleSourceById(sourceId);
+      if (!source) throw new Error(`Rule source ${sourceId} does not exist`);
+      if (source.ruleset !== campaign.ruleset) {
+        throw new Error(
+          `Rule source ${sourceId} (ruleset "${source.ruleset}") does not match campaign ruleset "${campaign.ruleset}"`,
+        );
+      }
+    }
+
+    db.delete(campaignEnabledSources).where(eq(campaignEnabledSources.campaignId, campaignId)).run();
+    if (sourceIds.length > 0) {
+      db.insert(campaignEnabledSources)
+        .values(sourceIds.map((sourceId) => ({ campaignId, sourceId })))
+        .run();
+    }
+  }
+
+  getCampaignEnabledSources(campaignId: number): RuleSource[] {
+    const campaign = db.select().from(campaigns).where(eq(campaigns.id, campaignId)).get();
+    if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
+
+    const candidates = this.listRuleSources({ ruleset: campaign.ruleset });
+
+    let customSourceIds: number[] | undefined;
+    if (campaign.sourcePreset === "custom") {
+      const rows = db
+        .select()
+        .from(campaignEnabledSources)
+        .where(eq(campaignEnabledSources.campaignId, campaignId))
+        .all();
+      customSourceIds = rows.map((r) => r.sourceId);
+    }
+
+    const context: CampaignSourceContext = {
+      ruleset: campaign.ruleset,
+      setting: campaign.setting,
+      sourcePreset: campaign.sourcePreset as SourcePreset,
+      customSourceIds,
+    };
+
+    return candidates.filter((source) => isSourceEnabledForCampaign(context, source));
   }
 }
 

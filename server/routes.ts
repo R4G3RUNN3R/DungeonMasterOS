@@ -1987,6 +1987,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
+  // Campaign source selection (Task 5, design spec §5): persists the
+  // authoritative all_official/core_only/custom preset (and, for "custom",
+  // the explicit source-id set) that storage.getCampaignEnabledSources
+  // resolves against. Distinct concern from the tone/combatStyle/rulesWeight
+  // settings PATCH route above, so it lives as its own route rather than
+  // folding into campaignSettingsPatchSchema.
+  const campaignSourceSelectionPatchSchema = z
+    .object({
+      sourcePreset: z.enum(["all_official", "core_only", "custom"]).optional(),
+      customSourceIds: z.array(z.number().int().positive()).optional(),
+    })
+    .strict();
+
+  app.patch("/api/campaigns/:id/sources", (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const authority = getCampaignAuthority(req, campaign);
+    if (authority !== "owner") {
+      return res.status(403).json({ message: "Only the host can change source selection" });
+    }
+
+    const parsed = campaignSourceSelectionPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid source selection", errors: parsed.error.flatten() });
+    }
+
+    try {
+      if (parsed.data.sourcePreset) {
+        storage.setCampaignSourcePreset(campaignId, parsed.data.sourcePreset);
+      }
+      if (parsed.data.customSourceIds) {
+        storage.setCampaignCustomSources(campaignId, parsed.data.customSourceIds);
+      }
+    } catch (err) {
+      return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid source selection" });
+    }
+
+    const enabledSources = storage.getCampaignEnabledSources(campaignId);
+    return res.json({ sourcePreset: storage.getCampaign(campaignId)?.sourcePreset, enabledSources });
+  });
+
   // Player-submitted suggestions to change a campaign setting. Owners resolve
   // them via the accept/decline route below; accepting re-validates the value
   // and re-checks the lock/staleness state at resolution time, not submit time.
