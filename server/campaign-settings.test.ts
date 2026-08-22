@@ -611,11 +611,20 @@ test("PATCH /api/campaigns/:id rejects the old rulesWeight enum values", async (
 
 test("combatStyle is completely unaffected by the rulesWeight migration", () => {
   const { campaign } = makeFixture();
-  storage.updateCampaign(campaign.id, { rulesWeight: "crunchy", combatStyle: "cinematic" } as any);
+  // Use a non-default combatStyle value ("tactical", not the campaigns table's
+  // DEFAULT 'cinematic') so this assertion actually proves the migration left the
+  // column alone, rather than just matching whatever the default happens to be.
+  storage.updateCampaign(campaign.id, { rulesWeight: "crunchy", combatStyle: "tactical" } as any);
   runMigrations();
   const reloaded = storage.getCampaign(campaign.id) as any;
   assert.equal(reloaded.rulesWeight, "strict");
-  assert.equal(reloaded.combatStyle, "cinematic", "combatStyle must never change due to this migration");
+  assert.equal(reloaded.combatStyle, "tactical", "combatStyle must never change due to this migration");
+});
+
+test("new campaigns default to rulesWeight 'standard'", () => {
+  const { campaign } = makeFixture();
+  const reloaded = storage.getCampaign(campaign.id) as any;
+  assert.equal(reloaded.rulesWeight, "standard");
 });
 
 // ── Task 8 gap fix: campaign-creation path (createCampaignFormSchema) was found to be a
