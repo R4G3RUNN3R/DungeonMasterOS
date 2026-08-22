@@ -2,9 +2,20 @@
 //
 // Player-controlled personal preferences for the immersive game shell
 // (design spec §7 and the in-game Options/Settings system). Supersedes
-// gameLayoutPreferences.ts: broadens layout-only preferences into the full
-// PersonalPreferencesV1 schema (display/interface/mechanicalTransparency/
-// notifications) and adds hybrid local-first + server-synced persistence.
+// gameLayoutPreferences.ts: broadens layout-only preferences into the
+// PersonalPreferencesV1 schema (display/notifications) and adds hybrid
+// local-first + server-synced persistence.
+//
+// Scope note: this schema intentionally covers only fields with a real
+// consumer in the client (layoutPreset -> CampaignGameShell's layout grid,
+// reducedMotion -> dialog.tsx's animation gating, achievementToasts ->
+// campaign.tsx's achievement_unlocked toast). Text size, a collapsible
+// context panel, an HUD preset system, and a mechanical-transparency dial
+// were part of an earlier draft of this schema but never had a consumer
+// anywhere in the client (pure dead state) and were removed per the
+// whole-branch review's "no fake toggles, no unbacked controls" finding.
+// Add a field back only once it has a real consumer, verified persistence,
+// and tests proving the behavior works.
 //
 // Persistence model:
 // - The source of truth for instant reads/writes is localStorage — every
@@ -26,13 +37,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
+import { apiRequest } from "@/lib/queryClient";
 
 export const PERSONAL_PREFERENCES_VERSION = 1 as const;
 
 export type LayoutPreset = "wide" | "reading" | "cinematic";
-export type TextSize = "sm" | "md" | "lg";
-export type HudPreset = "minimal" | "standard" | "tactical" | "immersive" | "custom";
-export type MechanicalTransparency = "narrative" | "balanced" | "ruleslawyer";
 export type NotificationStyle = "full" | "compact" | "off";
 
 export const LAYOUT_PRESETS: Record<LayoutPreset, { hudWidthPct: number; contextWidthPct: number }> = {
@@ -44,23 +53,20 @@ export const LAYOUT_PRESETS: Record<LayoutPreset, { hudWidthPct: number; context
   cinematic: { hudWidthPct: 13, contextWidthPct: 13 },
 };
 
-export interface HudFieldOverrides {
-  [fieldKey: string]: boolean | undefined;
-}
-
 export interface PersonalPreferencesV1 {
   version: 1;
-  display: { layoutPreset: LayoutPreset; textSize: TextSize; contextCollapsed: boolean; reducedMotion: boolean };
-  interface: { hudPreset: HudPreset; hudOverrides: HudFieldOverrides };
-  mechanicalTransparency: MechanicalTransparency;
-  notifications: { achievementToasts: NotificationStyle };
+  display: {
+    layoutPreset: LayoutPreset;
+    reducedMotion: boolean;
+  };
+  notifications: {
+    achievementToasts: NotificationStyle;
+  };
 }
 
 export const DEFAULT_PREFERENCES: PersonalPreferencesV1 = {
   version: 1,
-  display: { layoutPreset: "wide", textSize: "md", contextCollapsed: false, reducedMotion: false },
-  interface: { hudPreset: "standard", hudOverrides: {} },
-  mechanicalTransparency: "balanced",
+  display: { layoutPreset: "wide", reducedMotion: false },
   notifications: { achievementToasts: "full" },
 };
 
@@ -83,21 +89,13 @@ const OLD_LAYOUT_KEY = "dmos.gameLayoutPreferences.v1";
 // unvalidated `display.layoutPreset` in particular crashes the game shell
 // render (see CampaignGameShell.tsx's `LAYOUT_PRESETS[layoutPreset]` lookup).
 const layoutPresetSchema = z.enum(["wide", "reading", "cinematic"]);
-const textSizeSchema = z.enum(["sm", "md", "lg"]);
 
 const personalPreferencesV1Schema: z.ZodType<PersonalPreferencesV1> = z.object({
   version: z.literal(1),
   display: z.object({
     layoutPreset: layoutPresetSchema,
-    textSize: textSizeSchema,
-    contextCollapsed: z.boolean(),
     reducedMotion: z.boolean(),
   }),
-  interface: z.object({
-    hudPreset: z.enum(["minimal", "standard", "tactical", "immersive", "custom"]),
-    hudOverrides: z.record(z.boolean()),
-  }),
-  mechanicalTransparency: z.enum(["narrative", "balanced", "ruleslawyer"]),
   notifications: z.object({
     achievementToasts: z.enum(["full", "compact", "off"]),
   }),
@@ -115,24 +113,21 @@ export function parseStoredPreferences(raw: unknown): PersonalPreferencesV1 | nu
 }
 
 /**
- * Carries the 3 player-visible fields from the old gameLayoutPreferences.ts
- * shape into the new schema. hudWidthPct/contextWidthPct are dropped — they
- * are now derived from LAYOUT_PRESETS[layoutPreset] rather than stored, so
- * a stale pixel/pct pair from an old preset table can never drift out of
- * sync with the current one.
+ * Carries the one still-live player-visible field (the layout preset) from
+ * the old gameLayoutPreferences.ts shape into the new schema.
+ * hudWidthPct/contextWidthPct are dropped — they are now derived from
+ * LAYOUT_PRESETS[layoutPreset] rather than stored, so a stale pixel/pct pair
+ * from an old preset table can never drift out of sync with the current
+ * one. The old shape's other two fields (contextCollapsed, textSize) are
+ * not carried forward: neither ever had a real consumer, and both were
+ * retired from PersonalPreferencesV1 itself (see the file header).
  */
-export function migrateFromLayoutPreferences(old: {
-  preset: LayoutPreset;
-  contextCollapsed: boolean;
-  textSize: TextSize;
-}): PersonalPreferencesV1 {
+export function migrateFromLayoutPreferences(old: { preset: LayoutPreset }): PersonalPreferencesV1 {
   return {
     ...DEFAULT_PREFERENCES,
     display: {
+      ...DEFAULT_PREFERENCES.display,
       layoutPreset: old.preset,
-      textSize: old.textSize,
-      contextCollapsed: old.contextCollapsed,
-      reducedMotion: false,
     },
   };
 }
@@ -186,17 +181,11 @@ function loadLocal(): StoredPreferences {
   try {
     const oldRaw = window.localStorage.getItem(OLD_LAYOUT_KEY);
     if (oldRaw) {
-      const old = JSON.parse(oldRaw) as { preset?: unknown; contextCollapsed?: unknown; textSize?: unknown } | null;
+      const old = JSON.parse(oldRaw) as { preset?: unknown } | null;
       const preset = layoutPresetSchema.safeParse(old?.preset);
-      const textSize = textSizeSchema.safeParse(old?.textSize);
       const migrated: StoredPreferences = {
         data: migrateFromLayoutPreferences({
           preset: preset.success ? preset.data : DEFAULT_PREFERENCES.display.layoutPreset,
-          contextCollapsed:
-            typeof old?.contextCollapsed === "boolean"
-              ? old.contextCollapsed
-              : DEFAULT_PREFERENCES.display.contextCollapsed,
-          textSize: textSize.success ? textSize.data : DEFAULT_PREFERENCES.display.textSize,
         }),
         updatedAt: new Date().toISOString(),
         // Marked dirty so the migrated value gets pushed to the server on
@@ -227,13 +216,8 @@ export function usePersonalPreferences() {
   const [stored, setStored] = useState<StoredPreferences>(() => loadLocal());
 
   const syncToServer = useCallback((toSend: StoredPreferences) => {
-    fetch("/api/user/preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: toSend.data, updatedAt: toSend.updatedAt }),
-    })
-      .then((res) => {
-        if (!res.ok) return;
+    apiRequest("PATCH", "/api/user/preferences", { data: toSend.data, updatedAt: toSend.updatedAt })
+      .then(() => {
         setStored((current) => {
           if (current.updatedAt !== toSend.updatedAt) return current; // a newer local edit happened mid-flight
           const confirmed = { ...current, dirty: false };
@@ -242,14 +226,16 @@ export function usePersonalPreferences() {
         });
       })
       .catch(() => {
-        // Leave dirty: true — retried on the next natural trigger (next
-        // edit, next tab-visible event, or next mount).
+        // apiRequest throws on a non-ok response (see throwIfResNotOk) as
+        // well as on a network failure — either way, leave dirty: true so
+        // this is retried on the next natural trigger (next edit, next
+        // tab-visible event, or next mount).
       });
   }, []);
 
   // On mount: reconcile against the server's current value.
   useEffect(() => {
-    fetch("/api/user/preferences")
+    apiRequest("GET", "/api/user/preferences")
       .then((r) => r.json())
       .then((server: { data: PersonalPreferencesV1 | null; updatedAt: string | null }) => {
         setStored((local) => {
@@ -278,6 +264,22 @@ export function usePersonalPreferences() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [stored, syncToServer]);
 
+  // Reflect reducedMotion onto the document root as a data attribute so any
+  // shared UI primitive (see dialog.tsx's DialogOverlay/DialogContent) can
+  // gate its animation classes on it without needing its own preferences
+  // read. This is a side effect on a value already sourced from local state,
+  // not a second source of truth: it runs on every render where the value
+  // changed, on every component that calls this hook — a no-op keeps that
+  // safe (setAttribute/removeAttribute are idempotent).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (stored.data.display.reducedMotion) {
+      document.documentElement.setAttribute("data-reduced-motion", "true");
+    } else {
+      document.documentElement.removeAttribute("data-reduced-motion");
+    }
+  }, [stored.data.display.reducedMotion]);
+
   const commit = useCallback(
     (updater: (data: PersonalPreferencesV1) => PersonalPreferencesV1) => {
       setStored((current) => {
@@ -294,18 +296,7 @@ export function usePersonalPreferences() {
     preferences: stored.data,
     setLayoutPreset: (preset: LayoutPreset) =>
       commit((d) => ({ ...d, display: { ...d.display, layoutPreset: preset } })),
-    setTextSize: (size: TextSize) => commit((d) => ({ ...d, display: { ...d.display, textSize: size } })),
-    toggleContextCollapsed: () =>
-      commit((d) => ({ ...d, display: { ...d.display, contextCollapsed: !d.display.contextCollapsed } })),
     setReducedMotion: (on: boolean) => commit((d) => ({ ...d, display: { ...d.display, reducedMotion: on } })),
-    setHudPreset: (preset: HudPreset) =>
-      commit((d) => ({ ...d, interface: { ...d.interface, hudPreset: preset, hudOverrides: {} } })),
-    setHudOverride: (field: string, value: boolean) =>
-      commit((d) => ({
-        ...d,
-        interface: { hudPreset: "custom", hudOverrides: { ...d.interface.hudOverrides, [field]: value } },
-      })),
-    setMechanicalTransparency: (v: MechanicalTransparency) => commit((d) => ({ ...d, mechanicalTransparency: v })),
     setAchievementToastStyle: (v: NotificationStyle) => commit((d) => ({ ...d, notifications: { achievementToasts: v } })),
   };
 }

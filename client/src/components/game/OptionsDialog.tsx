@@ -29,14 +29,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import type { Campaign } from "@shared/schema";
-import {
-  usePersonalPreferences,
-  type LayoutPreset,
-  type TextSize,
-  type HudPreset,
-  type MechanicalTransparency,
-  type NotificationStyle,
-} from "@/lib/personalPreferences";
+import { usePersonalPreferences, type LayoutPreset, type NotificationStyle } from "@/lib/personalPreferences";
 import CampaignSettingsPanel from "@/components/CampaignSettingsPanel";
 import CampaignSuggestions from "./CampaignSuggestions";
 import CampaignSettingsHistory from "./CampaignSettingsHistory";
@@ -61,16 +54,7 @@ function OptionRow({ label, children }: { label: string; children: ReactNode }) 
 
 export default function OptionsDialog({ open, onOpenChange, campaignId }: Props) {
   const [campaignSubTab, setCampaignSubTab] = useState("settings");
-  const {
-    preferences,
-    setLayoutPreset,
-    setTextSize,
-    toggleContextCollapsed,
-    setReducedMotion,
-    setHudPreset,
-    setMechanicalTransparency,
-    setAchievementToastStyle,
-  } = usePersonalPreferences();
+  const { preferences, setLayoutPreset, setReducedMotion, setAchievementToastStyle } = usePersonalPreferences();
 
   // Same queryKey campaign.tsx's own campaignQuery uses for this campaign
   // (["/api/campaigns", campaignId]) — TanStack Query dedupes by key, so
@@ -112,64 +96,8 @@ export default function OptionsDialog({ open, onOpenChange, campaignId }: Props)
                   </SelectContent>
                 </Select>
               </OptionRow>
-              <OptionRow label="Text size">
-                <Select value={preferences.display.textSize} onValueChange={(v) => setTextSize(v as TextSize)}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sm">Small</SelectItem>
-                    <SelectItem value="md">Medium</SelectItem>
-                    <SelectItem value="lg">Large</SelectItem>
-                  </SelectContent>
-                </Select>
-              </OptionRow>
-              <OptionRow label="Collapse context panel">
-                <Switch
-                  checked={preferences.display.contextCollapsed}
-                  onCheckedChange={() => toggleContextCollapsed()}
-                />
-              </OptionRow>
               <OptionRow label="Reduced motion">
                 <Switch checked={preferences.display.reducedMotion} onCheckedChange={(v) => setReducedMotion(v)} />
-              </OptionRow>
-            </section>
-
-            <section className="space-y-1">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Interface</h3>
-              <OptionRow label="HUD preset">
-                <Select value={preferences.interface.hudPreset} onValueChange={(v) => setHudPreset(v as HudPreset)}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minimal">Minimal</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="tactical">Tactical</SelectItem>
-                    <SelectItem value="immersive">Immersive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </OptionRow>
-            </section>
-
-            <section className="space-y-1">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Mechanical Transparency
-              </h3>
-              <OptionRow label="How much of the rules to show">
-                <Select
-                  value={preferences.mechanicalTransparency}
-                  onValueChange={(v) => setMechanicalTransparency(v as MechanicalTransparency)}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="narrative">Narrative</SelectItem>
-                    <SelectItem value="balanced">Balanced</SelectItem>
-                    <SelectItem value="ruleslawyer">Rules Lawyer</SelectItem>
-                  </SelectContent>
-                </Select>
               </OptionRow>
             </section>
 

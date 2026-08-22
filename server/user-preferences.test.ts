@@ -56,9 +56,7 @@ after(async () => {
 
 const VALID_PREFS = {
   version: 1,
-  display: { layoutPreset: "wide", textSize: "md", contextCollapsed: false, reducedMotion: false },
-  interface: { hudPreset: "standard", hudOverrides: {} },
-  mechanicalTransparency: "balanced",
+  display: { layoutPreset: "wide", reducedMotion: false },
   notifications: { achievementToasts: "full" },
 };
 
@@ -115,7 +113,10 @@ test("invalid shape (bad enum) is rejected with 400", async () => {
   const res = await fetch(`${baseUrl}/api/user/preferences`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
-    body: JSON.stringify({ data: { ...VALID_PREFS, mechanicalTransparency: "chaotic" }, updatedAt: "2026-08-21T00:00:00.000Z" }),
+    body: JSON.stringify({
+      data: { ...VALID_PREFS, notifications: { achievementToasts: "chaotic" } },
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    }),
   });
   assert.equal(res.status, 400);
 });
@@ -127,7 +128,10 @@ test("one user's preferences are isolated from another's", async () => {
   await fetch(`${baseUrl}/api/user/preferences`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", cookie: `dmos_session=${tokenA}` },
-    body: JSON.stringify({ data: { ...VALID_PREFS, mechanicalTransparency: "ruleslawyer" }, updatedAt: "2026-08-21T00:00:00.000Z" }),
+    body: JSON.stringify({
+      data: { ...VALID_PREFS, notifications: { achievementToasts: "compact" } },
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    }),
   });
   const tokenB = signToken(userB.id);
   const res = await fetch(`${baseUrl}/api/user/preferences`, { headers: { cookie: `dmos_session=${tokenB}` } });

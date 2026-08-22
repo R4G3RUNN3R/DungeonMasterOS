@@ -37,19 +37,15 @@ test("shouldAdoptServerValue: server updatedAt present but data null returns fal
   assert.equal(shouldAdoptServerValue(local, { data: null, updatedAt: "2026-08-02T00:00:00.000Z" }), false);
 });
 
-test("migrateFromLayoutPreferences: carries the 3 old fields into the new schema shape", () => {
-  const migrated = migrateFromLayoutPreferences({ preset: "reading", contextCollapsed: true, textSize: "lg" });
+test("migrateFromLayoutPreferences: carries the old layout preset into the new schema shape", () => {
+  const migrated = migrateFromLayoutPreferences({ preset: "reading" });
   assert.equal(migrated.display.layoutPreset, "reading");
-  assert.equal(migrated.display.contextCollapsed, true);
-  assert.equal(migrated.display.textSize, "lg");
   assert.equal(migrated.display.reducedMotion, false);
 });
 
 test("migrateFromLayoutPreferences: fills the rest of the schema with defaults", () => {
-  const migrated = migrateFromLayoutPreferences({ preset: "wide", contextCollapsed: false, textSize: "sm" });
+  const migrated = migrateFromLayoutPreferences({ preset: "wide" });
   assert.equal(migrated.version, 1);
-  assert.deepEqual(migrated.interface, { hudPreset: "standard", hudOverrides: {} });
-  assert.equal(migrated.mechanicalTransparency, "balanced");
   assert.deepEqual(migrated.notifications, { achievementToasts: "full" });
 });
 
@@ -88,9 +84,7 @@ test("parseStoredPreferences: non-object inputs (null, arrays, primitives) are r
 test("parseStoredPreferences: a genuinely valid PersonalPreferencesV1 round-trips unchanged", () => {
   const valid = {
     version: 1 as const,
-    display: { layoutPreset: "cinematic" as const, textSize: "lg" as const, contextCollapsed: true, reducedMotion: true },
-    interface: { hudPreset: "tactical" as const, hudOverrides: { initiative: false } },
-    mechanicalTransparency: "ruleslawyer" as const,
+    display: { layoutPreset: "cinematic" as const, reducedMotion: true },
     notifications: { achievementToasts: "compact" as const },
   };
   assert.deepEqual(parseStoredPreferences(valid), valid);

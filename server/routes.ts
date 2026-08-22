@@ -1701,15 +1701,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       version: z.literal(1),
       display: z.object({
         layoutPreset: z.enum(["wide", "reading", "cinematic"]),
-        textSize: z.enum(["sm", "md", "lg"]),
-        contextCollapsed: z.boolean(),
         reducedMotion: z.boolean(),
       }),
-      interface: z.object({
-        hudPreset: z.enum(["minimal", "standard", "tactical", "immersive", "custom"]),
-        hudOverrides: z.record(z.boolean()),
-      }),
-      mechanicalTransparency: z.enum(["narrative", "balanced", "ruleslawyer"]),
       notifications: z.object({
         achievementToasts: z.enum(["full", "compact", "off"]),
       }),
@@ -1999,13 +1992,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (authority === "none") return res.status(403).json({ message: "Not a participant in this campaign" });
     if (!req.user) return res.status(401).json({ message: "Login required to suggest a change" });
 
-    const parsed = z
-      .object({
-        settingKey: z.enum(["tone", "combatStyle", "rulesWeight", "powerLevel", "storyMode", "epicMode"]),
-        proposedValue: z.union([z.string(), z.boolean()]),
+    // Validates proposedValue's TYPE against its settingKey (boolean for
+    // storyMode/epicMode, string for the four enum keys) — not the enum
+    // VALUE itself, which is intentionally re-checked at accept-time via
+    // campaignSettingsPatchSchema instead of being duplicated here. This is
+    // defense-in-depth against a client bug/tamper sending e.g.
+    // proposedValue: "yes" for a boolean key, which would otherwise
+    // silently coerce to `false` at accept-time (`=== "true"`).
+    const suggestionSubmitSchema = z.union([
+      z.object({
+        settingKey: z.enum(["storyMode", "epicMode"]),
+        proposedValue: z.boolean(),
         reason: z.string().max(500).optional(),
-      })
-      .safeParse(req.body);
+      }),
+      z.object({
+        settingKey: z.enum(["tone", "combatStyle", "rulesWeight", "powerLevel"]),
+        proposedValue: z.string(),
+        reason: z.string().max(500).optional(),
+      }),
+    ]);
+    const parsed = suggestionSubmitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid suggestion" });
 
     const currentValue = String((campaign as any)[parsed.data.settingKey]);
@@ -2017,7 +2023,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       submittedByUserId: req.user.id,
       reason: parsed.data.reason,
     });
-    broadcastToCampaign(campaignId, { type: "campaign_setting_suggestion", suggestion: row });
+    // Content-free notification only — the full row (submittedByUserId, the
+    // free-text `reason`) must never go out over this broadcast, since it
+    // reaches every socket on the campaign with no authority filter, while
+    // the GET route above deliberately scopes non-owners to their own
+    // suggestions. Clients refetch through that authority-scoped GET.
+    broadcastToCampaign(campaignId, { type: "campaign_setting_suggestion", campaignId, action: "created" });
     return res.status(201).json(row);
   });
 
@@ -2070,11 +2081,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         resolvedByUserId: req.user?.id ?? null,
         resolvedAt: new Date().toISOString(),
       });
-      broadcastToCampaign(campaignId, {
-        type: "campaign_setting_suggestion",
-        suggestionId: suggestion.id,
-        status: "declined",
-      });
+      broadcastToCampaign(campaignId, { type: "campaign_setting_suggestion", campaignId, action: "declined" });
       return res.json({ status: "declined" });
     }
 
@@ -2116,11 +2123,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const updated = storage.getCampaign(campaignId);
     broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
-    broadcastToCampaign(campaignId, {
-      type: "campaign_setting_suggestion",
-      suggestionId: suggestion.id,
-      status: "accepted",
-    });
+    broadcastToCampaign(campaignId, { type: "campaign_setting_suggestion", campaignId, action: "accepted" });
     return res.json({ status: "accepted", campaign: updated });
   });
 

@@ -11,10 +11,11 @@
  * doesn't even fetch in that case.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { TONE_OPTIONS, COMBAT_OPTIONS, RULES_OPTIONS, POWER_OPTIONS } from "@/components/CampaignSettingsPanel";
 
 interface Suggestion {
   id: number;
@@ -42,6 +43,22 @@ const KEY_LABELS: Record<(typeof SUGGESTABLE_KEYS)[number], string> = {
   epicMode: "Epic Mode",
 };
 
+// The two boolean-typed settings vs. the four enum-typed ones — matches
+// BOOLEAN_CAMPAIGN_SETTING_KEYS in server/routes.ts. Drives which picker
+// (toggle vs. select) the "suggest a change" form renders for the currently
+// chosen settingKey.
+const BOOLEAN_SUGGESTABLE_KEYS = new Set<(typeof SUGGESTABLE_KEYS)[number]>(["storyMode", "epicMode"]);
+
+// Reuses CampaignSettingsPanel.tsx's exact option lists (value/label pairs)
+// for the four enum-typed settings, so this picker can never drift out of
+// sync with what an owner actually sees when changing the setting directly.
+const ENUM_OPTIONS_BY_KEY: Partial<Record<(typeof SUGGESTABLE_KEYS)[number], { value: string; label: string }[]>> = {
+  tone: TONE_OPTIONS,
+  combatStyle: COMBAT_OPTIONS,
+  rulesWeight: RULES_OPTIONS,
+  powerLevel: POWER_OPTIONS,
+};
+
 interface Props {
   campaignId: number;
   viewerAuthority: "owner" | "player" | "none";
@@ -62,8 +79,25 @@ export default function CampaignSuggestions({ campaignId, viewerAuthority }: Pro
   });
 
   const [settingKey, setSettingKey] = useState<(typeof SUGGESTABLE_KEYS)[number]>("tone");
-  const [proposedValue, setProposedValue] = useState("");
+  // Either a boolean (for storyMode/epicMode) or an enum's string value (for
+  // the other four keys) — never free text. See the picker markup below.
+  const [proposedValue, setProposedValue] = useState<string | boolean>(TONE_OPTIONS[0]?.value ?? "");
   const [reason, setReason] = useState("");
+
+  // Reset proposedValue to a sensible default of the *new* key's type
+  // whenever settingKey changes, so a leftover boolean never leaks into an
+  // enum field (or a leftover enum string into a boolean field).
+  useEffect(() => {
+    if (BOOLEAN_SUGGESTABLE_KEYS.has(settingKey)) {
+      setProposedValue(false);
+    } else {
+      setProposedValue(ENUM_OPTIONS_BY_KEY[settingKey]?.[0]?.value ?? "");
+    }
+  }, [settingKey]);
+
+  const proposedValueValid = BOOLEAN_SUGGESTABLE_KEYS.has(settingKey)
+    ? typeof proposedValue === "boolean"
+    : typeof proposedValue === "string" && proposedValue.trim().length > 0;
 
   const submitMutation = useMutation({
     mutationFn: async () =>
@@ -76,7 +110,6 @@ export default function CampaignSuggestions({ campaignId, viewerAuthority }: Pro
       ).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "settings", "suggestions"] });
-      setProposedValue("");
       setReason("");
       toast({ title: "Suggestion sent", description: "The host will review your suggested change." });
     },
@@ -206,16 +239,36 @@ export default function CampaignSuggestions({ campaignId, viewerAuthority }: Pro
                 </option>
               ))}
             </select>
-            <input
-              value={proposedValue}
-              onChange={(e) => setProposedValue(e.target.value)}
-              placeholder="Proposed value"
-              style={{
-                fontSize: 9.5, fontFamily: "serif", color: "#c4a265",
-                background: "#1a1108", border: "1px solid rgba(196,162,101,0.3)",
-                borderRadius: 4, padding: "5px 6px",
-              }}
-            />
+            {BOOLEAN_SUGGESTABLE_KEYS.has(settingKey) ? (
+              <select
+                value={proposedValue ? "true" : "false"}
+                onChange={(e) => setProposedValue(e.target.value === "true")}
+                style={{
+                  fontSize: 9.5, fontFamily: "serif", color: "#c4a265",
+                  background: "#1a1108", border: "1px solid rgba(196,162,101,0.3)",
+                  borderRadius: 4, padding: "5px 6px",
+                }}
+              >
+                <option value="true">On</option>
+                <option value="false">Off</option>
+              </select>
+            ) : (
+              <select
+                value={typeof proposedValue === "string" ? proposedValue : ""}
+                onChange={(e) => setProposedValue(e.target.value)}
+                style={{
+                  fontSize: 9.5, fontFamily: "serif", color: "#c4a265",
+                  background: "#1a1108", border: "1px solid rgba(196,162,101,0.3)",
+                  borderRadius: 4, padding: "5px 6px",
+                }}
+              >
+                {(ENUM_OPTIONS_BY_KEY[settingKey] ?? []).map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -229,13 +282,13 @@ export default function CampaignSuggestions({ campaignId, viewerAuthority }: Pro
             />
             <button
               onClick={() => submitMutation.mutate()}
-              disabled={!proposedValue.trim() || submitMutation.isPending}
+              disabled={!proposedValueValid || submitMutation.isPending}
               style={{
                 fontSize: 10, fontWeight: 800, fontFamily: "serif", letterSpacing: "0.04em",
                 color: "#c4a265", background: "linear-gradient(135deg, #c4a26533, #c4a26522)",
                 border: "1px solid #c4a26588", borderRadius: 6, padding: "7px",
-                cursor: !proposedValue.trim() || submitMutation.isPending ? "default" : "pointer",
-                opacity: !proposedValue.trim() || submitMutation.isPending ? 0.6 : 1,
+                cursor: !proposedValueValid || submitMutation.isPending ? "default" : "pointer",
+                opacity: !proposedValueValid || submitMutation.isPending ? 0.6 : 1,
               }}
             >
               {submitMutation.isPending ? "Sending…" : "Suggest Change"}

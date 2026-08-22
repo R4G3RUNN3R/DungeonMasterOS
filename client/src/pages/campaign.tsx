@@ -18,6 +18,7 @@ import type { EncounterState } from "@shared/combat";
 import { classesForRuleset, SKILL_ABILITY, startingSkillCount, startingFeatSlots } from "@shared/classes";
 import { racesForRuleset, getRace, applyRacialAdjustments } from "@shared/races";
 import { toast } from "@/hooks/use-toast";
+import { usePersonalPreferences } from "@/lib/personalPreferences";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -210,6 +211,13 @@ export default function CampaignPage() {
   const [dmThinking, setDmThinking] = useState(false);
   const [recentLoot, setRecentLoot] = useState<GrantedItemDisplay | null>(null);
   const recentLootTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { preferences: personalPreferences } = usePersonalPreferences();
+  // The WS subscription effect below intentionally does not depend on
+  // personalPreferences (re-subscribing/reconnecting the socket on every
+  // Options change would be overkill) — this ref lets its handler always
+  // read the current preference value without a stale closure.
+  const personalPreferencesRef = useRef(personalPreferences);
+  personalPreferencesRef.current = personalPreferences;
 
   // Character creation state
   const [name, setName] = useState("");
@@ -656,14 +664,35 @@ export default function CampaignPage() {
           // Broadcast campaign-wide (a party sees each other's unlocks, like
           // any co-op game) — so this toast never claims turns landed in
           // *this* viewer's account specifically, only that the deed happened.
+          // The query invalidation always runs; only the toast itself is
+          // gated on the player's Personal Options notification preference.
           qc.invalidateQueries({ queryKey: ["/api/achievements"] });
-          const achievement = data.achievement;
-          toast({
-            title: `${achievement?.icon ?? "🏆"} ${achievement?.name ?? "Achievement Unlocked"}`,
-            description: achievement?.description,
-          });
+          const achievementToastStyle = personalPreferencesRef.current.notifications.achievementToasts;
+          if (achievementToastStyle !== "off") {
+            const achievement = data.achievement;
+            const title = `${achievement?.icon ?? "🏆"} ${achievement?.name ?? "Achievement Unlocked"}`;
+            toast(
+              achievementToastStyle === "compact"
+                ? { title }
+                : { title, description: achievement?.description },
+            );
+          }
           break;
         }
+
+        case "campaign_setting_suggestion":
+          // Content-free notification (see server/routes.ts) — refetch
+          // through the authority-scoped GET routes rather than trust
+          // anything in the payload itself. Lets an open Options dialog
+          // pick up a new/resolved suggestion live instead of only after
+          // its own mutations. "accepted"/"declined" also touch history;
+          // "accepted" additionally already broadcasts its own
+          // campaign_updated event, handled by the case above.
+          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "settings", "suggestions"] });
+          if (data.action === "accepted" || data.action === "declined") {
+            qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "settings", "history"] });
+          }
+          break;
 
         case "campaign_restored":
           qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId] });

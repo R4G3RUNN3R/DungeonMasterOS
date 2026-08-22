@@ -104,6 +104,37 @@ test("getCampaignAuthority: unrelated user returns none", () => {
   assert.equal(getCampaignAuthority(req, campaign as any), "none");
 });
 
+test("getCampaignAuthority: role dungeon_master grants owner on a campaign the user doesn't otherwise own", () => {
+  const { campaign } = makeFixture();
+  const unique = `${Date.now()}-${fixtureCounter++}`;
+  const dm = storage.createUser({
+    email: `dm-${unique}@test.dev`,
+    username: `dm${unique}`,
+    passwordHash: "x",
+    role: "dungeon_master",
+  } as any);
+  const req: any = { user: { id: dm.id, role: "dungeon_master" }, headers: {} };
+  assert.equal(getCampaignAuthority(req, campaign as any), "owner");
+});
+
+test("getCampaignAuthority: a campaign hosted only by hostVisitorId (anonymous host) resolves to owner via the matching x-visitor-id header", () => {
+  const unique = `${Date.now()}-${fixtureCounter++}`;
+  // getVisitorId() only derives a "user-<id>" identity from an authenticated
+  // req.user; for an anonymous host it falls back to the caller-supplied
+  // x-visitor-id header verbatim (as long as it doesn't itself look like a
+  // "user-" identity, which is rejected to prevent impersonation) — so a
+  // hostVisitorId set to an arbitrary anon token is matched by replaying
+  // that same token back in the header, with no req.user at all.
+  const hostVisitorId = `anon-${unique}`;
+  const campaign = storage.createCampaign({
+    name: `Anon-hosted Campaign ${unique}`,
+    inviteCode: `inv-${unique}`,
+    hostVisitorId,
+  } as any);
+  const req: any = { user: undefined, headers: { "x-visitor-id": hostVisitorId } };
+  assert.equal(getCampaignAuthority(req, campaign as any), "owner");
+});
+
 test("storage: campaign settings history round-trips", () => {
   const { owner, campaign } = makeFixture();
   storage.createCampaignSettingsHistory({
@@ -311,6 +342,28 @@ test("suggestions: accept coerces a boolean setting to a real boolean", async ()
   const entry = history.find((h) => h.source === "accepted-suggestion" && h.settingKey === "storyMode");
   assert.ok(entry);
   assert.equal(entry!.newValue, "true");
+});
+
+test("suggestions: a boolean-key submission with a non-boolean proposedValue is rejected at submit time", async () => {
+  const { player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "storyMode", proposedValue: "yes" }),
+  });
+  assert.equal(res.status, 400, "a string proposedValue for a boolean key must 400 at submit time, not silently coerce wrong later");
+});
+
+test("suggestions: an enum-key submission with a non-string proposedValue is rejected at submit time", async () => {
+  const { player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: true }),
+  });
+  assert.equal(res.status, 400);
 });
 
 test("suggestions: decline does not apply the change", async () => {

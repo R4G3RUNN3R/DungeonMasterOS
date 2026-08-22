@@ -20,28 +20,31 @@ import { useToast } from "@/hooks/use-toast";
 
 // ── Option types ──────────────────────────────────────────────────────────
 
-interface SettingOption { value: string; label: string; description: string }
+export interface SettingOption { value: string; label: string; description: string }
 
-const TONE_OPTIONS: SettingOption[] = [
+// Exported so CampaignSuggestions.tsx's "suggest a change" value picker can
+// reuse the exact same value/label pairs rather than maintaining a second,
+// driftable source of truth for these four enum settings.
+export const TONE_OPTIONS: SettingOption[] = [
   { value: "dark",      label: "Dark & Grim",    description: "Harsh consequences, moral grey, death is real" },
   { value: "heroic",    label: "Heroic & Epic",  description: "Triumph, glory, heroes rising to challenges" },
   { value: "comedic",   label: "Comedic",        description: "Wit, absurdity, irony — stakes still matter" },
   { value: "realistic", label: "Realistic",      description: "Survival, politics, human drama, rare magic" },
 ];
 
-const COMBAT_OPTIONS: SettingOption[] = [
+export const COMBAT_OPTIONS: SettingOption[] = [
   { value: "cinematic", label: "Cinematic",        description: "Pure prose, no numbers, dramatic storytelling" },
   { value: "tactical",  label: "Tactical",         description: "Positioning & action economy, still narrative" },
   { value: "dice",      label: "Full Dice (D&D 5e)", description: "All rolls reported, HP, initiative, spell slots" },
 ];
 
-const RULES_OPTIONS: SettingOption[] = [
+export const RULES_OPTIONS: SettingOption[] = [
   { value: "light",  label: "Light",  description: "Story over mechanics, narrative outcomes" },
   { value: "medium", label: "Medium", description: "Simple checks when uncertain, balanced" },
   { value: "crunchy", label: "Crunchy", description: "Full D&D 5e — spell slots, attunement, exhaustion" },
 ];
 
-const POWER_OPTIONS: SettingOption[] = [
+export const POWER_OPTIONS: SettingOption[] = [
   { value: "low",      label: "Low Fantasy",  description: "A single ogre is a genuine threat" },
   { value: "standard", label: "Standard",     description: "Magic exists, party grows in power over time" },
   { value: "high",     label: "High Fantasy", description: "Powerful spells and legendary items expected" },
