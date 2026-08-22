@@ -77,6 +77,42 @@ test("updateRuleSource writes verification metadata", () => {
   assert.equal(before.sourceKey, after.sourceKey);
 });
 
+test("recordRevision + getRevisionHistory round-trip, newest first", () => {
+  storage.recordRevision({
+    canonicalId: "dnd35e:spell:fireball", entityType: "spell", revision: 1,
+    changeReason: "initial SRD import",
+  });
+  storage.recordRevision({
+    canonicalId: "dnd35e:spell:fireball", entityType: "spell", revision: 2,
+    changeReason: "corrected damage die per errata", changedBy: "reviewer-1",
+  });
+  const history = storage.getRevisionHistory("dnd35e:spell:fireball");
+  assert.equal(history.length, 2);
+  assert.equal(history[0].revision, 2, "newest revision first");
+  assert.equal(history[1].revision, 1);
+});
+
+test("revision history is scoped per canonicalId", () => {
+  storage.recordRevision({
+    canonicalId: "dnd35e:feat:power-attack", entityType: "feat", revision: 1,
+    changeReason: "initial SRD import",
+  });
+  const fireballHistory = storage.getRevisionHistory("dnd35e:spell:fireball");
+  assert.ok(!fireballHistory.some((r) => r.entityType === "feat"));
+});
+
+test("recording a new revision never mutates or deletes a prior one", () => {
+  const before = storage.getRevisionHistory("dnd35e:spell:fireball").length;
+  storage.recordRevision({
+    canonicalId: "dnd35e:spell:fireball", entityType: "spell", revision: 3,
+    changeReason: "automationStatus raised to executable",
+  });
+  const after = storage.getRevisionHistory("dnd35e:spell:fireball");
+  assert.equal(after.length, before + 1);
+  assert.ok(after.some((r) => r.revision === 1), "revision 1 still present");
+  assert.ok(after.some((r) => r.revision === 2), "revision 2 still present");
+});
+
 after(() => {
   for (const suffix of ["", "-wal", "-shm"]) {
     try { fs.rmSync(dbPath + suffix); } catch {}

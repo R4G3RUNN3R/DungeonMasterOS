@@ -58,6 +58,11 @@ import {
   type SourcePreset,
   type CampaignSourceContext,
 } from "@shared/rules-registry/source-enablement";
+import {
+  canonicalRevisions,
+  type CanonicalRevision,
+  type RecordRevisionInput,
+} from "@shared/rules-registry/revisions";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
@@ -529,6 +534,20 @@ export function runMigrations() {
 
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_enabled_sources_campaign_id
     ON campaign_enabled_sources(campaign_id);`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS canonical_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    changed_at TEXT NOT NULL,
+    changed_by TEXT NOT NULL DEFAULT '',
+    change_reason TEXT NOT NULL,
+    diff_summary TEXT NOT NULL DEFAULT ''
+  );`);
+
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_canonical_revisions_canonical_id
+    ON canonical_revisions(canonical_id);`);
 }
 
 export type TurnLedgerReason =
@@ -817,6 +836,13 @@ export interface IStorage {
     updates: { sourcePreset?: SourcePreset; customSourceIds?: number[]; setting?: string },
   ): void;
   getCampaignEnabledSources(campaignId: number): RuleSource[];
+
+  // Revision/audit trail (Task 6) — generic, entity-type-agnostic audit table.
+  // Any canonical entity (spell, feat, monster, prestige class, or a
+  // rule_sources row itself) can have revisions recorded against its canonicalId.
+  // Append-only, never mutates or deletes prior revision rows.
+  recordRevision(entry: RecordRevisionInput): CanonicalRevision;
+  getRevisionHistory(canonicalId: string): CanonicalRevision[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -1658,6 +1684,28 @@ export class DatabaseStorage implements IStorage {
     };
 
     return candidates.filter((source) => isSourceEnabledForCampaign(context, source));
+  }
+
+  // Revision/audit trail (Task 6)
+  recordRevision(entry: RecordRevisionInput): CanonicalRevision {
+    const now = new Date().toISOString();
+    const [row] = db.insert(canonicalRevisions).values({
+      canonicalId: entry.canonicalId,
+      entityType: entry.entityType,
+      revision: entry.revision,
+      changedAt: now,
+      changedBy: entry.changedBy ?? "",
+      changeReason: entry.changeReason,
+      diffSummary: entry.diffSummary ?? "",
+    }).returning().all();
+    return row;
+  }
+
+  getRevisionHistory(canonicalId: string): CanonicalRevision[] {
+    return db.select().from(canonicalRevisions)
+      .where(eq(canonicalRevisions.canonicalId, canonicalId))
+      .orderBy(desc(canonicalRevisions.revision))
+      .all();
   }
 }
 
