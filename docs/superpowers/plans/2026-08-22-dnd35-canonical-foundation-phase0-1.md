@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reconcile the stale `feature/library-of-knowledge` branch against current production (Phase 0), then build the canonical foundation layer — Source Registry, canonical ID scheme, ruleset/setting/source-enablement evaluation, provenance model, dual ingestion/automation status tracking, a revision/audit model, a shared rule-primitives vocabulary, and the `campaigns.rulesWeight` migration (Phase 1). No entity content (spells/feats/monsters/prestige classes/items), no SRD ingestion, no engine/AI wiring, no Library UI — those are later phases with their own future plans.
+**Goal:** Reconcile the stale `feature/library-of-knowledge` branch against current production (Phase 0), then build the canonical foundation layer — Source Registry, canonical ID scheme, ruleset/setting/source-enablement evaluation, authoritative campaign source-selection persistence (`all_official`/`core_only`/`custom`, server-only, no UI), provenance model, dual ingestion/automation status tracking, a revision/audit model, a shared rule-primitives vocabulary, and the `campaigns.rulesWeight` migration (Phase 1). No entity content (spells/feats/monsters/prestige classes/items), no SRD ingestion, no engine/AI wiring, no Library UI — those are later phases with their own future plans.
 
 **Architecture:** A new `shared/rules-registry/` directory holds the foundation layer as small, focused modules (mirroring the existing `client/src/lib/rulesAdapters/` and `shared/rulesets.ts` split-by-concern convention), following `server/compendium.ts`'s already-proven patterns for schema, migration, and provenance fields rather than inventing a new shape. The `rulesWeight` migration is a self-contained value-set expansion on an existing, already-shipped campaign field, independent of everything else in this plan and touching zero character data.
 
@@ -31,24 +31,30 @@ shared/rules-registry/
   provenance.ts             Shared provenance field shape + IngestionStatus/AutomationStatus types
                              + status-transition validator (Task 3)
   source-enablement.ts       Ruleset -> setting -> enabled-sources evaluator (Task 4)
-  revisions.ts                Revision/audit table + types + storage CRUD (Task 5)
+  revisions.ts                Revision/audit table + types + storage CRUD (Task 6)
   primitives.ts                 Shared rule-primitives vocabulary (conditions, actions,
-                                 power systems, creature types) (Task 6)
+                                 power systems, creature types) (Task 7)
   index.ts                       Barrel export of the above
 
-server/storage.ts           Modified: runMigrations() gains new table definitions (Tasks 2, 5)
-                             and the rulesWeight remap (Task 7); IStorage interface and
-                             DatabaseStorage class gain CRUD methods for sources/revisions.
-shared/schema.ts             Modified: campaigns.rulesWeight comment/type updated (Task 7)
-server/routes.ts             Modified: campaignSettingsPatchSchema's rulesWeight enum (Task 7)
-client/src/components/CampaignSettingsPanel.tsx   Modified: RULES_OPTIONS array (Task 7)
+server/storage.ts           Modified: runMigrations() gains new table definitions (Tasks 2, 5, 6)
+                             and the rulesWeight remap (Task 8); IStorage interface and
+                             DatabaseStorage class gain CRUD methods for sources/campaign
+                             source-selection/revisions.
+shared/schema.ts             Modified: campaigns.rulesWeight comment/type updated (Task 8);
+                             campaigns.setting + campaigns.sourcePreset columns and the new
+                             campaignEnabledSources table added (Task 5)
+server/routes.ts             Modified: campaignSettingsPatchSchema's rulesWeight enum (Task 8);
+                             new PATCH /api/campaigns/:id/sources route (Task 5)
+client/src/components/CampaignSettingsPanel.tsx   Modified: RULES_OPTIONS array (Task 8)
 
-server/rules-registry.test.ts          New: Source Registry + revisions CRUD tests (Tasks 2, 5)
+server/rules-registry.test.ts          New: Source Registry + revisions CRUD tests (Tasks 2, 6)
 shared/rules-registry/canonical-id.test.ts        New: ID parser/validator unit tests (Task 3)
 shared/rules-registry/provenance.test.ts           New: status-transition validator tests (Task 3)
 shared/rules-registry/source-enablement.test.ts     New: evaluator unit tests (Task 4)
-shared/rules-registry/primitives.test.ts             New: vocabulary coverage tests (Task 6)
-server/campaign-settings.test.ts                      Modified: rulesWeight migration tests (Task 7)
+server/campaign-source-selection.test.ts             New: persistence + resolver + route
+                                                       integration tests (Task 5)
+shared/rules-registry/primitives.test.ts             New: vocabulary coverage tests (Task 7)
+server/campaign-settings.test.ts                      Modified: rulesWeight migration tests (Task 8)
 
 docs/superpowers/notes/2026-08-22-library-branch-reconciliation.md   New: Task 1's deliverable
 ```
@@ -154,7 +160,7 @@ git commit -m "docs: reconcile stale Library branch against current production"
 
 **Migration risk:** Low — pure table addition, `CREATE TABLE IF NOT EXISTS`, no existing table altered, no existing row touched.
 
-**Rollback consideration:** Dropping `rule_sources` (if ever needed) has zero downstream impact in this plan, since no other table references it yet (Task 5's revisions table references entities generically by `canonicalId`+`entityType`, not `rule_sources` rows directly, and no entity table exists yet to hold a foreign key into it).
+**Rollback consideration:** Dropping `rule_sources` (if ever needed) has zero downstream impact in this plan, since no other table references it yet except `campaign_enabled_sources` (Task 5, a join table storing bare `rule_sources.id` integers — it would need a corresponding cleanup, not a cascading failure) and Task 6's revisions table, which references entities generically by `canonicalId`+`entityType`, not `rule_sources` rows directly.
 
 - [ ] **Step 1: Read `server/compendium.ts`'s `ensureCompendiumSchema()` and its `ItemDefinitionRecord` provenance fields in full**
 
@@ -764,7 +770,338 @@ git commit -m "feat: add ruleset/setting/source-enablement evaluator"
 
 ---
 
-### Task 5: Revision/Audit model
+### Task 5: Campaign Source Selection — persistence + resolver
+
+**Files:**
+- Modify: `shared/schema.ts` (add `campaigns.setting` column, `campaigns.sourcePreset` column, new `campaignEnabledSources` table)
+- Modify: `shared/rules-registry/sources.ts` (add `getRuleSourceById`, needed by the resolver and the custom-source validator)
+- Modify: `server/storage.ts` (migration block; `IStorage`/`DatabaseStorage` gain `setCampaignSourcePreset`, `setCampaignCustomSources`, `getCampaignEnabledSources`, `getRuleSourceById`)
+- Modify: `server/routes.ts` (new `PATCH /api/campaigns/:id/sources` route)
+- Create: `server/campaign-source-selection.test.ts`
+
+**Interfaces:**
+- Consumes: `RuleSource`, `storage.listRuleSources` (Task 2); `SourcePreset`, `CampaignSourceContext`, `isSourceEnabledForCampaign` (Task 4); `getCampaignAuthority` (existing, `server/routes.ts`).
+- Produces: `storage.setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void`, `storage.setCampaignCustomSources(campaignId: number, sourceIds: number[]): void` (throws `Error` if any `sourceIds` entry's `ruleset` doesn't match the campaign's own `ruleset`, or doesn't exist), `storage.getCampaignEnabledSources(campaignId: number): RuleSource[]` (the real resolver — Task 6 and later phases call this, never `isSourceEnabledForCampaign` directly against a bare context), `storage.getRuleSourceById(id: number): RuleSource | undefined`.
+
+**Expected behavior:** Every campaign persists its own `setting` (`"generic" | "eberron" | "forgotten-realms" | ...` — free-text `text` column like `rule_sources.setting`, not an enum, so new settings never require a migration) and `sourcePreset` (`"all_official" | "core_only" | "custom"`, default `"all_official"`). `getCampaignEnabledSources(campaignId)` loads the campaign, builds a `CampaignSourceContext` from its persisted `ruleset`/`setting`/`sourcePreset` (+ `customSourceIds` read fresh from `campaign_enabled_sources` when `sourcePreset === "custom"`), fetches every `rule_sources` row via `listRuleSources({ruleset: campaign.ruleset})`, and returns the subset `isSourceEnabledForCampaign` accepts — this is the one and only path anything in this codebase should use to ask "what sources can this campaign see," never a bespoke re-implementation. `all_official` needs no extra persistence beyond the preset value itself, since it's computed fresh from the live `rule_sources` table on every call — a newly `createRuleSource`'d row applicable to the campaign's ruleset+setting appears automatically, with no campaign-side write required. `custom` mode's enabled set never changes on its own: it only reflects whatever `setCampaignCustomSources` last wrote to `campaign_enabled_sources`, so a newly registered source — even one that would otherwise qualify — never appears for a `custom` campaign until an explicit follow-up call adds it. `setCampaignCustomSources` rejects (throws, caught by the route as a 400) any `sourceIds` entry whose `ruleset` doesn't match the campaign's `ruleset`, or that doesn't resolve via `getRuleSourceById` at all — this is the "invalid/wrong-ruleset source IDs being rejected" requirement, enforced at write time so a bad ID can never silently sit in the table. The new `PATCH /api/campaigns/:id/sources` route is authority-gated (`getCampaignAuthority(req, campaign) !== "owner"` → 403, matching every other campaign-settings-mutating route in this file) and entirely server-side — **no client UI is built in this task**, per the explicit instruction to keep Phase 1 server-only here.
+
+**Migration risk:** Low — two new columns via `addColumnIfMissing` (both with safe defaults: `setting` defaults to `"generic"`, `sourcePreset` defaults to `"all_official"`, so every existing production campaign silently gets the least-surprising values with no explicit backfill needed) plus one new pure-addition join table (`campaign_enabled_sources`). No existing column altered, no existing row's meaning changed.
+
+**Rollback consideration:** Dropping `campaign_enabled_sources` and the two new `campaigns` columns has no cascading effect within this plan — nothing else in Tasks 6-8 reads them (Task 6's revisions table is entity-generic and unrelated; Task 8's `rulesWeight` migration is a separate campaign field). The new route can be removed independently of the schema if ever needed, since it's the only caller of the new storage methods.
+
+- [ ] **Step 1: Add the new columns and table to `shared/schema.ts`**
+
+```ts
+// In the campaigns table definition, alongside the existing ruleset/rulesWeight/combatStyle columns:
+setting: text("setting").notNull().default("generic"),
+// Active campaign setting for source scoping (design spec §5) — e.g. "generic",
+// "eberron", "forgotten-realms". Distinct from worldType/worldGenStyle, which
+// describe narrative flavor, not which rule_sources rows apply.
+sourcePreset: text("source_preset").notNull().default("all_official"),
+// "all_official" | "core_only" | "custom" — see shared/rules-registry/source-enablement.ts.
+```
+
+```ts
+// New table, alongside the campaigns table definition:
+export const campaignEnabledSources = sqliteTable("campaign_enabled_sources", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull(),
+  sourceId: integer("source_id").notNull(),
+});
+export type CampaignEnabledSource = typeof campaignEnabledSources.$inferSelect;
+```
+
+(Match this file's existing import style — `sqliteTable`/`integer`/`text` are already imported for the `campaigns` table.)
+
+- [ ] **Step 2: Add `getRuleSourceById` to `shared/rules-registry/sources.ts`**
+
+No new type needed — this is an additional accessor over the same `ruleSources` table Task 2 defined. Document it alongside the existing exports:
+
+```ts
+// Added by Task 5 — the campaign source-selection resolver and the
+// custom-source validator both need id-based lookup; Task 2's
+// getRuleSource(sourceKey) is key-based and insufficient for either.
+```
+
+(The function body lives in `server/storage.ts`'s `DatabaseStorage`, matching where `getRuleSource` itself lives — this file only needs the doc comment above its existing exports noting the addition, since `sources.ts` holds types/table/input-shape, not storage methods.)
+
+- [ ] **Step 3: Add the migration block to `server/storage.ts`'s `runMigrations()`**
+
+```ts
+addColumnIfMissing("campaigns", "setting", "TEXT NOT NULL DEFAULT 'generic'");
+addColumnIfMissing("campaigns", "source_preset", "TEXT NOT NULL DEFAULT 'all_official'");
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS campaign_enabled_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL,
+  source_id INTEGER NOT NULL
+);`);
+
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_enabled_sources_campaign_id
+  ON campaign_enabled_sources(campaign_id);`);
+```
+
+- [ ] **Step 4: Add storage methods to `IStorage`/`DatabaseStorage` in `server/storage.ts`**
+
+```ts
+getRuleSourceById(id: number): RuleSource | undefined {
+  return db.select().from(ruleSources).where(eq(ruleSources.id, id)).get();
+},
+
+setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void {
+  db.update(campaigns).set({ sourcePreset: preset }).where(eq(campaigns.id, campaignId)).run();
+},
+
+setCampaignCustomSources(campaignId: number, sourceIds: number[]): void {
+  const campaign = db.select().from(campaigns).where(eq(campaigns.id, campaignId)).get();
+  if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
+
+  for (const sourceId of sourceIds) {
+    const source = this.getRuleSourceById(sourceId);
+    if (!source) throw new Error(`Rule source ${sourceId} does not exist`);
+    if (source.ruleset !== campaign.ruleset) {
+      throw new Error(
+        `Rule source ${sourceId} (ruleset "${source.ruleset}") does not match campaign ruleset "${campaign.ruleset}"`
+      );
+    }
+  }
+
+  db.delete(campaignEnabledSources).where(eq(campaignEnabledSources.campaignId, campaignId)).run();
+  if (sourceIds.length > 0) {
+    db.insert(campaignEnabledSources)
+      .values(sourceIds.map((sourceId) => ({ campaignId, sourceId })))
+      .run();
+  }
+},
+
+getCampaignEnabledSources(campaignId: number): RuleSource[] {
+  const campaign = db.select().from(campaigns).where(eq(campaigns.id, campaignId)).get();
+  if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
+
+  const candidates = this.listRuleSources({ ruleset: campaign.ruleset });
+
+  let customSourceIds: number[] | undefined;
+  if (campaign.sourcePreset === "custom") {
+    const rows = db.select().from(campaignEnabledSources)
+      .where(eq(campaignEnabledSources.campaignId, campaignId)).all();
+    customSourceIds = rows.map((r) => r.sourceId);
+  }
+
+  const context: CampaignSourceContext = {
+    ruleset: campaign.ruleset,
+    setting: campaign.setting,
+    sourcePreset: campaign.sourcePreset as SourcePreset,
+    customSourceIds,
+  };
+
+  return candidates.filter((source) => isSourceEnabledForCampaign(context, source));
+},
+```
+
+Import `campaignEnabledSources` from `@shared/rules-registry/sources`-adjacent schema location (wherever Step 1 placed it — likely `@shared/schema` alongside `campaigns`, matching this file's existing import for `campaigns`), and `isSourceEnabledForCampaign`/`CampaignSourceContext`/`SourcePreset` from `@shared/rules-registry/source-enablement` (Task 4). Follow the lazy-prepared-statement pattern already used throughout this file.
+
+- [ ] **Step 5: Add the route to `server/routes.ts`**
+
+Place near the other campaign-settings-mutating routes (after the lock/unlock route), following the exact same authority-gate shape:
+
+```ts
+const campaignSourceSelectionPatchSchema = z
+  .object({
+    sourcePreset: z.enum(["all_official", "core_only", "custom"]).optional(),
+    customSourceIds: z.array(z.number().int().positive()).optional(),
+  })
+  .strict();
+
+app.patch("/api/campaigns/:id/sources", (req, res) => {
+  const campaignId = Number(req.params.id);
+  const campaign = storage.getCampaign(campaignId);
+  if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+  const authority = getCampaignAuthority(req, campaign);
+  if (authority !== "owner") {
+    return res.status(403).json({ message: "Only the host can change source selection" });
+  }
+
+  const parsed = campaignSourceSelectionPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid source selection", errors: parsed.error.flatten() });
+  }
+
+  try {
+    if (parsed.data.sourcePreset) {
+      storage.setCampaignSourcePreset(campaignId, parsed.data.sourcePreset);
+    }
+    if (parsed.data.customSourceIds) {
+      storage.setCampaignCustomSources(campaignId, parsed.data.customSourceIds);
+    }
+  } catch (err) {
+    return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid source selection" });
+  }
+
+  const enabledSources = storage.getCampaignEnabledSources(campaignId);
+  return res.json({ sourcePreset: storage.getCampaign(campaignId)?.sourcePreset, enabledSources });
+});
+```
+
+(Confirm the exact current import list at the top of `server/routes.ts` for `z` and add nothing duplicate; this route sits alongside, not inside, the existing `campaignSettingsPatchSchema`-based PATCH route, since source selection is a distinct concern from `tone`/`combatStyle`/`rulesWeight`/etc.)
+
+- [ ] **Step 6: Write `server/campaign-source-selection.test.ts`**
+
+Follow the real e2e fixture pattern (`express()` + `createServer()` + `registerRoutes()` + real `fetch()`, temp SQLite DB, `signToken()`+cookie auth) from `server/campaign-settings.test.ts` — this task needs the real HTTP route under test, not just storage-layer calls.
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import os from "node:os";
+import fs from "node:fs";
+import express from "express";
+import { createServer } from "node:http";
+
+const dbPath = path.join(os.tmpdir(), `dmos-campaign-sources-test-${Date.now()}.sqlite`);
+process.env.DATABASE_URL = dbPath;
+process.env.JWT_SECRET = "test-secret";
+process.env.ANTHROPIC_API_KEY = "test-key";
+
+const { runMigrations, storage, signToken } = await import("./storage");
+const { registerRoutes } = await import("./routes");
+runMigrations();
+
+const app = express();
+app.use(express.json());
+const server = createServer(app);
+await registerRoutes(app, server);
+await new Promise<void>((resolve) => server.listen(0, resolve));
+const port = (server.address() as any).port;
+const base = `http://localhost:${port}`;
+
+function makeFixture(ruleset = "dnd35e") {
+  const owner = storage.createUser({ username: `owner-${Date.now()}-${Math.random()}`, password: "x" } as any);
+  const campaign = storage.createCampaign({ name: "Test Campaign", userId: owner.id, ruleset } as any);
+  return { owner, campaign };
+}
+
+test("generic 3.5 sources are included under all_official for a generic-setting campaign", async () => {
+  const generic = storage.createRuleSource({
+    sourceKey: "dnd35e-phb-a", title: "PHB", ruleset: "dnd35e", setting: "generic",
+    publicationType: "core-rulebook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { campaign } = makeFixture();
+  const enabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(enabled.some((s) => s.id === generic.id));
+});
+
+test("Eberron and Forgotten Realms sources stay isolated from each other under all_official", async () => {
+  const eberron = storage.createRuleSource({
+    sourceKey: "dnd35e-eberron-a", title: "Eberron CS", ruleset: "dnd35e", setting: "eberron",
+    publicationType: "setting-book", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const faerun = storage.createRuleSource({
+    sourceKey: "dnd35e-faerun-a", title: "FRCS", ruleset: "dnd35e", setting: "forgotten-realms",
+    publicationType: "setting-book", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { owner, campaign } = makeFixture();
+  storage.updateCampaign(campaign.id, { setting: "eberron" } as any);
+  const enabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(enabled.some((s) => s.id === eberron.id));
+  assert.ok(!enabled.some((s) => s.id === faerun.id));
+});
+
+test("all_official dynamically includes a source registered after the campaign was created", async () => {
+  const { campaign } = makeFixture();
+  const before = storage.getCampaignEnabledSources(campaign.id);
+  const late = storage.createRuleSource({
+    sourceKey: "dnd35e-late-a", title: "Late-Registered Splatbook", ruleset: "dnd35e", setting: "generic",
+    publicationType: "splatbook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const after = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(!before.some((s) => s.id === late.id));
+  assert.ok(after.some((s) => s.id === late.id));
+});
+
+test("custom mode is frozen — a source registered after selection does not silently appear", async () => {
+  const kept = storage.createRuleSource({
+    sourceKey: "dnd35e-custom-kept", title: "Kept Source", ruleset: "dnd35e", setting: "generic",
+    publicationType: "core-rulebook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { campaign } = makeFixture();
+  storage.setCampaignSourcePreset(campaign.id, "custom");
+  storage.setCampaignCustomSources(campaign.id, [kept.id]);
+
+  const lateArrival = storage.createRuleSource({
+    sourceKey: "dnd35e-custom-late", title: "Late Arrival", ruleset: "dnd35e", setting: "generic",
+    publicationType: "core-rulebook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+
+  const enabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(enabled.some((s) => s.id === kept.id));
+  assert.ok(!enabled.some((s) => s.id === lateArrival.id));
+});
+
+test("setCampaignCustomSources rejects a source from a different ruleset", async () => {
+  const wrongRuleset = storage.createRuleSource({
+    sourceKey: "dnd5e-wrong-ruleset", title: "5e Source", ruleset: "dnd5e", setting: "generic",
+    publicationType: "core-rulebook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { campaign } = makeFixture("dnd35e");
+  assert.throws(() => storage.setCampaignCustomSources(campaign.id, [wrongRuleset.id]));
+});
+
+test("PATCH /api/campaigns/:id/sources rejects a wrong-ruleset source ID over HTTP as 400", async () => {
+  const wrongRuleset = storage.createRuleSource({
+    sourceKey: "dnd5e-wrong-ruleset-http", title: "5e Source", ruleset: "dnd5e", setting: "generic",
+    publicationType: "core-rulebook", provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const { owner, campaign } = makeFixture("dnd35e");
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ sourcePreset: "custom", customSourceIds: [wrongRuleset.id] }),
+  });
+  assert.equal(res.status, 400);
+});
+
+after(() => {
+  server.close();
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try { fs.rmSync(dbPath + suffix); } catch {}
+  }
+});
+```
+
+(Confirm the exact current signatures of `storage.createUser`/`storage.createCampaign`/`signToken`/`registerRoutes` against `server/campaign-settings.test.ts`'s existing fixture helper before writing this file — reuse its `makeFixture` shape rather than reinventing one, adapting only for the `ruleset` parameter this task's tests need.)
+
+- [ ] **Step 7: Run the tests**
+
+Run: `node --import tsx --test server/campaign-source-selection.test.ts`
+Expected: all 6 tests PASS.
+
+- [ ] **Step 8: Run full suite + typecheck**
+
+Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
+Run: `npx tsc --noEmit` — clean.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add shared/schema.ts shared/rules-registry/sources.ts server/storage.ts server/routes.ts server/campaign-source-selection.test.ts
+git commit -m "feat: persist authoritative campaign source selection (all_official/core_only/custom)"
+```
+
+**Independent verification before Task 6 begins:** re-run tests fresh; confirm by inspection that `getCampaignEnabledSources` is the only place in this diff that calls `isSourceEnabledForCampaign` (no duplicate/parallel filtering logic); confirm `campaign_enabled_sources` rows are fully replaced (not appended) on each `setCampaignCustomSources` call by re-reading Step 4's delete-then-insert; confirm the new route never bypasses `getCampaignAuthority`.
+
+---
+
+### Task 6: Revision/Audit model
 
 **Files:**
 - Create: `shared/rules-registry/revisions.ts`
@@ -778,7 +1115,7 @@ git commit -m "feat: add ruleset/setting/source-enablement evaluator"
 
 **Migration risk:** Low — pure table addition, no existing table altered.
 
-**Rollback consideration:** Safe to drop in isolation; nothing in this plan writes to it automatically yet (no entity table exists to trigger a revision write) — Task 5 proves the mechanism works via direct test calls, real automatic revision-recording on entity changes is future-phase work once entity tables exist.
+**Rollback consideration:** Safe to drop in isolation; nothing in this plan writes to it automatically yet (no entity table exists to trigger a revision write) — Task 6 proves the mechanism works via direct test calls, real automatic revision-recording on entity changes is future-phase work once entity tables exist.
 
 - [ ] **Step 1: Write `shared/rules-registry/revisions.ts`**
 
@@ -914,11 +1251,11 @@ git add shared/rules-registry/revisions.ts server/storage.ts server/rules-regist
 git commit -m "feat: add generic canonical-entity revision/audit model"
 ```
 
-**Independent verification before Task 6 begins:** re-run tests fresh; confirm `canonical_revisions` has no foreign key constraint tying it to any entity table (it must remain entity-type-agnostic, since no entity table exists yet and it must not need one).
+**Independent verification before Task 7 begins:** re-run tests fresh; confirm `canonical_revisions` has no foreign key constraint tying it to any entity table (it must remain entity-type-agnostic, since no entity table exists yet and it must not need one).
 
 ---
 
-### Task 6: Shared rule-primitives vocabulary
+### Task 7: Shared rule-primitives vocabulary
 
 **Files:**
 - Create: `shared/rules-registry/primitives.ts`
@@ -1033,11 +1370,11 @@ git add shared/rules-registry/primitives.ts shared/rules-registry/primitives.tes
 git commit -m "feat: add shared rule-primitives vocabulary"
 ```
 
-**Independent verification before Task 7 begins:** re-run tests fresh; cross-check the committed `PowerSystem`/`ConditionId`/`CreatureType` lists against design spec §1's named subsystems list and the SRD's condition list — confirm nothing named in the spec is missing from the vocabulary (this is a completeness check against the spec, not just against the test file that documents the current commit).
+**Independent verification before Task 8 begins:** re-run tests fresh; cross-check the committed `PowerSystem`/`ConditionId`/`CreatureType` lists against design spec §1's named subsystems list and the SRD's condition list — confirm nothing named in the spec is missing from the vocabulary (this is a completeness check against the spec, not just against the test file that documents the current commit).
 
 ---
 
-### Task 7: `rulesWeight` migration — Strict/Standard/Light Rules
+### Task 8: `rulesWeight` migration — Strict/Standard/Light Rules
 
 **Files:**
 - Modify: `shared/schema.ts` (the `campaigns.rulesWeight` column comment/default — the column type itself stays `text`, only the semantic value set changes)
@@ -1047,7 +1384,7 @@ git commit -m "feat: add shared rule-primitives vocabulary"
 - Modify: `server/campaign-settings.test.ts` (add migration + regression tests)
 
 **Interfaces:**
-- Consumes: nothing from Tasks 2-6 — this task is independent and could be done in any order relative to them, sequenced last here only because it's the smallest/lowest-risk and benefits from the rest of the plan's review rhythm being established first.
+- Consumes: nothing from Tasks 2-7 — this task is independent and could be done in any order relative to them, sequenced last here only because it's the smallest/lowest-risk and benefits from the rest of the plan's review rhythm being established first.
 - Produces: `campaigns.rulesWeight` now accepts `"strict" | "standard" | "light_rules" | "narrative" | "freeform"` (snake_case values matching this codebase's existing enum-value convention, e.g. `"campaign_homebrew"`); `campaignSettingsPatchSchema`'s `rulesWeight` field validates against this new set.
 
 **Expected behavior:** Every existing campaign's `rulesWeight` is remapped exactly once, idempotently, on server startup: `crunchy → strict`, `medium → standard`, `light → light_rules`. New campaigns default to `standard` (replacing the old `medium` default, which is the same semantic position in the new 5-value scale). `combatStyle` is not read, written, or referenced anywhere in this task's diff. The DM AI's system prompt (`buildSystemPrompt()` in `dm-engine.ts`) continues to inject `campaign.rulesWeight` as before — this task updates the schema/validation/UI value set only, not the prompt-construction logic itself (wiring enforcement-mode *behavior* into resolvers is Phase 3, out of scope here); confirm the existing injection still reads the field correctly with the new values by inspection, since this task doesn't change that call site's code.
@@ -1187,19 +1524,21 @@ git commit -m "feat: migrate rulesWeight to Strict/Standard/Light Rules/Narrativ
 
 ## Self-Review
 
-**Spec coverage:** §2 (Source Registry) → Task 2. §4 (ingestion/automation status) → Task 3. §5 (ruleset/setting/source-enablement) → Task 4. §15 (revision/audit) → Task 5. §1/§11 (shared rule primitives) → Task 6. §18 (`rulesWeight` migration) → Task 7. Phase 0's reconciliation requirement → Task 1. Every named Phase 0/Phase 1 requirement from the spec's §17 and the user's own task list has a corresponding task. Nothing in this plan touches §3 (spell projection), §6 (precedence model), §7 (fail-closed), §8 (AI integration), §9-14 (entity-specific work), or §16 (naming) — all correctly deferred to later phases per the user's explicit scope instruction.
+**Spec coverage:** §2 (Source Registry) → Task 2. §4 (ingestion/automation status) → Task 3. §5 (ruleset/setting/source-enablement) → Task 4, extended into a real persisted+resolved path by Task 5 (campaign source-selection state, per the user's latest correction — a pure evaluator alone was explicitly rejected as insufficient). §15 (revision/audit) → Task 6. §1/§11 (shared rule primitives) → Task 7. §18 (`rulesWeight` migration) → Task 8. Phase 0's reconciliation requirement → Task 1. Every named Phase 0/Phase 1 requirement from the spec's §17 and the user's own task list has a corresponding task, including the added requirement that campaign source-selection state itself (not just the pure evaluator) be defined, persisted, and server-authoritative with no UI. Nothing in this plan touches §3 (spell projection), §6 (precedence model), §7 (fail-closed), §8 (AI integration), §9-14 (entity-specific work), or §16 (naming) — all correctly deferred to later phases per the user's explicit scope instruction.
 
-**Placeholder scan:** every step has real, complete code — no "TBD," no "add appropriate validation," no bare prose describing what a step should do without showing it. The one intentionally-light spot (Task 6's tests) is explicitly justified in-line as documenting a type surface rather than runtime logic, not a placeholder.
+**Placeholder scan:** every step has real, complete code — no "TBD," no "add appropriate validation," no bare prose describing what a step should do without showing it. The one intentionally-light spot (Task 7's tests) is explicitly justified in-line as documenting a type surface rather than runtime logic, not a placeholder.
 
-**Type consistency:** `RuleSource` (Task 2) is imported by type-only reference in Task 4's `source-enablement.ts` — checked the field names used in Task 4's `makeSource()` test fixture against Task 2's actual `ruleSources` schema, they match. `CanonicalProvenance`/`IngestionStatus`/`AutomationStatus` (Task 3) aren't yet consumed by any other task in this plan (Tasks 4-6 don't reference them) — this is correct per scope, since no entity table exists yet to embed `CanonicalProvenance` on; it's defined now so Phase 2 has it ready, not wired to anything in this plan. `storage.recordRevision`/`getRevisionHistory` (Task 5) use `canonicalId: string` matching the exact string format `buildCanonicalId()` (Task 3) produces, confirmed consistent in the test data (`"dnd35e:spell:fireball"` appears in both Task 3's and Task 5's test fixtures in the same format).
+**Type consistency:** `RuleSource` (Task 2) is imported by type-only reference in Task 4's `source-enablement.ts` and again in Task 5's storage methods — checked the field names used in Task 4's `makeSource()` test fixture and Task 5's `getCampaignEnabledSources` against Task 2's actual `ruleSources` schema, they match. Task 5's `CampaignSourceContext`/`SourcePreset` are consumed exactly as Task 4 exports them, with no shadow redefinition. `CanonicalProvenance`/`IngestionStatus`/`AutomationStatus` (Task 3) aren't yet consumed by any other task in this plan (Tasks 4-7 don't reference them) — this is correct per scope, since no entity table exists yet to embed `CanonicalProvenance` on; it's defined now so Phase 2 has it ready, not wired to anything in this plan. `storage.recordRevision`/`getRevisionHistory` (Task 6) use `canonicalId: string` matching the exact string format `buildCanonicalId()` (Task 3) produces, confirmed consistent in the test data (`"dnd35e:spell:fireball"` appears in both Task 3's and Task 6's test fixtures in the same format). Task 5's `campaigns.setting`/`campaigns.sourcePreset` columns are read by Task 5's own resolver only — no other task in this plan reads them, so there's no cross-task drift to check yet.
 
-**Migration risk / rollback:** present explicitly in every task, not just Task 7 — Tasks 2/5 (new tables) are called out as low-risk pure additions; Tasks 3/4/6 (pure TypeScript, no DB) are called out as no-risk; Task 7 (the one real data migration) has the most detailed risk/rollback treatment, matching its actual risk level rather than being uniform boilerplate across all seven tasks.
+**Migration risk / rollback:** present explicitly in every task, not just Task 8 — Tasks 2/6 (new tables) and Task 5 (two additive columns + one new join table) are called out as low-risk pure additions; Tasks 3/4/7 (pure TypeScript, no DB) are called out as no-risk; Task 8 (the one real *value-remapping* data migration) has the most detailed risk/rollback treatment, matching its actual risk level rather than being uniform boilerplate across all eight tasks.
 
-**Independent verification gate:** every task ends with a distinct "Independent verification before Task N+1 begins" block, and each one asks for something beyond "re-run the tests" (a direct `PRAGMA` check, a manual reasoning trace, a cross-check against the spec's own text, a repo-wide grep) — matching the user's explicit "independent verification before the next task" requirement, not just a rerun of what the implementer already ran.
+**Independent verification gate:** every task ends with a distinct "Independent verification before Task N+1 begins" block, and each one asks for something beyond "re-run the tests" (a direct `PRAGMA` check, a manual reasoning trace, a cross-check against the spec's own text, a repo-wide grep, a duplicate-logic check) — matching the user's explicit "independent verification before the next task" requirement, not just a rerun of what the implementer already ran. Task 5's gate specifically checks that `getCampaignEnabledSources` is the only caller of Task 4's evaluator, guarding against a second, drifting implementation of the same rule.
 
-**"Do not touch live character data" check:** confirmed no task in this plan reads or writes `characters`, `characterData`, `items`, or any player-owned table — Task 7 is the only migration in this plan and it's scoped to `campaigns.rules_weight` alone.
+**"Do not touch live character data" check:** confirmed no task in this plan reads or writes `characters`, `characterData`, `items`, or any player-owned table — every migration in this plan (Tasks 2, 5, 6, 8) is scoped to `rule_sources`, `campaigns`, `campaign_enabled_sources`, or `canonical_revisions`. Task 8 is the only *value-remapping* migration (existing `rulesWeight` rows get rewritten); Tasks 2/5/6 are purely additive (`CREATE TABLE IF NOT EXISTS` / `addColumnIfMissing` with safe defaults, no existing row's meaning changed).
 
-**"Do not merge the stale branch" check:** Task 1 explicitly produces a findings document, not a diff-and-apply; every subsequent task's code is written fresh in this plan document, not copied from the stale branch (confirmed by re-reading Tasks 2-7 — none references applying a stale-branch file, only citing it as prior art in Task 1's own document).
+**"Do not merge the stale branch" check:** Task 1 explicitly produces a findings document, not a diff-and-apply; every subsequent task's code is written fresh in this plan document, not copied from the stale branch (confirmed by re-reading Tasks 2-8 — none references applying a stale-branch file, only citing it as prior art in Task 1's own document).
+
+**"No UI yet" check (source selection):** confirmed Task 5 touches only `shared/schema.ts`, `shared/rules-registry/sources.ts`, `server/storage.ts`, `server/routes.ts`, and a server-side test file — no `client/src/**` file appears anywhere in Task 5's file list or steps, matching the user's explicit "Keep this entirely server-side for Phase 1. No UI yet" instruction.
 
 No gaps found. Ready for user approval.
 
