@@ -61,13 +61,19 @@ export default function AchievementsPage({ model = EMPTY_ACHIEVEMENTS_PAGE_MODEL
     () => visibleAchievements.map((achievement) => toPublicAchievementSummary(achievement, unlockedAchievementIds)),
     [unlockedAchievementIds, visibleAchievements],
   );
+  const hiddenAchievementIds = useMemo(
+    () => new Set(visibleAchievements.filter((achievement) => achievement.hidden).map((achievement) => achievement.id)),
+    [visibleAchievements],
+  );
   const unlockedAchievements = achievementSummaries.filter((achievement) => achievement.unlocked);
   const selectedShowcase = localShowcaseIds.flatMap(
     (id) => unlockedAchievements.find((achievement) => achievement.id === id) ?? [],
   );
   const filteredAchievements = activeFilter === "all"
     ? achievementSummaries
-    : achievementSummaries.filter((achievement) => achievement.category === activeFilter);
+    : achievementSummaries.filter(
+      (achievement) => achievement.category === activeFilter && !hiddenAchievementIds.has(achievement.id),
+    );
   const progress = visibleAchievements.length === 0
     ? 0
     : Math.round((unlockedAchievements.length / visibleAchievements.length) * 100);
