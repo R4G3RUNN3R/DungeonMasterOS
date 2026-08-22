@@ -302,3 +302,96 @@ test("PATCH /api/campaigns/:id/sources: setCampaignCustomSources replaces (not a
   assert.ok(!body.enabledSources.some((s: any) => s.id === a.id), "previous custom selection must be fully replaced, not appended to");
   assert.ok(body.enabledSources.some((s: any) => s.id === b.id));
 });
+
+test("PATCH /api/campaigns/:id/sources: an invalid customSourceIds entry leaves sourcePreset and enabled sources completely unchanged", async () => {
+  const { owner, campaign } = makeFixture("dnd35e");
+  const real = storage.createRuleSource({
+    sourceKey: `dnd35e-atomic-real-${Date.now()}`,
+    title: "Real Source",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "core-rulebook",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  // Campaign starts at the table default, all_official.
+  assert.equal(storage.getCampaign(campaign.id)?.sourcePreset, "all_official");
+  const before = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(before.some((s) => s.id === real.id), "all_official should include the real source pre-request");
+
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ sourcePreset: "custom", customSourceIds: [real.id, 999999] }),
+  });
+  assert.equal(res.status, 400);
+
+  const after = storage.getCampaign(campaign.id);
+  assert.equal(after?.sourcePreset, "all_official", "sourcePreset must not have been partially committed");
+  const enabledAfter = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(
+    enabledAfter.some((s) => s.id === real.id),
+    "enabled sources must still reflect all_official behavior, not an empty custom set",
+  );
+});
+
+test("PATCH /api/campaigns/:id/sources: setting is a reachable, persisted field that changes resolved enabled sources", async () => {
+  const { owner, campaign } = makeFixture("dnd35e");
+  const eberron = storage.createRuleSource({
+    sourceKey: `dnd35e-setting-eberron-${Date.now()}`,
+    title: "Eberron CS",
+    ruleset: "dnd35e",
+    setting: "eberron",
+    publicationType: "setting-book",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+  const faerun = storage.createRuleSource({
+    sourceKey: `dnd35e-setting-faerun-${Date.now()}`,
+    title: "FRCS",
+    ruleset: "dnd35e",
+    setting: "forgotten-realms",
+    publicationType: "setting-book",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ setting: "eberron" }),
+  });
+  assert.equal(res.status, 200);
+
+  assert.equal(storage.getCampaign(campaign.id)?.setting, "eberron");
+  const body = (await res.json()) as any;
+  assert.ok(body.enabledSources.some((s: any) => s.id === eberron.id));
+  assert.ok(!body.enabledSources.some((s: any) => s.id === faerun.id));
+});
+
+test("PATCH /api/campaigns/:id/sources: locked campaign returns 409 and does not mutate anything", async () => {
+  const { owner, campaign } = makeFixture("dnd35e");
+  const token = signToken(owner.id);
+
+  const lockRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/lock`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ locked: true }),
+  });
+  assert.equal(lockRes.status, 200);
+
+  const before = storage.getCampaign(campaign.id);
+  assert.equal(before?.sourcePreset, "all_official");
+
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ sourcePreset: "core_only" }),
+  });
+  assert.equal(res.status, 409);
+
+  const after = storage.getCampaign(campaign.id);
+  assert.equal(after?.sourcePreset, "all_official", "locked campaign's source selection must not change");
+});

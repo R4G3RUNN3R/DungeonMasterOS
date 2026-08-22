@@ -807,6 +807,15 @@ export interface IStorage {
   // context assembled elsewhere.
   setCampaignSourcePreset(campaignId: number, preset: SourcePreset): void;
   setCampaignCustomSources(campaignId: number, sourceIds: number[]): void;
+  // Atomically applies a source-selection patch: validates customSourceIds
+  // (existence + ruleset match) before writing anything, and wraps both the
+  // preset write and the custom-source-set write in a single transaction so a
+  // downstream validation failure can never leave sourcePreset committed
+  // without a matching campaign_enabled_sources set.
+  setCampaignSourceSelection(
+    campaignId: number,
+    updates: { sourcePreset?: SourcePreset; customSourceIds?: number[]; setting?: string },
+  ): void;
   getCampaignEnabledSources(campaignId: number): RuleSource[];
 }
 
@@ -1599,6 +1608,30 @@ export class DatabaseStorage implements IStorage {
         .values(sourceIds.map((sourceId) => ({ campaignId, sourceId })))
         .run();
     }
+  }
+
+  setCampaignSourceSelection(
+    campaignId: number,
+    updates: { sourcePreset?: SourcePreset; customSourceIds?: number[]; setting?: string },
+  ): void {
+    const tx = sqlite.transaction(() => {
+      // Validate + write customSourceIds first: setCampaignCustomSources throws
+      // before writing anything if any id is missing/wrong-ruleset. Doing this
+      // before the sourcePreset/setting writes means a bad id never lets those
+      // commit on their own — and because everything runs inside one
+      // sqlite.transaction, any throw here rolls back the whole call, so
+      // nothing partially applies regardless of order.
+      if (updates.customSourceIds) {
+        this.setCampaignCustomSources(campaignId, updates.customSourceIds);
+      }
+      if (updates.sourcePreset) {
+        this.setCampaignSourcePreset(campaignId, updates.sourcePreset);
+      }
+      if (updates.setting) {
+        db.update(campaigns).set({ setting: updates.setting }).where(eq(campaigns.id, campaignId)).run();
+      }
+    });
+    tx();
   }
 
   getCampaignEnabledSources(campaignId: number): RuleSource[] {

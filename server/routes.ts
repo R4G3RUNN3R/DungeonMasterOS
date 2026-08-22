@@ -1997,6 +1997,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     .object({
       sourcePreset: z.enum(["all_official", "core_only", "custom"]).optional(),
       customSourceIds: z.array(z.number().int().positive()).optional(),
+      // Free-text, intentionally unvalidated by enum: matches rule_sources.setting's
+      // own free-text design so a new setting (e.g. a new campaign world) never
+      // requires a schema migration here.
+      setting: z.string().min(1).optional(),
     })
     .strict();
 
@@ -2010,18 +2014,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ message: "Only the host can change source selection" });
     }
 
+    if ((campaign as any).settingsLocked) {
+      return res.status(409).json({ message: "Campaign settings are locked. Unlock them before making changes." });
+    }
+
     const parsed = campaignSourceSelectionPatchSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid source selection", errors: parsed.error.flatten() });
     }
 
     try {
-      if (parsed.data.sourcePreset) {
-        storage.setCampaignSourcePreset(campaignId, parsed.data.sourcePreset);
-      }
-      if (parsed.data.customSourceIds) {
-        storage.setCampaignCustomSources(campaignId, parsed.data.customSourceIds);
-      }
+      storage.setCampaignSourceSelection(campaignId, {
+        sourcePreset: parsed.data.sourcePreset,
+        customSourceIds: parsed.data.customSourceIds,
+        setting: parsed.data.setting,
+      });
     } catch (err) {
       return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid source selection" });
     }
