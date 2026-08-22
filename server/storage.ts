@@ -846,9 +846,13 @@ export interface IStorage {
   getCampaignEnabledSources(campaignId: number): RuleSource[];
 
   // Revision/audit trail (Task 6) — generic, entity-type-agnostic audit table.
-  // Any canonical entity (spell, feat, monster, prestige class, or a
-  // rule_sources row itself) can have revisions recorded against its canonicalId.
-  // Append-only, never mutates or deletes prior revision rows.
+  // Any canonical record identified by a ruleset:entityType:slug canonical ID
+  // (a future spell/feat/monster/prestige-class row) can have revisions
+  // recorded against its canonicalId — validated via isValidCanonicalId,
+  // see shared/rules-registry/canonical-id.ts. rule_sources rows are out of
+  // scope today: they're keyed by sourceKey (e.g. "dnd35e-phb"), which
+  // doesn't fit the canonical-ID grammar. Append-only, never mutates or
+  // deletes prior revision rows.
   recordRevision(entry: RecordRevisionInput): CanonicalRevision;
   getRevisionHistory(canonicalId: string): CanonicalRevision[];
 }
