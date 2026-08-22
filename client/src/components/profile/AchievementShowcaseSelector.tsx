@@ -20,8 +20,19 @@ export type AchievementShowcaseSelectorProps = {
   onSave: (selectedIds: string[]) => void;
 };
 
-function normalizeSelection(ids: string[]): string[] {
-  return [...new Set(ids)].slice(0, 3);
+function normalizeSelection(ids: string[], achievements: PublicAchievementSummary[]): string[] {
+  const candidateIds = new Set(achievements.map((achievement) => achievement.id));
+  const normalizedIds: string[] = [];
+  const seenIds = new Set<string>();
+
+  for (const id of ids) {
+    if (!candidateIds.has(id) || seenIds.has(id)) continue;
+    seenIds.add(id);
+    normalizedIds.push(id);
+    if (normalizedIds.length === 3) break;
+  }
+
+  return normalizedIds;
 }
 
 export function AchievementShowcaseSelector({
@@ -31,13 +42,13 @@ export function AchievementShowcaseSelector({
   onOpenChange,
   onSave,
 }: AchievementShowcaseSelectorProps) {
-  const [pendingSelection, setPendingSelection] = useState(() => normalizeSelection(selectedIds));
+  const [pendingSelection, setPendingSelection] = useState(() => normalizeSelection(selectedIds, achievements));
 
   useEffect(() => {
     if (open) {
-      setPendingSelection(normalizeSelection(selectedIds));
+      setPendingSelection(normalizeSelection(selectedIds, achievements));
     }
-  }, [open, selectedIds]);
+  }, [open, selectedIds, achievements]);
 
   const toggleAchievement = (id: string) => {
     setPendingSelection((currentSelection) => {

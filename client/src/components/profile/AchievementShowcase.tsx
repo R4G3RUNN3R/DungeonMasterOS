@@ -15,7 +15,7 @@ export function AchievementShowcase({
   editable = false,
   onEdit,
 }: AchievementShowcaseProps) {
-  const showcasedAchievements = achievements.slice(0, 3);
+  const showcasedAchievements = achievements.filter((achievement) => achievement.unlocked).slice(0, 3);
 
   return (
     <section className="rounded-xl border border-amber-500/25 bg-card/60 p-4 shadow-inner">
