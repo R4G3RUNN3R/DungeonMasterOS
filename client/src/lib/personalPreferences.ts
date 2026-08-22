@@ -35,7 +35,7 @@
 //   opened Options) — that must never be adopted, since it isn't actually
 //   a value, just the absence of one.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -79,27 +79,38 @@ interface StoredPreferences {
 const STORAGE_KEY = "dmos.personalPreferences.v1";
 const OLD_LAYOUT_KEY = "dmos.gameLayoutPreferences.v1";
 
-// Mirrors server/routes.ts's `personalPreferencesSchema` field-for-field
-// (kept as a separate definition rather than a shared import, since client
-// and server code aren't allowed to cross that boundary). Used to validate
-// anything read back out of localStorage before it reaches a consumer:
-// JSON.parse only rejects syntax errors, not a syntactically-valid object
-// with the wrong shape (e.g. `{}`, a partial object from a future schema
-// bump, hand-edited localStorage, or another app reusing the key) — and an
-// unvalidated `display.layoutPreset` in particular crashes the game shell
-// render (see CampaignGameShell.tsx's `LAYOUT_PRESETS[layoutPreset]` lookup).
+// Mirrors server/routes.ts's `personalPreferencesSchema` field-for-field,
+// including its strictness: `.strict()` is applied at every level here
+// (outer object and both nested `display`/`notifications` objects), same as
+// the server copy, so an unknown key nested inside e.g. `display` is
+// rejected on both sides rather than silently stripped by Zod's default
+// behavior on one side and 400'd on the other. Kept as a separate
+// definition rather than a shared import, since client and server code
+// aren't allowed to cross that boundary. Used to validate anything read
+// back out of localStorage before it reaches a consumer: JSON.parse only
+// rejects syntax errors, not a syntactically-valid object with the wrong
+// shape (e.g. `{}`, a partial object from a future schema bump, hand-edited
+// localStorage, or another app reusing the key) — and an unvalidated
+// `display.layoutPreset` in particular crashes the game shell render (see
+// CampaignGameShell.tsx's `LAYOUT_PRESETS[layoutPreset]` lookup).
 const layoutPresetSchema = z.enum(["wide", "reading", "cinematic"]);
 
-const personalPreferencesV1Schema: z.ZodType<PersonalPreferencesV1> = z.object({
-  version: z.literal(1),
-  display: z.object({
-    layoutPreset: layoutPresetSchema,
-    reducedMotion: z.boolean(),
-  }),
-  notifications: z.object({
-    achievementToasts: z.enum(["full", "compact", "off"]),
-  }),
-});
+const personalPreferencesV1Schema: z.ZodType<PersonalPreferencesV1> = z
+  .object({
+    version: z.literal(1),
+    display: z
+      .object({
+        layoutPreset: layoutPresetSchema,
+        reducedMotion: z.boolean(),
+      })
+      .strict(),
+    notifications: z
+      .object({
+        achievementToasts: z.enum(["full", "compact", "off"]),
+      })
+      .strict(),
+  })
+  .strict();
 
 /**
  * Validates a value against the PersonalPreferencesV1 shape. Returns the
@@ -212,91 +223,181 @@ function saveLocal(stored: StoredPreferences): void {
   }
 }
 
-export function usePersonalPreferences() {
-  const [stored, setStored] = useState<StoredPreferences>(() => loadLocal());
+// ─────────────────────────────────────────────────────────────────────────
+// Module-level shared store
+//
+// usePersonalPreferences() is called independently from three separate
+// React component instances (campaign.tsx, CampaignGameShell.tsx,
+// OptionsDialog.tsx). A plain `useState` per call site would give each of
+// those its own disconnected copy of the preferences — a change made
+// through one instance (e.g. the Layout select inside OptionsDialog) would
+// never be observed by another instance's own state (e.g.
+// CampaignGameShell's bottom-right preset switcher, or campaign.tsx's own
+// achievementToasts read), until a full remount/reload re-synced everyone
+// from localStorage independently. Worse, each instance's `commit()` would
+// build its update from its own possibly-stale snapshot, so one instance's
+// change could silently clobber another's.
+//
+// The fix: one canonical `storeState` value lives at module scope (not
+// inside any component), with a listener registry that
+// `useSyncExternalStore` subscribes to. Every mutation — whether triggered
+// from campaign.tsx, CampaignGameShell.tsx, or OptionsDialog.tsx — updates
+// this single value and notifies every subscriber, so every mounted
+// instance re-renders with the new value on its next tick, and every
+// commit is built from the one true current value rather than a per-
+// instance stale copy.
+let storeState: StoredPreferences | null = null;
 
-  const syncToServer = useCallback((toSend: StoredPreferences) => {
-    apiRequest("PATCH", "/api/user/preferences", { data: toSend.data, updatedAt: toSend.updatedAt })
-      .then(() => {
-        setStored((current) => {
-          if (current.updatedAt !== toSend.updatedAt) return current; // a newer local edit happened mid-flight
-          const confirmed = { ...current, dirty: false };
-          saveLocal(confirmed);
-          return confirmed;
-        });
-      })
-      .catch(() => {
-        // apiRequest throws on a non-ok response (see throwIfResNotOk) as
-        // well as on a network failure — either way, leave dirty: true so
-        // this is retried on the next natural trigger (next edit, next
-        // tab-visible event, or next mount).
-      });
-  }, []);
+function getStoreState(): StoredPreferences {
+  if (storeState === null) {
+    storeState = loadLocal();
+  }
+  return storeState;
+}
 
-  // On mount: reconcile against the server's current value.
-  useEffect(() => {
-    apiRequest("GET", "/api/user/preferences")
-      .then((r) => r.json())
-      .then((server: { data: PersonalPreferencesV1 | null; updatedAt: string | null }) => {
-        setStored((local) => {
-          if (shouldAdoptServerValue(local, server)) {
-            const adopted: StoredPreferences = { data: server.data as PersonalPreferencesV1, updatedAt: server.updatedAt as string, dirty: false };
-            saveLocal(adopted);
-            return adopted;
-          }
-          if (local.dirty) syncToServer(local);
-          return local;
-        });
-      })
-      .catch(() => {
-        // Offline or the endpoint is unavailable — local value stands.
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+function setStoreState(next: StoredPreferences): void {
+  storeState = next;
+  for (const listener of listeners) listener();
+}
+
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot(): PersonalPreferencesV1 {
+  return getStoreState().data;
+}
+
+function syncToServer(toSend: StoredPreferences): void {
+  apiRequest("PATCH", "/api/user/preferences", { data: toSend.data, updatedAt: toSend.updatedAt })
+    .then(() => {
+      const current = getStoreState();
+      if (current.updatedAt !== toSend.updatedAt) return; // a newer local edit happened mid-flight
+      const confirmed = { ...current, dirty: false };
+      saveLocal(confirmed);
+      setStoreState(confirmed);
+    })
+    .catch(() => {
+      // apiRequest throws on a non-ok response (see throwIfResNotOk) as
+      // well as on a network failure — either way, leave dirty: true so
+      // this is retried on the next natural trigger (next edit, next
+      // tab-visible event, or next mount).
+    });
+}
+
+// Shared by every setter, from every hook instance: reads the one canonical
+// current value (never a per-instance stale copy), applies the updater,
+// persists, notifies every subscriber, and fires the best-effort PATCH.
+function commitStore(updater: (data: PersonalPreferencesV1) => PersonalPreferencesV1): void {
+  const current = getStoreState();
+  const next: StoredPreferences = { data: updater(current.data), updatedAt: new Date().toISOString(), dirty: true };
+  saveLocal(next);
+  setStoreState(next);
+  syncToServer(next);
+}
+
+// The mount-time GET-reconciliation and the visibilitychange flush listener
+// are both side effects on the *shared* store, not on any one component —
+// they must run exactly once per page session (not once per mounted hook
+// instance, which would fire N redundant network requests / N duplicate
+// listeners for N simultaneously-mounted instances). This guard makes
+// starting them idempotent; the hook calls it from a `useEffect` on every
+// mount, but only the first caller across the whole page session actually
+// does anything.
+let globalEffectsStarted = false;
+
+function startGlobalEffectsOnce(): void {
+  if (globalEffectsStarted) return;
+  if (typeof window === "undefined") return;
+  globalEffectsStarted = true;
+
+  // Reconcile against the server's current value.
+  apiRequest("GET", "/api/user/preferences")
+    .then((r) => r.json())
+    .then((server: { data: PersonalPreferencesV1 | null; updatedAt: string | null }) => {
+      const local = getStoreState();
+      if (shouldAdoptServerValue(local, server)) {
+        const adopted: StoredPreferences = {
+          data: server.data as PersonalPreferencesV1,
+          updatedAt: server.updatedAt as string,
+          dirty: false,
+        };
+        saveLocal(adopted);
+        setStoreState(adopted);
+      } else if (local.dirty) {
+        syncToServer(local);
+      }
+    })
+    .catch(() => {
+      // Offline or the endpoint is unavailable — local value stands.
+    });
 
   // Flush a dirty local value whenever the tab regains visibility (covers
   // the case where a PATCH failed while the tab/laptop was backgrounded).
+  document.addEventListener("visibilitychange", () => {
+    const current = getStoreState();
+    if (document.visibilityState === "visible" && current.dirty) syncToServer(current);
+  });
+}
+
+export function usePersonalPreferences() {
+  // Idempotent (see startGlobalEffectsOnce's guard) — safe to call from
+  // every mounted instance's effect; only the first one across the page
+  // session actually does anything.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && stored.dirty) syncToServer(stored);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [stored, syncToServer]);
+    startGlobalEffectsOnce();
+  }, []);
+
+  const preferences = useSyncExternalStore(subscribe, getSnapshot);
 
   // Reflect reducedMotion onto the document root as a data attribute so any
   // shared UI primitive (see dialog.tsx's DialogOverlay/DialogContent) can
   // gate its animation classes on it without needing its own preferences
-  // read. This is a side effect on a value already sourced from local state,
-  // not a second source of truth: it runs on every render where the value
-  // changed, on every component that calls this hook — a no-op keeps that
-  // safe (setAttribute/removeAttribute are idempotent).
+  // read. This is a side effect on a value already sourced from the shared
+  // store, not a second source of truth: it runs on every render where the
+  // value changed, on every component that calls this hook — a no-op keeps
+  // that safe (setAttribute/removeAttribute are idempotent).
   useEffect(() => {
     if (typeof document === "undefined") return;
-    if (stored.data.display.reducedMotion) {
+    if (preferences.display.reducedMotion) {
       document.documentElement.setAttribute("data-reduced-motion", "true");
     } else {
       document.documentElement.removeAttribute("data-reduced-motion");
     }
-  }, [stored.data.display.reducedMotion]);
-
-  const commit = useCallback(
-    (updater: (data: PersonalPreferencesV1) => PersonalPreferencesV1) => {
-      setStored((current) => {
-        const next: StoredPreferences = { data: updater(current.data), updatedAt: new Date().toISOString(), dirty: true };
-        saveLocal(next);
-        syncToServer(next);
-        return next;
-      });
-    },
-    [syncToServer],
-  );
+  }, [preferences.display.reducedMotion]);
 
   return {
-    preferences: stored.data,
+    preferences,
     setLayoutPreset: (preset: LayoutPreset) =>
-      commit((d) => ({ ...d, display: { ...d.display, layoutPreset: preset } })),
-    setReducedMotion: (on: boolean) => commit((d) => ({ ...d, display: { ...d.display, reducedMotion: on } })),
-    setAchievementToastStyle: (v: NotificationStyle) => commit((d) => ({ ...d, notifications: { achievementToasts: v } })),
+      commitStore((d) => ({ ...d, display: { ...d.display, layoutPreset: preset } })),
+    setReducedMotion: (on: boolean) => commitStore((d) => ({ ...d, display: { ...d.display, reducedMotion: on } })),
+    setAchievementToastStyle: (v: NotificationStyle) =>
+      commitStore((d) => ({ ...d, notifications: { achievementToasts: v } })),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test-only access to the shared store's underlying data layer.
+//
+// The store logic above (getStoreState/setStoreState/subscribe/commitStore)
+// is intentionally independent of useSyncExternalStore/React rendering —
+// that's what makes it possible to prove cross-instance synchronization
+// works in a plain node:test file with no DOM/React-rendering harness.
+// These exports are for personalPreferences.test.ts only; no application
+// code should import them.
+export const __testing__ = {
+  getSnapshot: (): PersonalPreferencesV1 => getStoreState().data,
+  getStoreState: (): StoredPreferences => getStoreState(),
+  commit: commitStore,
+  subscribe,
+  /** Resets the shared store to a known state for test isolation, without
+   * touching `globalEffectsStarted` (tests that don't call the React hook
+   * never trigger the real GET-reconciliation network call in the first
+   * place, so there's nothing to guard against here). */
+  reset: (state?: StoredPreferences): void => {
+    storeState = state ?? { data: DEFAULT_PREFERENCES, updatedAt: new Date(0).toISOString(), dirty: false };
+  },
+};
