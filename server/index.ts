@@ -3,6 +3,10 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { registerCompendiumRoutes } from "./compendium-routes";
+import { registerKnowledgeRoutes } from "./knowledge-routes";
+import { registerDnd35ItemRoutes } from "./dnd35-item-routes";
+import { initializeDnd35KnowledgeLibrary } from "./knowledge-library";
+import { initializeDnd35ItemLibrary } from "./dnd35-item-library";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -11,7 +15,6 @@ import { initializeCompendium } from "./compendium";
 const app = express();
 const httpServer = createServer(app);
 
-// ── Raw body for Stripe webhooks ───────────────────────────────────────────
 app.use(
   express.json({
     verify: (req: any, _res, buf) => {
@@ -22,7 +25,6 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// ── Security headers for production ───────────────────────────────────────
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
   app.use((_req, res, next) => {
@@ -34,7 +36,6 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// ── Request logging ────────────────────────────────────────────────────────
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -71,7 +72,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Run DB migrations before starting
   try {
     runMigrations();
     log("Database migrations complete", "db");
@@ -87,17 +87,46 @@ app.use((req, res, next) => {
         compendium.canonicalErrors,
       );
     }
+
+    // Pinned 3.5 SRD corpora are knowledge dependencies, not availability
+    // dependencies. Remote/source failures leave the server operational and
+    // make the affected shelf report fallback/cataloguing instead of silently
+    // publishing a partial rules corpus.
+    try {
+      const [knowledge, items] = await Promise.all([
+        initializeDnd35KnowledgeLibrary(),
+        initializeDnd35ItemLibrary(),
+      ]);
+      log(
+        `D&D 3.5 Library: spells ${knowledge.spellCorpusStatus} (${knowledge.totalSpells}; ${knowledge.arcaneSpells} arcane/${knowledge.divineSpells} divine), feats ${knowledge.featCorpusStatus} (${knowledge.totalFeats}; ${knowledge.executableFeats} executable), items ${items.corpusStatus} (${items.totalItems}; ${items.weapons} weapons/ammunition, ${items.armor} armor/shields)`,
+        "knowledge",
+      );
+      if (knowledge.spellErrors.length) {
+        console.warn("D&D 3.5 SRD spell import fell back to curated records:", knowledge.spellErrors);
+      }
+      if (knowledge.featErrors.length) {
+        console.warn("D&D 3.5 SRD feat import fell back to curated records:", knowledge.featErrors);
+      }
+      if (items.errors.length) {
+        console.warn("D&D 3.5 SRD equipment import remains unavailable:", items.errors);
+      }
+    } catch (error) {
+      console.warn("D&D 3.5 knowledge initialization failed unexpectedly; safe fallback records remain available:", error);
+    }
   } catch (err: any) {
     console.error("Database migration failed:", err);
     process.exit(1);
   }
 
-  // Public, read-only catalogue endpoints. Kept separate from campaign routes so
-  // the website compendium can evolve without touching active gameplay handlers.
+  // Read-only catalogue and Library of Knowledge routes are registered before
+  // campaign handlers. The knowledge layer also owns the narrow 3.5 feat
+  // validation guard that must run before the legacy level-up route accepts a
+  // feat selection.
   registerCompendiumRoutes(app);
+  registerDnd35ItemRoutes(app);
+  registerKnowledgeRoutes(app);
   await registerRoutes(httpServer, app);
 
-  // Error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -106,7 +135,6 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
-  // Serve frontend
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {

@@ -20,6 +20,16 @@ interface CompendiumBookProps {
   closed?: boolean;
   onOpen?: () => void;
   children?: ReactNode;
+  libraryHref?: string;
+  libraryLabel?: string;
+  brandKicker?: string;
+  brandTitle?: string;
+  coverKicker?: ReactNode;
+  coverTitle?: ReactNode;
+  coverVolume?: ReactNode;
+  coverAriaLabel?: string;
+  coverTitleAttribute?: string;
+  coverEmblem?: ReactNode;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -42,6 +52,16 @@ export default function CompendiumBook({
   closed = false,
   onOpen,
   children,
+  libraryHref = "/compendiums",
+  libraryLabel = "Compendiums",
+  brandKicker = "Library of Knowledge",
+  brandTitle = "DungeonMasterOS Compendiums",
+  coverKicker = "DungeonMasterOS Reference Library",
+  coverTitle = <>The Item<br />Compendium</>,
+  coverVolume = <>Volume I<br />Items & Equipment</>,
+  coverAriaLabel = "Open the DungeonMasterOS Item Compendium",
+  coverTitleAttribute = "Open the Item Compendium",
+  coverEmblem,
 }: CompendiumBookProps) {
   const [turning, setTurning] = useState<TurnDirection | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -57,18 +77,14 @@ export default function CompendiumBook({
     return () => media.removeEventListener("change", sync);
   }, []);
 
-  const triggerTurn = useCallback(
-    (direction: TurnDirection) => {
-      if (closed || !onTurn || turning) return;
-      if (direction === "prev" && !canPrevious) return;
-      if (direction === "next" && !canNext) return;
-
-      setTurning(direction);
-      turnTimer.current = window.setTimeout(() => onTurn(direction), 175);
-      finishTimer.current = window.setTimeout(() => setTurning(null), 365);
-    },
-    [canNext, canPrevious, closed, onTurn, turning],
-  );
+  const triggerTurn = useCallback((direction: TurnDirection) => {
+    if (closed || !onTurn || turning) return;
+    if (direction === "prev" && !canPrevious) return;
+    if (direction === "next" && !canNext) return;
+    setTurning(direction);
+    turnTimer.current = window.setTimeout(() => onTurn(direction), 175);
+    finishTimer.current = window.setTimeout(() => setTurning(null), 365);
+  }, [canNext, canPrevious, closed, onTurn, turning]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -85,13 +101,10 @@ export default function CompendiumBook({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closed, onOpen, triggerTurn]);
 
-  useEffect(
-    () => () => {
-      if (turnTimer.current) window.clearTimeout(turnTimer.current);
-      if (finishTimer.current) window.clearTimeout(finishTimer.current);
-    },
-    [],
-  );
+  useEffect(() => () => {
+    if (turnTimer.current) window.clearTimeout(turnTimer.current);
+    if (finishTimer.current) window.clearTimeout(finishTimer.current);
+  }, []);
 
   const onTouchStart = (event: React.TouchEvent) => {
     if (closed) return;
@@ -113,12 +126,12 @@ export default function CompendiumBook({
         <Link href="/" className="compendium-brand" aria-label="DungeonMasterOS home">
           <span className="compendium-brand-mark"><BookOpen size={19} /></span>
           <span>
-            <span className="compendium-brand-kicker">Reference Library</span>
-            <span className="compendium-brand-title">DungeonMasterOS Compendium</span>
+            <span className="compendium-brand-kicker">{brandKicker}</span>
+            <span className="compendium-brand-title">{brandTitle}</span>
           </span>
         </Link>
         <nav className="compendium-nav" aria-label="Compendium navigation">
-          <Link href="/compendium" className="keep-mobile">Compendium</Link>
+          <Link href={libraryHref} className="keep-mobile">{libraryLabel}</Link>
           <Link href="/how-it-works">How It Works</Link>
           <Link href="/dashboard">Dashboard</Link>
           {onFilters && (
@@ -132,19 +145,13 @@ export default function CompendiumBook({
 
       {closed ? (
         <main className="compendium-stage compendium-cover-stage">
-          <button
-            type="button"
-            className="compendium-cover"
-            onClick={onOpen}
-            aria-label="Open the DungeonMasterOS Item Compendium"
-            title="Open the Item Compendium"
-          >
+          <button type="button" className="compendium-cover" onClick={onOpen} aria-label={coverAriaLabel} title={coverTitleAttribute}>
             <span className="compendium-cover-inner">
-              <span className="compendium-cover-kicker">DungeonMasterOS Reference Library</span>
-              <span className="compendium-cover-emblem"><BookOpen /></span>
-              <span className="compendium-cover-title">The Item<br />Compendium</span>
+              <span className="compendium-cover-kicker">{coverKicker}</span>
+              <span className="compendium-cover-emblem">{coverEmblem ?? <BookOpen />}</span>
+              <span className="compendium-cover-title">{coverTitle}</span>
               <span className="compendium-cover-rule" />
-              <span className="compendium-cover-volume">Volume I<br />Items & Equipment</span>
+              <span className="compendium-cover-volume">{coverVolume}</span>
             </span>
             <span className="compendium-cover-open">Click to open</span>
           </button>
@@ -152,17 +159,7 @@ export default function CompendiumBook({
       ) : (
         <>
           <main className="compendium-stage" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-            <button
-              type="button"
-              className="compendium-page-edge prev"
-              onClick={() => triggerTurn("prev")}
-              disabled={!canPrevious || Boolean(turning)}
-              aria-label="Turn to the previous page"
-              title="Previous page (Left Arrow)"
-            >
-              <ChevronLeft />
-            </button>
-
+            <button type="button" className="compendium-page-edge prev" onClick={() => triggerTurn("prev")} disabled={!canPrevious || Boolean(turning)} aria-label="Turn to the previous page" title="Previous page (Left Arrow)"><ChevronLeft /></button>
             <div className="compendium-tome" aria-label="Open compendium book">
               <section className={`compendium-page-sheet left ${isMobile && mobileSide === 1 ? "mobile-hidden" : ""}`}>
                 <div className="compendium-page-inner">{leftPage}</div>
@@ -174,30 +171,14 @@ export default function CompendiumBook({
               </section>
               {turning && <div className={`compendium-turn-sheet ${turning}`} aria-hidden="true" />}
             </div>
-
-            <button
-              type="button"
-              className="compendium-page-edge next"
-              onClick={() => triggerTurn("next")}
-              disabled={!canNext || Boolean(turning)}
-              aria-label="Turn to the next page"
-              title="Next page (Right Arrow)"
-            >
-              <ChevronRight />
-            </button>
+            <button type="button" className="compendium-page-edge next" onClick={() => triggerTurn("next")} disabled={!canNext || Boolean(turning)} aria-label="Turn to the next page" title="Next page (Right Arrow)"><ChevronRight /></button>
           </main>
-
           <div className="compendium-mobile-turns" aria-label="Page navigation">
-            <button type="button" onClick={() => triggerTurn("prev")} disabled={!canPrevious || Boolean(turning)} aria-label="Previous page">
-              <ChevronLeft size={20} />
-            </button>
-            <button type="button" onClick={() => triggerTurn("next")} disabled={!canNext || Boolean(turning)} aria-label="Next page">
-              <ChevronRight size={20} />
-            </button>
+            <button type="button" onClick={() => triggerTurn("prev")} disabled={!canPrevious || Boolean(turning)} aria-label="Previous page"><ChevronLeft size={20} /></button>
+            <button type="button" onClick={() => triggerTurn("next")} disabled={!canNext || Boolean(turning)} aria-label="Next page"><ChevronRight size={20} /></button>
           </div>
         </>
       )}
-
       {children}
     </div>
   );
