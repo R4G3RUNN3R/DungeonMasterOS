@@ -47,6 +47,11 @@ import {
   campaignSettingSuggestions,
   userPreferences,
 } from "@shared/schema";
+import {
+  ruleSources,
+  type RuleSource,
+  type CreateRuleSourceInput,
+} from "@shared/rules-registry/sources";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
@@ -484,6 +489,29 @@ export function runMigrations() {
   );`);
 
   addColumnIfMissing("campaigns", "settings_locked", "INTEGER NOT NULL DEFAULT 0");
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS rule_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    publisher TEXT NOT NULL DEFAULT '',
+    ruleset TEXT NOT NULL,
+    native_edition TEXT NOT NULL DEFAULT '',
+    setting TEXT NOT NULL DEFAULT 'generic',
+    publication_type TEXT NOT NULL,
+    provenance_classification TEXT NOT NULL,
+    license_classification TEXT NOT NULL,
+    publication_date TEXT,
+    supersedes_source_id INTEGER,
+    verification_method TEXT NOT NULL DEFAULT '',
+    verified_by TEXT NOT NULL DEFAULT '',
+    verified_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_rule_sources_ruleset_setting
+    ON rule_sources(ruleset, setting);`);
 }
 
 export type TurnLedgerReason =
@@ -747,6 +775,12 @@ export interface IStorage {
   // User preferences
   getUserPreferences(userId: number): { data: string; updatedAt: string } | undefined;
   upsertUserPreferences(userId: number, data: string, updatedAt: string): void;
+
+  // Rules Source Registry
+  createRuleSource(entry: CreateRuleSourceInput): RuleSource;
+  getRuleSource(sourceKey: string): RuleSource | undefined;
+  listRuleSources(filter?: { ruleset?: string; setting?: string }): RuleSource[];
+  updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void;
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -1465,6 +1499,48 @@ export class DatabaseStorage implements IStorage {
     } else {
       db.insert(userPreferences).values({ userId, data, updatedAt }).run();
     }
+  }
+
+  // Rules Source Registry
+  createRuleSource(entry: CreateRuleSourceInput): RuleSource {
+    const now = new Date().toISOString();
+    return db.insert(ruleSources).values({
+      sourceKey: entry.sourceKey,
+      title: entry.title,
+      publisher: entry.publisher ?? "",
+      ruleset: entry.ruleset,
+      nativeEdition: entry.nativeEdition ?? "",
+      setting: entry.setting ?? "generic",
+      publicationType: entry.publicationType,
+      provenanceClassification: entry.provenanceClassification,
+      licenseClassification: entry.licenseClassification,
+      publicationDate: entry.publicationDate ?? null,
+      supersedesSourceId: entry.supersedesSourceId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get();
+  }
+
+  getRuleSource(sourceKey: string): RuleSource | undefined {
+    return db.select().from(ruleSources).where(eq(ruleSources.sourceKey, sourceKey)).get();
+  }
+
+  listRuleSources(filter?: { ruleset?: string; setting?: string }): RuleSource[] {
+    const conditions = [];
+    if (filter?.ruleset) conditions.push(eq(ruleSources.ruleset, filter.ruleset));
+    if (filter?.setting) conditions.push(eq(ruleSources.setting, filter.setting));
+
+    if (conditions.length > 0) {
+      return db.select().from(ruleSources).where(and(...conditions)).all();
+    }
+    return db.select().from(ruleSources).all();
+  }
+
+  updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void {
+    db.update(ruleSources)
+      .set({ ...updates, updatedAt: new Date().toISOString() })
+      .where(eq(ruleSources.sourceKey, sourceKey))
+      .run();
   }
 }
 
