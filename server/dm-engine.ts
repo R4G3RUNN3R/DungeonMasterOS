@@ -51,6 +51,19 @@ const REPAIR_MAX_TOKENS = DM_AI_PROVIDER === "ollama" ? 450 : 900;
 const PLAYER_SPEECH_VERBS =
   "say|ask|reply|tell|demand|shout|whisper|state|add|continue|insist|mutter|murmur|warn|press";
 
+// Rules Enforcement Mode (design spec §18) — per-tier behavioral guidance for
+// when the DM should emit a [CHECK] tag. Independent of ruleset (which rules
+// exist) and combatStyle (how combat is presented); this only governs how
+// strictly the existing rules are enforced. Interpolated alongside the raw
+// campaign.rulesWeight value in buildSystemPrompt() below, never replacing it.
+const RULES_WEIGHT_GUIDANCE: Record<string, string> = {
+  strict: "Every meaningful action with an uncertain outcome gets a formal [CHECK] — dice, DCs, and consequences are always mechanical. Do not narrate an uncertain outcome without a check.",
+  standard: "Call for a [CHECK] when the outcome is genuinely uncertain; narrate the rest directly.",
+  light_rules: "Mechanics take a back seat. Only call for a [CHECK] when there's real risk of failure with a meaningful cost.",
+  narrative: "Favor narrative outcomes over mechanics. Reserve [CHECK] for pivotal, high-stakes moments only.",
+  freeform: "No mechanical enforcement. Resolve actions narratively; do not emit [CHECK] tags unless the player explicitly asks for a roll.",
+};
+
 function formatWorldStateForPrompt(campaign: Campaign): string {
   const worldState = parseCampaignWorldState(campaign.worldState);
 
@@ -108,7 +121,11 @@ DMS OPERATING STYLE:
 
 CAMPAIGN SETTINGS:
 Tone: ${campaign.tone}
-Rules Weight: ${campaign.rulesWeight}
+Rules Weight: ${campaign.rulesWeight}${
+    RULES_WEIGHT_GUIDANCE[campaign.rulesWeight]
+      ? ` — ${RULES_WEIGHT_GUIDANCE[campaign.rulesWeight]}`
+      : ""
+  }
 Power Level: ${campaign.powerLevel}
 World Type: ${campaign.worldType}
 Combat Style: ${campaign.combatStyle}

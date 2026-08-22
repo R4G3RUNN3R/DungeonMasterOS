@@ -342,6 +342,35 @@ test("buildSystemPrompt is grounded with the authoritative party inventory (regr
   );
 });
 
+test("buildSystemPrompt wires rulesWeight into real per-tier DM behavioral guidance, not just a raw echo", async () => {
+  // buildSystemPrompt isn't exported (same last-resort source-content approach
+  // as the two tests above). Guards the 2026-08-22 rulesWeight migration's
+  // deferred follow-up: the prompt must not just echo the raw enum value
+  // (e.g. "light_rules") with no definition — the model can't infer behavioral
+  // meaning from a snake_case token alone, and this is the one canonical
+  // setting the user's design explicitly required DM AI context to consume.
+  const dmEngineSource = fs.readFileSync(path.join(__dirname, "dm-engine.ts"), "utf-8");
+
+  assert.ok(
+    dmEngineSource.includes("RULES_WEIGHT_GUIDANCE"),
+    "dm-engine.ts must define per-tier rulesWeight guidance for the system prompt",
+  );
+  for (const tier of ["strict", "standard", "light_rules", "narrative", "freeform"]) {
+    assert.ok(
+      new RegExp(`\\b${tier}\\s*:`).test(dmEngineSource),
+      `RULES_WEIGHT_GUIDANCE must have an entry for the "${tier}" tier`,
+    );
+  }
+  assert.ok(
+    dmEngineSource.includes("RULES_WEIGHT_GUIDANCE[campaign.rulesWeight]"),
+    "buildSystemPrompt must actually interpolate the per-tier guidance, not just define it unused",
+  );
+  assert.ok(
+    dmEngineSource.includes("Rules Weight: ${campaign.rulesWeight}"),
+    "the raw campaign.rulesWeight value must still be echoed alongside the guidance, not replaced by it",
+  );
+});
+
 test("extractItemsFromNarration never double-books ordinary tracked currency as a separate item (regression guard)", async () => {
   // Live regression testing on 2026-08-18 found a real bug: the item-grant
   // extractor's old instructions told it to treat ANY mention of gold/coins
