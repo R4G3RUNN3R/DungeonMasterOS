@@ -599,14 +599,16 @@ test("PATCH /api/campaigns/:id accepts the new rulesWeight enum values", async (
 });
 
 test("PATCH /api/campaigns/:id rejects the old rulesWeight enum values", async () => {
-  const { owner, campaign } = makeFixture();
-  const token = signToken(owner.id);
-  const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
-    body: JSON.stringify({ rulesWeight: "crunchy" }),
-  });
-  assert.equal(res.status, 400, "the old enum value must no longer validate");
+  for (const value of ["light", "medium", "crunchy"]) {
+    const { owner, campaign } = makeFixture();
+    const token = signToken(owner.id);
+    const res = await fetch(`${base}/api/campaigns/${campaign.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+      body: JSON.stringify({ rulesWeight: value }),
+    });
+    assert.equal(res.status, 400, `the old enum value "${value}" must no longer validate`);
+  }
 });
 
 test("combatStyle is completely unaffected by the rulesWeight migration", () => {

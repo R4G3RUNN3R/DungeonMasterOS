@@ -2023,6 +2023,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ message: "Invalid source selection", errors: parsed.error.flatten() });
     }
 
+    // Snapshot pre-update values for the history rows below — customSourceIds
+    // itself is intentionally not tracked here since campaign_settings_history
+    // is designed for single-value settings, not arrays.
+    const oldSourcePreset = campaign.sourcePreset;
+    const oldSetting = campaign.setting;
+
     try {
       storage.setCampaignSourceSelection(campaignId, {
         sourcePreset: parsed.data.sourcePreset,
@@ -2033,8 +2039,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid source selection" });
     }
 
+    const updated = storage.getCampaign(campaignId);
+
+    if (parsed.data.sourcePreset !== undefined && oldSourcePreset !== parsed.data.sourcePreset) {
+      storage.createCampaignSettingsHistory({
+        campaignId,
+        settingKey: "sourcePreset",
+        oldValue: oldSourcePreset === undefined || oldSourcePreset === null ? null : String(oldSourcePreset),
+        newValue: String(parsed.data.sourcePreset),
+        changedByUserId: req.user?.id ?? null,
+        source: "owner-direct",
+      });
+    }
+    if (parsed.data.setting !== undefined && oldSetting !== parsed.data.setting) {
+      storage.createCampaignSettingsHistory({
+        campaignId,
+        settingKey: "setting",
+        oldValue: oldSetting === undefined || oldSetting === null ? null : String(oldSetting),
+        newValue: String(parsed.data.setting),
+        changedByUserId: req.user?.id ?? null,
+        source: "owner-direct",
+      });
+    }
+
+    broadcastToCampaign(campaignId, { type: "campaign_updated", campaign: updated });
+
     const enabledSources = storage.getCampaignEnabledSources(campaignId);
-    return res.json({ sourcePreset: storage.getCampaign(campaignId)?.sourcePreset, enabledSources });
+    return res.json({ sourcePreset: updated?.sourcePreset, enabledSources });
   });
 
   // Player-submitted suggestions to change a campaign setting. Owners resolve

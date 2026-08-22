@@ -371,6 +371,73 @@ test("PATCH /api/campaigns/:id/sources: setting is a reachable, persisted field 
   assert.ok(!body.enabledSources.some((s: any) => s.id === faerun.id));
 });
 
+test("switching away from custom and back without re-supplying customSourceIds starts from empty, not the stale set", () => {
+  const { campaign } = makeFixture("dnd35e");
+  const kept = storage.createRuleSource({
+    sourceKey: `dnd35e-stale-a-${Date.now()}`,
+    title: "A",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "core-rulebook",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "all_rights_reserved",
+  });
+
+  // set custom=[A]
+  storage.setCampaignSourceSelection(campaign.id, { sourcePreset: "custom", customSourceIds: [kept.id] });
+  let enabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.ok(enabled.some((s) => s.id === kept.id));
+
+  // switch to all_official
+  storage.setCampaignSourceSelection(campaign.id, { sourcePreset: "all_official" });
+  assert.equal(storage.getCampaign(campaign.id)?.sourcePreset, "all_official");
+
+  // switch back to custom with no customSourceIds supplied
+  storage.setCampaignSourceSelection(campaign.id, { sourcePreset: "custom" });
+  assert.equal(storage.getCampaign(campaign.id)?.sourcePreset, "custom");
+
+  enabled = storage.getCampaignEnabledSources(campaign.id);
+  assert.equal(enabled.length, 0, "the stale source A must not silently reactivate");
+  assert.ok(!enabled.some((s) => s.id === kept.id));
+});
+
+test("PATCH /api/campaigns/:id/sources: a changed sourcePreset and setting are audited in campaign_settings_history", async () => {
+  const { owner, campaign } = makeFixture("dnd35e");
+  const token = signToken(owner.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ sourcePreset: "core_only", setting: "eberron" }),
+  });
+  assert.equal(res.status, 200);
+
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  const presetRow = history.find((h) => h.settingKey === "sourcePreset");
+  const settingRow = history.find((h) => h.settingKey === "setting");
+  assert.ok(presetRow, "sourcePreset change should be audited");
+  assert.equal(presetRow!.oldValue, "all_official");
+  assert.equal(presetRow!.newValue, "core_only");
+  assert.equal(presetRow!.source, "owner-direct");
+  assert.ok(settingRow, "setting change should be audited");
+  assert.equal(settingRow!.oldValue, "generic");
+  assert.equal(settingRow!.newValue, "eberron");
+});
+
+test("PATCH /api/campaigns/:id/sources: a no-op value change does not write a spurious history row", async () => {
+  const { owner, campaign } = makeFixture("dnd35e");
+  const token = signToken(owner.id);
+  // sourcePreset is already the table default "all_official" — resending the
+  // same value must not create a history row.
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/sources`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({ sourcePreset: "all_official" }),
+  });
+  assert.equal(res.status, 200);
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  assert.equal(history.length, 0);
+});
+
 test("PATCH /api/campaigns/:id/sources: locked campaign returns 409 and does not mutate anything", async () => {
   const { owner, campaign } = makeFixture("dnd35e");
   const token = signToken(owner.id);

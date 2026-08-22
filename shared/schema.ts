@@ -154,21 +154,21 @@ export const campaigns = sqliteTable("campaigns", {
 
   // Core settings
   tone: text("tone").notNull().default("heroic"),
-  rulesWeight: text("rules_weight").notNull().default("standard"),
   // Rules Enforcement Mode (design spec §18): strict | standard | light_rules |
   // narrative | freeform. Independent of combatStyle (which governs HOW combat
   // is presented) and independent of ruleset (which governs WHICH rules exist).
+  rulesWeight: text("rules_weight").notNull().default("standard"),
   powerLevel: text("power_level").notNull().default("standard"),
   worldType: text("world_type").notNull().default("original"),
   combatStyle: text("combat_style").notNull().default("cinematic"),
   ruleset: text("ruleset").notNull().default("dnd5e"),
-  setting: text("setting").notNull().default("generic"),
   // Active campaign setting for source scoping (design spec §5) — e.g. "generic",
   // "eberron", "forgotten-realms". Distinct from worldType/worldGenStyle, which
   // describe narrative flavor, not which rule_sources rows apply. Free-text like
   // rule_sources.setting, not an enum, so new settings never require a migration.
-  sourcePreset: text("source_preset").notNull().default("all_official"),
+  setting: text("setting").notNull().default("generic"),
   // "all_official" | "core_only" | "custom" — see shared/rules-registry/source-enablement.ts.
+  sourcePreset: text("source_preset").notNull().default("all_official"),
   storyMode: integer("story_mode", { mode: "boolean" }).notNull().default(false),
   worldGenStyle: text("world_gen_style").notNull().default("standard"),
   homebrewRules: text("homebrew_rules").notNull().default(""),

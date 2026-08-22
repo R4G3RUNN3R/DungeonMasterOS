@@ -63,6 +63,7 @@ import {
   type CanonicalRevision,
   type RecordRevisionInput,
 } from "@shared/rules-registry/revisions";
+import { isValidCanonicalId } from "@shared/rules-registry/canonical-id";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
@@ -1659,6 +1660,14 @@ export class DatabaseStorage implements IStorage {
       }
       if (updates.sourcePreset) {
         this.setCampaignSourcePreset(campaignId, updates.sourcePreset);
+        // Switching away from "custom" must not leave a stale enabled-sources
+        // set behind: if the campaign is later switched back to "custom"
+        // without a fresh setCampaignCustomSources call in that same update,
+        // the old rows would otherwise silently reactivate. Wipe them
+        // whenever the preset lands on anything other than "custom".
+        if (updates.sourcePreset !== "custom") {
+          db.delete(campaignEnabledSources).where(eq(campaignEnabledSources.campaignId, campaignId)).run();
+        }
       }
       if (updates.setting) {
         db.update(campaigns).set({ setting: updates.setting }).where(eq(campaigns.id, campaignId)).run();
@@ -1695,6 +1704,9 @@ export class DatabaseStorage implements IStorage {
 
   // Revision/audit trail (Task 6)
   recordRevision(entry: RecordRevisionInput): CanonicalRevision {
+    if (!isValidCanonicalId(entry.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${entry.canonicalId}": must match ruleset:entityType:slug`);
+    }
     const now = new Date().toISOString();
     const [row] = db.insert(canonicalRevisions).values({
       canonicalId: entry.canonicalId,

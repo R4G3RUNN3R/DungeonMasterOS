@@ -92,6 +92,19 @@ test("recordRevision + getRevisionHistory round-trip, newest first", () => {
   assert.equal(history[1].revision, 1);
 });
 
+test("recordRevision rejects a malformed canonicalId", () => {
+  assert.throws(() => storage.recordRevision({
+    canonicalId: "not-a-canonical-id", entityType: "spell", revision: 1,
+    changeReason: "should never persist",
+  }));
+  assert.throws(() => storage.recordRevision({
+    // sourceKey-shaped, not canonicalId-shaped (no colons) — this is exactly
+    // the rule_sources shape that Task 6's revision model does not support.
+    canonicalId: "dnd35e-phb", entityType: "rule_source", revision: 1,
+    changeReason: "should never persist",
+  }));
+});
+
 test("revision history is scoped per canonicalId", () => {
   storage.recordRevision({
     canonicalId: "dnd35e:feat:power-attack", entityType: "feat", revision: 1,
