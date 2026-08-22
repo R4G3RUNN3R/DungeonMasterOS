@@ -1693,19 +1693,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Zod schema mirroring the client-side PersonalPreferencesV1 shape (see the
-  // Options/Settings design spec). `.strict()` on the inner object rejects
-  // unknown keys so stale/typo'd client fields surface as a 400 rather than
-  // silently persisting.
+  // Options/Settings design spec). `.strict()` is applied at every level —
+  // the outer object AND both nested `display`/`notifications` objects —
+  // so an unknown key anywhere in the shape (including nested inside
+  // `display` or `notifications`) surfaces as a 400 rather than being
+  // silently stripped by Zod's default behavior on a non-strict nested
+  // object.
   const personalPreferencesSchema = z
     .object({
       version: z.literal(1),
-      display: z.object({
-        layoutPreset: z.enum(["wide", "reading", "cinematic"]),
-        reducedMotion: z.boolean(),
-      }),
-      notifications: z.object({
-        achievementToasts: z.enum(["full", "compact", "off"]),
-      }),
+      display: z
+        .object({
+          layoutPreset: z.enum(["wide", "reading", "cinematic"]),
+          reducedMotion: z.boolean(),
+        })
+        .strict(),
+      notifications: z
+        .object({
+          achievementToasts: z.enum(["full", "compact", "off"]),
+        })
+        .strict(),
     })
     .strict();
 
@@ -2000,19 +2007,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // proposedValue: "yes" for a boolean key, which would otherwise
     // silently coerce to `false` at accept-time (`=== "true"`).
     const suggestionSubmitSchema = z.union([
-      z.object({
-        settingKey: z.enum(["storyMode", "epicMode"]),
-        proposedValue: z.boolean(),
-        reason: z.string().max(500).optional(),
-      }),
-      z.object({
-        settingKey: z.enum(["tone", "combatStyle", "rulesWeight", "powerLevel"]),
-        proposedValue: z.string(),
-        reason: z.string().max(500).optional(),
-      }),
+      z
+        .object({
+          settingKey: z.enum(["storyMode", "epicMode"]),
+          proposedValue: z.boolean(),
+          reason: z.string().max(500).optional(),
+        })
+        .strict(),
+      z
+        .object({
+          settingKey: z.enum(["tone", "combatStyle", "rulesWeight", "powerLevel"]),
+          proposedValue: z.string(),
+          reason: z.string().max(500).optional(),
+        })
+        .strict(),
     ]);
     const parsed = suggestionSubmitSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Invalid suggestion" });
+    if (!parsed.success) return res.status(400).json({ message: "Invalid suggestion", errors: parsed.error.flatten() });
 
     const currentValue = String((campaign as any)[parsed.data.settingKey]);
     const row = storage.createCampaignSettingSuggestion({
@@ -2096,6 +2107,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .json({ message: "Stale suggestion: the setting has changed since this was proposed", status: "stale" });
     }
 
+    // Guard the coercion itself: `suggestion.proposedValue` is a raw string
+    // pulled straight off the stored row, not something the submit route's
+    // schema can vouch for at this point (that schema only validated the
+    // request that originally created the row — a second writer of the
+    // campaign_setting_suggestions table, or a direct DB edit, bypasses it
+    // entirely). Coercing blindly (`=== "true"`) turns any unrecognized
+    // string into `false`, which then always passes
+    // campaignSettingsPatchSchema.safeParse as a *valid* boolean — so a
+    // malformed value like "yes" would silently become `false` instead of
+    // being rejected. Reject explicitly here so the "re-validation" below
+    // is real defense-in-depth, not dead code that can never fail for this
+    // case.
+    if (
+      BOOLEAN_CAMPAIGN_SETTING_KEYS.has(suggestion.settingKey) &&
+      suggestion.proposedValue !== "true" &&
+      suggestion.proposedValue !== "false"
+    ) {
+      return res.status(400).json({ message: "Suggested value is no longer valid" });
+    }
     const coerced = BOOLEAN_CAMPAIGN_SETTING_KEYS.has(suggestion.settingKey)
       ? suggestion.proposedValue === "true"
       : suggestion.proposedValue;

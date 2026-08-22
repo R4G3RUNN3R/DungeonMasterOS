@@ -355,6 +355,19 @@ test("suggestions: a boolean-key submission with a non-boolean proposedValue is 
   assert.equal(res.status, 400, "a string proposedValue for a boolean key must 400 at submit time, not silently coerce wrong later");
 });
 
+test("suggestions: an unknown extra key in the submission body is rejected (both union members are .strict())", async () => {
+  const { player, campaign } = makeFixture();
+  const playerToken = signToken(player.id);
+  const res = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${playerToken}` },
+    body: JSON.stringify({ settingKey: "tone", proposedValue: "dark", garbageKey: true }),
+  });
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.ok(body.errors, "the failure response must include errors, matching the sibling validation routes");
+});
+
 test("suggestions: an enum-key submission with a non-string proposedValue is rejected at submit time", async () => {
   const { player, campaign } = makeFixture();
   const playerToken = signToken(player.id);
@@ -364,6 +377,39 @@ test("suggestions: an enum-key submission with a non-string proposedValue is rej
     body: JSON.stringify({ settingKey: "tone", proposedValue: true }),
   });
   assert.equal(res.status, 400);
+});
+
+test("suggestions: accept rejects a malformed boolean proposedValue inserted directly (bypassing submit-time validation)", async () => {
+  // Simulates a second writer of the campaign_setting_suggestions table (or
+  // a direct DB edit) that never went through the submit route's Zod
+  // schema — proving the accept route's own re-validation independently
+  // catches a garbage proposedValue for a boolean key, rather than
+  // silently coercing it to `false` (`"yes" === "true"` is false) and
+  // accepting that as if it were a real user choice.
+  const { owner, player, campaign } = makeFixture();
+  const suggestion = storage.createCampaignSettingSuggestion({
+    campaignId: campaign.id,
+    settingKey: "storyMode",
+    currentValue: String((campaign as any).storyMode),
+    proposedValue: "yes",
+    submittedByUserId: player.id,
+  });
+
+  const ownerToken = signToken(owner.id);
+  const acceptRes = await fetch(`${base}/api/campaigns/${campaign.id}/settings/suggestions/${suggestion.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${ownerToken}` },
+    body: JSON.stringify({ action: "accept" }),
+  });
+  assert.equal(acceptRes.status, 400, "a malformed boolean proposedValue must 400, not silently coerce to false");
+  const reloaded = storage.getCampaign(campaign.id);
+  assert.equal((reloaded as any).storyMode, (campaign as any).storyMode, "the setting must be left untouched");
+  const history = storage.getCampaignSettingsHistory(campaign.id);
+  assert.equal(
+    history.filter((h) => h.suggestionId === suggestion.id).length,
+    0,
+    "a rejected accept must not write a history entry",
+  );
 });
 
 test("suggestions: decline does not apply the change", async () => {

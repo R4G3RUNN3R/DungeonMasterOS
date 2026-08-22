@@ -107,6 +107,24 @@ test("invalid shape (unknown key) is rejected with 400", async () => {
   assert.equal(res.status, 400);
 });
 
+test("invalid shape (unknown key nested inside display) is rejected with 400", async () => {
+  // `.strict()` on the outer object alone does not reject an unknown key
+  // nested inside `display`/`notifications` — Zod's default behavior on a
+  // non-strict nested object is to silently strip it, not fail. This proves
+  // `.strict()` was applied at every level, not just the outer object.
+  const user = makeUser();
+  const token = signToken(user.id);
+  const res = await fetch(`${baseUrl}/api/user/preferences`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", cookie: `dmos_session=${token}` },
+    body: JSON.stringify({
+      data: { ...VALID_PREFS, display: { ...VALID_PREFS.display, garbageKey: true } },
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    }),
+  });
+  assert.equal(res.status, 400);
+});
+
 test("invalid shape (bad enum) is rejected with 400", async () => {
   const user = makeUser();
   const token = signToken(user.id);

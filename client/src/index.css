@@ -254,6 +254,27 @@
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* Personal Options' "Reduced motion" toggle (client/src/lib/personalPreferences.ts)
+   sets/clears a `data-reduced-motion="true"` attribute on <html>. dialog.tsx
+   reads that attribute directly to omit its own open/close animation classes
+   — a more precise mechanism for the one component that has it. This rule is
+   the global safety net for every OTHER animated UI primitive in the app
+   (Sheet, Drawer, AlertDialog, Popover, Select, DropdownMenu, Tooltip, Toast,
+   Accordion, the .thinking-dot pulse above, etc.) that has its own
+   animate-in/animate-out/transition-* classes or @keyframes and would
+   otherwise ignore the preference entirely. The two mechanisms don't
+   conflict — Dialog just has both agreeing. `!important` is required here:
+   this must override utility classes (animate-in/animate-out, transition-*)
+   applied directly on elements, which is exactly the kind of narrow,
+   deliberate use `!important` exists for. */
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 @layer utilities {
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
