@@ -22,7 +22,7 @@ Create a minimal, good-looking social/profile layer for DungeonMasterOS that mak
 
 Future route: `/player/:username`
 
-The page component may be created now, but route registration/data loading can remain for the later wiring pass if doing so avoids pretending a backend profile endpoint already exists.
+Create the page/component now, but do not register the route or add profile data loading in this scaffold. Claude's later wiring pass will own routing and the public-profile API so the UI does not imply a public endpoint exists before it actually does.
 
 ### Information hierarchy
 
@@ -128,7 +128,7 @@ The same selector component should be reusable from both the profile and Achieve
 
 Future route: `/achievements`
 
-There is currently no first-class achievement page in the app. Create the V1 page scaffold now; backend route/data wiring may remain for the later integration pass.
+There is currently no first-class achievement page in the app. Create the V1 page/component now, but do not register the route or add new achievement-loading API calls in this scaffold. Claude's later wiring pass will connect it to authoritative unlock/showcase state.
 
 ### Top summary
 
@@ -291,6 +291,7 @@ The intended later behavior remains:
 - New Achievements page presents progress, Turns Earned, showcase, filters, and achievement cards cleanly.
 - Dashboard includes polished Recent Achievements and New Adventurers community sections with non-fabricated empty states.
 - Reusable showcase-selector and profile/community UI components are factored sensibly.
+- The new profile and Achievements pages are intentionally not registered in `App.tsx` until Claude's wiring pass.
 - No new backend/social/DM wiring is introduced.
 - No fake player/activity data ships.
 - Existing dashboard/account/campaign behavior is not disrupted.
