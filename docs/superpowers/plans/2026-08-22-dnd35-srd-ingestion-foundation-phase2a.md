@@ -224,20 +224,20 @@ docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md   New: Task 
 
 **Files:**
 - Modify: `shared/rules-registry/sources.ts` (add `derivedFromSourceId`, `pinnedRevision` columns)
-- Modify: `server/storage.ts` (`addColumnIfMissing` calls; add `recordRuleSourceVerification`)
+- Modify: `server/storage.ts` (`addColumnIfMissing` calls; add `recordRuleSourceVerification`, `recordSourceScanRevision`)
 - Modify: `server/rules-registry.test.ts` (append tests)
 - Create: `docs/superpowers/notes/2026-08-22-srd-provenance-registration.md`
 
 **Interfaces:**
 - Consumes: `RuleSource`, `CreateRuleSourceInput`, `storage.createRuleSource`, `storage.getRuleSource`, `storage.getRuleSourceById` (all Phase 0/1 Task 2, extended not replaced).
-- Produces: `ruleSources.derivedFromSourceId: integer | null`, `ruleSources.pinnedRevision: text | null` columns; `CreateRuleSourceInput` gains `derivedFromSourceId?: number` and `pinnedRevision?: string`; `storage.recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void` (imported from `@shared/rules-registry/provenance`, unchanged type).
+- Produces: `ruleSources.derivedFromSourceId: integer | null`, `ruleSources.pinnedRevision: text | null` columns; `CreateRuleSourceInput` gains `derivedFromSourceId?: number` and `pinnedRevision?: string`; `storage.recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void` (imported from `@shared/rules-registry/provenance`, unchanged type); `storage.recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void` — a real, storage-layer-only, no-HTTP-route method (new this round) that stamps a live source's `pinnedRevision` after a real successful scan, consumed by Task 9.
 
 **Expected behavior:** Three real rows exist after this task, in this exact relationship:
 1. `sourceKey: "dnd35e-srd-original"` — `derivedFromSourceId: null`, `pinnedRevision: null` (no live URL, no version to pin).
 2. `sourceKey: "dnd35e-srd-olimot-mirror"` — `derivedFromSourceId:` (1)'s id, `pinnedRevision: "faab739130921026db42b96e6adff6d3661bffbd"`.
-3. `sourceKey: "dnd35e-srd-hypertext-d20"` — `derivedFromSourceId:` (1)'s id, `pinnedRevision: "live-scan-2026-08-22"`.
+3. `sourceKey: "dnd35e-srd-hypertext-d20"` — `derivedFromSourceId:` (1)'s id, `pinnedRevision: null` **at registration time** — corrected this round: `d20srd.org` is a live, mutable site, so hardcoding a plan-authoring-date string like `"live-scan-2026-08-22"` at registration would misrepresent an aspiration as an observation. It starts `null` (explicitly pending) and is stamped for real, once, via the new `recordSourceScanRevision` method, only after Task 9's real scan passes both completeness gates — with the *actual* UTC timestamp of that real successful scan (e.g. `"live-scan-2026-08-23T14:32:07.418Z"`), never the date this plan was written. The per-page content hashes in `srd_manifest_entries` remain the real drift evidence regardless; this timestamp is an observation/snapshot label on the source row, not a claim that the live site became immutable.
 
-`recordRuleSourceVerification` writes `verificationMethod`/`verifiedBy`/`verifiedAt` onto a `rule_sources` row (closing the Phase 0/1 gap where `updateRuleSource`'s `Partial<CreateRuleSourceInput>` typing could never reach those columns) — a storage-layer method with no HTTP route in this plan.
+`recordRuleSourceVerification` writes `verificationMethod`/`verifiedBy`/`verifiedAt` onto a `rule_sources` row (closing the Phase 0/1 gap where `updateRuleSource`'s `Partial<CreateRuleSourceInput>` typing could never reach those columns) — a storage-layer method with no HTTP route in this plan. `recordSourceScanRevision` is the same kind of internal-only write, scoped narrowly to just `pinnedRevision` + `updatedAt` — it throws for an unknown `sourceKey` rather than silently no-oping, matching `recordRuleSourceVerification`'s existing discipline.
 
 **Migration risk:** Low — two new nullable columns via `addColumnIfMissing`, no existing row's meaning changed, no existing column altered.
 
@@ -305,12 +305,34 @@ test("recordRuleSourceVerification throws for an unknown sourceKey rather than s
     method: "human_review",
   }));
 });
+
+test("recordSourceScanRevision stamps a real scan timestamp onto an initially-null pinnedRevision", () => {
+  const created = storage.createRuleSource({
+    sourceKey: "dnd35e-srd-scan-revision-test",
+    title: "Scan Revision Test",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "web-enhancement",
+    provenanceClassification: "open_game_content",
+    licenseClassification: "srd_open",
+  });
+  assert.equal(created.pinnedRevision, null, "a live-site source must start with no pinnedRevision — nothing has been scanned yet");
+
+  storage.recordSourceScanRevision("dnd35e-srd-scan-revision-test", "live-scan-2026-08-23T14:32:07.418Z");
+
+  const reloaded = storage.getRuleSource("dnd35e-srd-scan-revision-test");
+  assert.equal(reloaded?.pinnedRevision, "live-scan-2026-08-23T14:32:07.418Z");
+});
+
+test("recordSourceScanRevision throws for an unknown sourceKey rather than silently no-oping", () => {
+  assert.throws(() => storage.recordSourceScanRevision("does-not-exist", "live-scan-2026-08-23T00:00:00.000Z"));
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node --import tsx --test server/rules-registry.test.ts`
-Expected: FAIL — `derivedFromSourceId`/`pinnedRevision` don't exist on the returned row; `storage.recordRuleSourceVerification` is not a function.
+Expected: FAIL — `derivedFromSourceId`/`pinnedRevision` don't exist on the returned row; `storage.recordRuleSourceVerification` and `storage.recordSourceScanRevision` are not functions.
 
 - [ ] **Step 3: Extend `shared/rules-registry/sources.ts`**
 
@@ -346,6 +368,7 @@ addColumnIfMissing("rule_sources", "pinned_revision", "TEXT");
 
 ```ts
 recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void;
+recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void;
 ```
 
 `DatabaseStorage`:
@@ -364,6 +387,20 @@ recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata):
     .where(eq(ruleSources.sourceKey, sourceKey))
     .run();
 },
+
+// Stamps a live-site source's pinnedRevision with the real UTC timestamp of
+// an actual completed scan — never called at registration time, never
+// hardcoded to the plan's authoring date. Storage-layer only, no HTTP
+// route: called once, internally, by Task 9 after both completeness gates
+// pass on the final real scan.
+recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void {
+  const existing = this.getRuleSource(sourceKey);
+  if (!existing) throw new Error(`Rule source "${sourceKey}" not found`);
+  db.update(ruleSources)
+    .set({ pinnedRevision, updatedAt: new Date().toISOString() })
+    .where(eq(ruleSources.sourceKey, sourceKey))
+    .run();
+},
 ```
 
 Also update `createRuleSource`'s implementation to pass through the two new optional input fields (`derivedFromSourceId: entry.derivedFromSourceId ?? null`, `pinnedRevision: entry.pinnedRevision ?? null`) — read the method's current body first and extend it, don't rewrite it.
@@ -372,7 +409,7 @@ Add `import type { VerificationMetadata } from "@shared/rules-registry/provenanc
 
 - [ ] **Step 5: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/rules-registry.test.ts` — expect 8/8 (5 existing + 3 new).
+Run: `node --import tsx --test server/rules-registry.test.ts` — expect 10/10 (5 existing + 3 from the original task + 2 added this round for `recordSourceScanRevision`).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions against the 312-test baseline.
 Run: `npx tsc --noEmit` — clean.
 
@@ -418,13 +455,17 @@ const hypertextD20 = storage.createRuleSource({
   provenanceClassification: "open_game_content",
   licenseClassification: "srd_open",
   derivedFromSourceId: original.id,
-  pinnedRevision: "live-scan-2026-08-22",
+  // pinnedRevision is deliberately omitted (stays null) at registration —
+  // d20srd.org is a live, mutable site, so there is no real scan to pin
+  // yet. Task 9 calls storage.recordSourceScanRevision with the real UTC
+  // timestamp of the actual final successful scan, once both completeness
+  // gates pass — never a hardcoded plan-authoring-date guess.
 });
 
 console.log({ original, olimotMirror, hypertextD20 });
 ```
 
-Write the exact output (all three real rows, including assigned `id`s) into `docs/superpowers/notes/2026-08-22-srd-provenance-registration.md`, plus one paragraph explaining `dnd35e-srd-hypertext-d20`'s `pinnedRevision` is a scan-timestamp string, not a commit SHA, because the source is a live website with no version control — stated as a limitation, not glossed over.
+Write the exact output (all three real rows, including assigned `id`s) into `docs/superpowers/notes/2026-08-22-srd-provenance-registration.md`, plus one paragraph explaining that `dnd35e-srd-hypertext-d20`'s `pinnedRevision` is intentionally `null` at this point in the process — it becomes a real scan-timestamp string (never a commit SHA, since the source is a live website with no version control) only once Task 9's real scan completes and passes both completeness gates, at which point `recordSourceScanRevision` stamps it and the acceptance report records the identical timestamp. State this as a limitation of live-site provenance, not glossed over.
 
 - [ ] **Step 7: Commit**
 
@@ -433,7 +474,7 @@ git add shared/rules-registry/sources.ts server/storage.ts server/rules-registry
 git commit -m "feat: separate SRD provenance from transport, register original/olimot-mirror/hypertext-d20 sources"
 ```
 
-**Independent verification before Task 2 begins:** re-run tests fresh; confirm via the real Step 6 output that both derived rows' `derivedFromSourceId` genuinely equals the original row's real `id` (not a hardcoded guess); confirm `dnd35e-srd-original` has no `pinnedRevision` (a non-null value there would be a real modeling error — it has nothing to pin).
+**Independent verification before Task 2 begins:** re-run tests fresh; confirm via the real Step 6 output that both derived rows' `derivedFromSourceId` genuinely equals the original row's real `id` (not a hardcoded guess); confirm `dnd35e-srd-original` has no `pinnedRevision` (a non-null value there would be a real modeling error — it has nothing to pin); confirm `dnd35e-srd-hypertext-d20` also has `pinnedRevision: null` at this point (it is only ever set by `recordSourceScanRevision`, called exclusively from Task 9 after a real gate-passing scan — grep the diff so far for any other call site and expect zero hits).
 
 ---
 
@@ -646,7 +687,9 @@ git commit -m "feat: add page-scoped SRD manifest schema (sourcePageKey, PagePro
 - Consumes: `srdManifestEntries`, `srdSourcePageRevisions`, `SrdManifestEntry`, `SrdSourcePageRevision`, `CreateSrdManifestEntryInput`, `RecordSourcePageRevisionInput`, `CorpusArea`, `PageProcessingStatus`, `buildSourcePageKey` (Task 2).
 - Produces: `storage.createSrdManifestEntry(input): SrdManifestEntry`, `storage.upsertSrdManifestEntry(input & {contentHash: string}): SrdManifestEntry` (idempotent — same hash on re-scan is a no-op; different hash resets `processingStatus` to `"discovered"` and records a `srd_source_page_revisions` row), `storage.updateSrdManifestEntryProcessingStatus(sourcePageKey, status): void`, `storage.recordSrdManifestDiscoveryFailure(input, errorMessage): SrdManifestEntry`, `storage.getSrdManifestEntry(sourcePageKey): SrdManifestEntry | undefined`, `storage.listSrdManifestEntries(filter?: {corpusArea?, sourceId?}): SrdManifestEntry[]`, `storage.recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision`, `storage.getSourcePageRevisionHistory(sourcePageKey): SrdSourcePageRevision[]`.
 
-**Expected behavior:** `createSrdManifestEntry` always writes `ruleset: "dnd35e"` literally. `upsertSrdManifestEntry` matches by `sourcePageKey` (built from `input.sourceId`'s owning source's `sourceKey` + `input.sourcePath` — the method looks up the source row to get its `sourceKey`, since callers only supply `sourceId`). Corrected this round: a real successful fetch is not just "hash differs" vs. "hash same" — it is one of three distinct cases, each with different, precise side effects: (1) **no existing row** → ordinary insert at `"discovered"`; (2) **first real acquisition** (`existing.contentHash === null`, meaning every prior attempt for this row only ever failed) → the hash is set for the first time; this is NOT a "content changed" event, so no revision is recorded and no verification fields are reset (they're already at their creation defaults — there is nothing to reset); (3) **genuine content change** (`existing.contentHash` was already a real, non-null value and the new hash differs from it) → `processingStatus` resets to `"discovered"` **and** all four verification fields (`verificationMethod`/`verifiedBy`/`verifiedAt`/`verificationNotes`) reset to `null`, and a `srd_source_page_revisions` row is recorded (never `canonical_revisions`) — a verification record describes the *old* content snapshot and must never silently survive attached to genuinely different content. Independently of which of these three cases applies, **any successful call clears stale failure state**: `lastError` is cleared and `lastAttemptAt` is stamped to now, even in the true no-op case (identical hash, no real acquisition, no change) — a successful fetch must never leave a previous failed attempt's error sitting on the row. The true no-op case (same hash, `existing.contentHash` was already non-null and equal, and there was no stale error to clear) is the only branch that returns the row completely unchanged.
+**Expected behavior:** `createSrdManifestEntry` always writes `ruleset: "dnd35e"` literally. `upsertSrdManifestEntry` matches by `sourcePageKey` (built from `input.sourceId`'s owning source's `sourceKey` + `input.sourcePath` — the method looks up the source row to get its `sourceKey`, since callers only supply `sourceId`). A real successful fetch is not just "hash differs" vs. "hash same" — it is one of three distinct cases, each with different, precise side effects: (1) **no existing row** → ordinary insert at `"discovered"`; (2) **first real acquisition** (`existing.contentHash === null`, meaning every prior attempt for this row only ever failed) → the hash is set for the first time; this is NOT a "content changed" event, so no revision is recorded and no verification fields are reset (they're already at their creation defaults — there is nothing to reset); (3) **genuine content change** (`existing.contentHash` was already a real, non-null value and the new hash differs from it) → `processingStatus` resets to `"discovered"` **and** all four verification fields (`verificationMethod`/`verifiedBy`/`verifiedAt`/`verificationNotes`) reset to `null`, and a `srd_source_page_revisions` row is recorded (never `canonical_revisions`) — a verification record describes the *old* content snapshot and must never silently survive attached to genuinely different content.
+
+**Corrected this round, two further requirements independent of the three-branch structure above:** (a) **every branch representing a successful call unconditionally stamps `lastAttemptAt` and clears `lastError`** — there is no early-return short-circuit for "nothing changed," including the true no-op case (identical hash, no metadata differences, `lastError` already `null`); a prior revision's `if (existing.lastError === null) return existing;` early return violated the plan's own "every successful fetch stamps `lastAttemptAt`" requirement and is removed. (b) **every successful call also reconciles the current generated-manifest metadata — `corpusArea`, `sourceUrl`, and `discoveredFromPath` when supplied — onto the existing row**, independent of whether the content hash changed; `corpusArea` specifically can be legitimately corrected during Task 6's own iteration before its final snapshot converges, and a row must not keep an obsolete classification just because its content happens not to have changed since the last scan. **Metadata reconciliation and content revision are separate concepts**: correcting `corpusArea`/`sourceUrl`/`discoveredFromPath` alone, with an unchanged content hash, never itself calls `recordSourcePageRevision` — only case (3) above (a genuine content-hash change) does that. `recordSrdManifestDiscoveryFailure`'s existing-row branch performs the identical metadata reconciliation, since a fetch failure says nothing about whether the manifest's own metadata for that page is still correct — a run of consecutive failures must not leave a stale `corpusArea`/`sourceUrl`/`discoveredFromPath` on an otherwise-real row.
 
 **Migration risk:** Low — two new `CREATE TABLE IF NOT EXISTS` additions, no existing table touched.
 
@@ -860,6 +903,117 @@ test("upsertSrdManifestEntry clears a stale lastError on a successful re-fetch e
   assert.equal(afterRecovery.lastError, null, "a successful fetch — even one with an identical, unchanged hash — must clear a stale lastError from an earlier failed attempt");
 });
 
+test("two successful identical-hash fetches both advance lastAttemptAt — a true no-op on content is still a real, stamped fetch attempt", async () => {
+  const first = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "combat-rules",
+    sourceUrl: "https://www.d20srd.org/srd/combat/initiative.htm",
+    sourcePath: "/srd/combat/initiative.htm",
+    contentHash: "unchanging-hash",
+  });
+  assert.equal(first.lastError, null);
+
+  // A real, non-zero gap so two ISO timestamps captured in the same test
+  // run are guaranteed distinct rather than colliding on millisecond
+  // resolution.
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  const second = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "combat-rules",
+    sourceUrl: "https://www.d20srd.org/srd/combat/initiative.htm",
+    sourcePath: "/srd/combat/initiative.htm",
+    contentHash: "unchanging-hash",
+  });
+  assert.equal(second.contentHash, "unchanging-hash", "content genuinely did not change");
+  assert.notEqual(
+    second.lastAttemptAt,
+    first.lastAttemptAt,
+    "a true same-hash no-op is still a real successful fetch attempt and must advance lastAttemptAt, not just the first ever fetch of a page",
+  );
+
+  const history = storage.getSourcePageRevisionHistory(first.sourcePageKey);
+  assert.equal(history.length, 0, "two identical-hash fetches must never record a content revision — nothing about the content changed");
+});
+
+test("a corrected corpusArea reconciles onto an existing row on a same-hash re-fetch, without creating a false content revision", () => {
+  const original = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "monsters",
+    sourceUrl: "https://www.d20srd.org/srd/epic/feats.htm",
+    sourcePath: "/srd/epic/feats.htm",
+    contentHash: "epic-feats-content-hash",
+  });
+  assert.equal(original.corpusArea, "monsters", "seeded with a deliberately WRONG corpusArea, simulating a pre-convergence Task 6 classification that later gets corrected to 'epic'");
+
+  const corrected = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "epic",
+    sourceUrl: "https://www.d20srd.org/srd/epic/feats.htm",
+    sourcePath: "/srd/epic/feats.htm",
+    contentHash: "epic-feats-content-hash", // content itself is unchanged — only the manifest's classification of it was corrected
+  });
+  assert.equal(corrected.corpusArea, "epic", "a corrected corpusArea from the current generated manifest must reconcile onto the existing row");
+  assert.equal(corrected.contentHash, "epic-feats-content-hash");
+  assert.equal(corrected.processingStatus, original.processingStatus, "a metadata-only correction must not disturb processingStatus — that's governed solely by content-hash change");
+
+  const history = storage.getSourcePageRevisionHistory(original.sourcePageKey);
+  assert.equal(history.length, 0, "correcting corpusArea alone — with an unchanged content hash — must never record a content revision; metadata correction and content revision are separate concepts");
+});
+
+test("a corrected sourceUrl and discoveredFromPath also reconcile onto an existing row, independent of corpusArea", () => {
+  const original = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "spells",
+    sourceUrl: "https://www.d20srd.org/srd/spells/oldPathBeforeSiteReorg.htm",
+    sourcePath: "/srd/spells/fireball.htm",
+    discoveredFromPath: "/indexes/magicOverview.htm",
+    contentHash: "fireball-content-hash",
+  });
+  assert.equal(original.discoveredFromPath, "/indexes/magicOverview.htm");
+
+  const reconciled = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "spells",
+    sourceUrl: "https://www.d20srd.org/srd/spells/fireball.htm",
+    sourcePath: "/srd/spells/fireball.htm",
+    discoveredFromPath: "/indexes/spells.htm",
+    contentHash: "fireball-content-hash",
+  });
+  assert.equal(reconciled.sourceUrl, "https://www.d20srd.org/srd/spells/fireball.htm");
+  assert.equal(reconciled.discoveredFromPath, "/indexes/spells.htm");
+
+  const history = storage.getSourcePageRevisionHistory(original.sourcePageKey);
+  assert.equal(history.length, 0, "reconciling sourceUrl/discoveredFromPath with an unchanged content hash must never record a content revision");
+});
+
+test("recordSrdManifestDiscoveryFailure also reconciles corrected manifest metadata onto an existing row, even though the fetch itself failed", () => {
+  const original = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "monsters",
+    sourceUrl: "https://www.d20srd.org/srd/epic/monsters/abomination.htm",
+    sourcePath: "/srd/epic/monsters/abomination.htm",
+    contentHash: "abomination-content-hash",
+  });
+  assert.equal(original.corpusArea, "monsters");
+
+  const afterFailedRetryWithCorrectedMetadata = storage.recordSrdManifestDiscoveryFailure(
+    {
+      sourceId,
+      corpusArea: "epic",
+      sourceUrl: "https://www.d20srd.org/srd/epic/monsters/abomination.htm",
+      sourcePath: "/srd/epic/monsters/abomination.htm",
+    },
+    "HTTP 503",
+  );
+  assert.equal(
+    afterFailedRetryWithCorrectedMetadata.corpusArea,
+    "epic",
+    "a corrected corpusArea must reconcile onto the row even when the fetch itself failed — a fetch failure says nothing about whether the manifest's own metadata is still correct",
+  );
+  assert.equal(afterFailedRetryWithCorrectedMetadata.contentHash, "abomination-content-hash", "content hash from before the failure must be preserved — a failure never touches content state");
+});
+
 test("upsertSrdManifestEntry's first real content acquisition after prior fetch failures is NOT a content-changed event — no revision recorded", () => {
   const failedFirst = storage.recordSrdManifestDiscoveryFailure(
     {
@@ -1031,17 +1185,37 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
     }).returning().get();
   }
 
+  // Reconcile the CURRENT generated-manifest metadata onto the existing
+  // row on every successful call, independent of whether the content hash
+  // itself changed. corpusArea specifically can be legitimately corrected
+  // during Task 6's iteration before the final snapshot converges — a row
+  // must not keep an obsolete classification just because its content
+  // happens not to have changed since the last scan. This is metadata
+  // RECONCILIATION, a separate concept from a content REVISION: it is
+  // folded into every branch below via object spread, and never by itself
+  // triggers recordSourcePageRevision — only a genuine content-hash change
+  // does that (see the final branch).
+  const metadataPatch: Partial<typeof srdManifestEntries.$inferInsert> = {};
+  if (existing.corpusArea !== input.corpusArea) metadataPatch.corpusArea = input.corpusArea;
+  if (existing.sourceUrl !== input.sourceUrl) metadataPatch.sourceUrl = input.sourceUrl;
+  if (input.discoveredFromPath !== undefined && existing.discoveredFromPath !== input.discoveredFromPath) {
+    metadataPatch.discoveredFromPath = input.discoveredFromPath;
+  }
+
   const isFirstRealAcquisition = existing.contentHash === null;
   const hashChanged = !isFirstRealAcquisition && existing.contentHash !== input.contentHash;
 
   if (!isFirstRealAcquisition && !hashChanged) {
-    // True no-op: identical content to what's already recorded. Still
-    // clear any stale failure state left over from an earlier failed
-    // attempt that preceded this successful (re-)fetch — a fetch
-    // succeeding must never leave a previous fetch's error on the row.
-    if (existing.lastError === null) return existing;
+    // True no-op on CONTENT: identical hash to what's already recorded.
+    // This is still a real successful fetch attempt, so it ALWAYS stamps
+    // lastAttemptAt and clears any stale lastError — even when lastError
+    // was already null and even when metadataPatch is empty. A prior
+    // revision of this plan special-cased "nothing to update" as an early
+    // return; that silently violated the requirement that every
+    // successful fetch attempt is stamped, so there is no early return
+    // here at all — every successful call always writes.
     db.update(srdManifestEntries)
-      .set({ lastError: null, lastAttemptAt: now, updatedAt: now })
+      .set({ ...metadataPatch, lastError: null, lastAttemptAt: now, updatedAt: now })
       .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
       .run();
     return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
@@ -1056,7 +1230,7 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
     // revision here would be dishonest: nothing about real content changed,
     // real content simply arrived for the first time.
     db.update(srdManifestEntries)
-      .set({ contentHash: input.contentHash, lastError: null, lastAttemptAt: now, updatedAt: now })
+      .set({ ...metadataPatch, contentHash: input.contentHash, lastError: null, lastAttemptAt: now, updatedAt: now })
       .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
       .run();
     return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
@@ -1067,8 +1241,10 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
   // resets to "discovered" AND all four verification fields reset to
   // null — a verification record describes the OLD content snapshot and
   // must never silently survive attached to genuinely different content.
+  // Metadata reconciliation folds into this same update.
   db.update(srdManifestEntries)
     .set({
+      ...metadataPatch,
       contentHash: input.contentHash,
       processingStatus: "discovered",
       verificationMethod: null,
@@ -1136,8 +1312,23 @@ recordSrdManifestDiscoveryFailure(input: CreateSrdManifestEntryInput, errorMessa
     }).returning().get();
   }
 
+  // Even a failed attempt carries the CURRENT generated-manifest metadata —
+  // the caller always passes corpusArea/sourceUrl/discoveredFromPath from
+  // the live snapshot, not a cached value — so reconcile it onto the row
+  // here too. Otherwise a run of consecutive failures leaves a stale
+  // corpusArea/sourceUrl/discoveredFromPath sitting on an otherwise-real
+  // row merely because the newest request happened to fail rather than
+  // succeed; a fetch failure says nothing about whether the manifest's own
+  // metadata for this page is still correct.
+  const metadataPatch: Partial<typeof srdManifestEntries.$inferInsert> = {};
+  if (existing.corpusArea !== input.corpusArea) metadataPatch.corpusArea = input.corpusArea;
+  if (existing.sourceUrl !== input.sourceUrl) metadataPatch.sourceUrl = input.sourceUrl;
+  if (input.discoveredFromPath !== undefined && existing.discoveredFromPath !== input.discoveredFromPath) {
+    metadataPatch.discoveredFromPath = input.discoveredFromPath;
+  }
+
   db.update(srdManifestEntries)
-    .set({ lastError: errorMessage, lastAttemptAt: now, attemptCount: existing.attemptCount + 1, updatedAt: now })
+    .set({ ...metadataPatch, lastError: errorMessage, lastAttemptAt: now, attemptCount: existing.attemptCount + 1, updatedAt: now })
     .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
     .run();
   return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
@@ -1178,7 +1369,7 @@ Add imports for `srdManifestEntries`, `srdSourcePageRevisions`, types, `buildSou
 
 - [ ] **Step 5: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/srd-manifest-storage.test.ts` — expect 12/12 (8 from the original task + 2 from a prior review round's regression tests for revision-numbering and discoveredFromPath-on-failure + 2 added this round for stale-error-clearing and first-real-acquisition-is-not-a-revision).
+Run: `node --import tsx --test server/srd-manifest-storage.test.ts` — expect 16/16 (8 from the original task + 2 from a prior review round's regression tests for revision-numbering and discoveredFromPath-on-failure + 2 from a later round for stale-error-clearing and first-real-acquisition-is-not-a-revision + 4 added this round: lastAttemptAt-advances-on-a-true-no-op, corpusArea-reconciles-without-a-false-revision, sourceUrl/discoveredFromPath-reconcile, and metadata-reconciles-even-on-a-failed-attempt).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
@@ -1186,10 +1377,10 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add server/storage.ts server/srd-manifest-storage.test.ts
-git commit -m "feat: add srd_manifest_entries + srd_source_page_revisions CRUD (page-scoped, not canonical-entity-scoped, three-way upsert: insert/first-acquisition/genuine-change)"
+git commit -m "feat: add srd_manifest_entries + srd_source_page_revisions CRUD (page-scoped, three-way upsert: insert/first-acquisition/genuine-change, always-stamped attempts, metadata reconciliation separate from content revisions)"
 ```
 
-**Independent verification before Task 4 begins:** re-run tests fresh; confirm `upsertSrdManifestEntry`'s hash-change branch genuinely calls `this.recordSourcePageRevision` (not `this.recordRevision`, Phase 0/1's canonical-entity method) by reading the code, not just trusting a passing test; confirm `createSrdManifestEntry`'s `ruleset: "dnd35e"` literal is truly unconditional by reading the full method body; confirm by reading the code (not just the passing tests) that all three branches — true no-op, first-real-acquisition, genuine-change — set `lastError: null` and stamp `lastAttemptAt`, and that only the genuine-change branch touches the four verification fields.
+**Independent verification before Task 4 begins:** re-run tests fresh; confirm `upsertSrdManifestEntry`'s hash-change branch genuinely calls `this.recordSourcePageRevision` (not `this.recordRevision`, Phase 0/1's canonical-entity method) by reading the code, not just trusting a passing test; confirm `createSrdManifestEntry`'s `ruleset: "dnd35e"` literal is truly unconditional by reading the full method body; confirm by reading the code (not just the passing tests) that all three branches — true no-op, first-real-acquisition, genuine-change — set `lastError: null` and stamp `lastAttemptAt` unconditionally (no early return short-circuits a successful call), and that only the genuine-change branch touches the four verification fields; confirm `metadataPatch` construction is identical in shape between `upsertSrdManifestEntry` and `recordSrdManifestDiscoveryFailure`'s existing-row branches (both reconcile `corpusArea`/`sourceUrl`/`discoveredFromPath`, neither ever calls `recordSourcePageRevision` on its own).
 
 ---
 
@@ -2430,7 +2621,7 @@ git commit -m "feat: generate frozen leaf-page manifests for both sources (olimo
 
 `runSrdManifestDiscovery` accepts a list of `{sourceId, baseUrl, entries, concurrency?, delayMs?}` groups (one per real source) so both olimot's ~97 and `d20srd.org`'s ~1,560 real leaf pages run through the exact same pipeline code. **`concurrency` caps how many in-flight fetches a single source group runs at once** (default 5) — a real, considerate-citizen requirement given `d20srd.org`'s real scale is now ~1,560 pages against a small, non-CDN-fronted, volunteer-run site; olimot (jsDelivr, a real CDN built for exactly this kind of traffic) can reasonably use a higher default if desired, but this plan keeps both at the same conservative default rather than special-casing one source's politeness.
 
-**Corrected this round: a bare concurrency cap is not real pacing, and the prior revision's "considerate citizen" claim overstated what the code actually did.** A concurrency limit of 5 still fires a brand-new request the instant any of the 5 in-flight slots frees up — over a long run against ~1,560 pages that is still a tight, uninterrupted stream of requests, just capped in width rather than spread out in time. Two real additions close this gap: (1) **`delayMs`** (default 50ms, configurable per source group) — `runWithConcurrencyLimit` now staggers every request launched *beyond* the initial concurrency-limit batch by `delayMs`, so the pipeline maintains a real minimum gap between requests over the full run, not just a width cap; (2) **`fetchWithBackoff`** — every fetch (root or leaf, olimot or d20srd.org) goes through a wrapper that retries a `429`/`503` response, honoring a real `Retry-After` header when the server sends one, else backing off `2^attempt * 500`ms, up to 3 retries, before giving up and letting the normal failure path record it. Neither addition changes `discoverSourcePage`'s or `runSrdManifestDiscovery`'s success/failure semantics — they only change the real timing and resilience of the underlying fetches.
+**A bare concurrency cap is not real pacing, and per-worker independent sleeps are not real pacing either.** A concurrency limit of 5 still fires a brand-new request the instant any of the 5 in-flight slots frees up — over a long run against ~1,560 pages that is still a tight, uninterrupted stream of requests, just capped in width rather than spread out in time. **Corrected again this round: a per-worker `await sleep(delayMs)` before each request — this document's own prior design — still lets the initial concurrency-sized batch fire as a burst (every worker in that first batch sleeps independently and in parallel, so they all still start within the same instant), and does nothing to guarantee any two *later* starts are exactly `delayMs` apart either, since each worker's own sleep timer runs independently of every other worker's.** The fix is a real shared scheduler: `runWithConcurrencyLimit` now tracks one shared `nextAllowedStartAt` timestamp (module-local to a single call, not global mutable state) that every worker — including every worker in the initial batch — claims a slot from before it may start; claiming a slot is a synchronous read-then-advance against that shared timestamp (JavaScript's single-threaded execution guarantees no two claims can race), so real request **start** times across the entire source group are guaranteed at least `delayMs` apart, not just "requests beyond the first batch" and not just "each worker slept its own delayMs somewhere." The concurrency ceiling (`limit`) is still respected independently — the scheduler only controls when a new request may *start*, never how many may be in flight at once; with a real fetch that takes non-trivial time to complete, spacing starts by `delayMs` naturally keeps the in-flight count near or under `limit` as well. `delayMs` remains configurable per source group (default 50ms) — `d20srd.org`'s real call site uses this conservative default; olimot's real call site (jsDelivr, a real CDN built for exactly this kind of traffic) passes `delayMs: 0` explicitly, since a CDN needs no pacing the way a small volunteer-run site does. Separately, **`fetchWithBackoff`** — every fetch (root or leaf, olimot or d20srd.org) goes through a wrapper that retries a `429`/`503` response, honoring a real `Retry-After` header when the server sends one (parsing **both** legal formats: an integer delay-seconds value, and an HTTP-date value per RFC 7231 — the wait is computed as the real delta between that date and now, never assumed to be the seconds form), else backing off `2^attempt * 500`ms, up to 3 retries, before giving up and letting the normal failure path record it. None of these additions change `discoverSourcePage`'s or `runSrdManifestDiscovery`'s success/failure semantics — they only change the real timing and resilience of the underlying fetches.
 
 **Migration risk:** None.
 
@@ -2454,12 +2645,33 @@ import { storage } from "./storage";
 import type { CorpusArea, SrdManifestEntry } from "@shared/rules-registry/srd-manifest";
 
 /**
+ * Parses a real Retry-After header value in either legal RFC 7231 form:
+ * an integer delay-seconds value ("120"), or an HTTP-date value
+ * ("Wed, 21 Oct 2015 07:28:00 GMT"). Returns milliseconds to wait, or null
+ * if the header is absent or doesn't parse as either legal form — callers
+ * fall back to their own backoff schedule in that case, never to zero.
+ */
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return seconds >= 0 ? seconds * 1000 : null;
+  }
+  const parsedDateMs = Date.parse(trimmed);
+  if (Number.isNaN(parsedDateMs)) return null;
+  const deltaMs = parsedDateMs - Date.now();
+  return deltaMs > 0 ? deltaMs : 0;
+}
+
+/**
  * Retries a fetch on 429/503 responses, respecting a real Retry-After
- * header when the server sends one, else backing off exponentially
- * (500ms, 1000ms, 2000ms). Every other outcome (2xx, any 4xx other than
- * 429, any 5xx other than 503, or a thrown network error) returns/throws
- * immediately on the first attempt — this is politeness against
- * rate-limiting, not a general retry-everything policy.
+ * header when the server sends one — in either legal format — else
+ * backing off exponentially (500ms, 1000ms, 2000ms). Every other outcome
+ * (2xx, any 4xx other than 429, any 5xx other than 503, or a thrown
+ * network error) returns/throws immediately on the first attempt — this
+ * is politeness against rate-limiting, not a general retry-everything
+ * policy.
  */
 async function fetchWithBackoff(url: string, fetchImpl: typeof fetch, maxRetries = 3): Promise<Response> {
   let lastResponse: Response | undefined;
@@ -2468,9 +2680,8 @@ async function fetchWithBackoff(url: string, fetchImpl: typeof fetch, maxRetries
     if (res.status !== 429 && res.status !== 503) return res;
     lastResponse = res;
     if (attempt === maxRetries) break;
-    const retryAfterHeader = res.headers.get("Retry-After");
-    const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
-    const waitMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 2 ** attempt * 500;
+    const retryAfterMs = parseRetryAfterMs(res.headers.get("Retry-After"));
+    const waitMs = retryAfterMs !== null ? retryAfterMs : 2 ** attempt * 500;
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   return lastResponse!;
@@ -2513,15 +2724,26 @@ export async function discoverSourcePage(
   }
 }
 
-// Fixed-window concurrency limiter with an optional real time stagger — no
-// new dependency. Runs `items` through `worker` with at most `limit` in
-// flight at once; every request launched BEYOND the initial `limit`-sized
-// batch additionally waits `delayMs` before firing, so the pipeline keeps a
-// real minimum gap between requests over the full run rather than firing
-// the instant any of the `limit` slots frees up. Preserves per-item error
-// isolation (a rejected worker call still resolves via discoverSourcePage's
-// own try/catch, so this never needs its own try/catch — every call it
-// awaits already resolves, never rejects).
+// Fixed-window concurrency limiter with a real SHARED request-start
+// scheduler — no new dependency. Runs `items` through `worker` with at most
+// `limit` in flight at once, AND guarantees every worker's real start time
+// (across the whole call, including the initial `limit`-sized batch) is at
+// least `delayMs` after the previous worker's start time.
+//
+// Corrected this round: an earlier design had each worker independently
+// `await sleep(delayMs)` before starting once past the first `limit`
+// workers. That still let the initial `limit`-sized batch fire as a burst
+// (every one of those workers "slept" nothing and started immediately, in
+// parallel), and didn't actually guarantee any two *later* starts were
+// exactly `delayMs` apart either — each worker's sleep ran independently of
+// every other worker's, so their real wall-clock start times could still
+// drift arbitrarily close together. `claimStartSlot` fixes this with one
+// shared `nextAllowedStartAt` timestamp that every worker call — including
+// the very first `limit` of them — reads and advances before it may start.
+// The read-then-advance happens synchronously (no `await` in between), and
+// JavaScript's single-threaded execution model guarantees no two concurrent
+// calls can interleave between the read and the write, so this needs no
+// lock/mutex of its own to be race-free.
 async function runWithConcurrencyLimit<T, R>(
   items: T[],
   limit: number,
@@ -2530,12 +2752,21 @@ async function runWithConcurrencyLimit<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
+  let nextAllowedStartAt = 0; // shared across every call this invocation makes; 0 = no floor yet
+
+  async function claimStartSlot(): Promise<void> {
+    if (delayMs <= 0) return;
+    const now = Date.now();
+    const scheduledStart = Math.max(now, nextAllowedStartAt);
+    nextAllowedStartAt = scheduledStart + delayMs; // reserved synchronously, before any await below
+    const waitMs = scheduledStart - now;
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
   async function runNext(): Promise<void> {
     const index = nextIndex++;
     if (index >= items.length) return;
-    if (delayMs > 0 && index >= limit) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+    await claimStartSlot();
     results[index] = await worker(items[index]);
     return runNext();
   }
@@ -2621,7 +2852,7 @@ test("discoverSourcePage writes a hashed row on success", async () => {
 test("discoverSourcePage records a loud failure (never throws) on a 404", async () => {
   const entry = await discoverSourcePage(
     d20srdSourceId, "https://www.d20srd.org",
-    { corpusArea: "open-variants", sourcePath: "/indexes/does-not-exist.htm" },
+    { corpusArea: "open-variants", sourcePath: "/srd/variant/does-not-exist.htm" },
     fakeFetch404(),
   );
   assert.equal(entry.lastError, "HTTP 404");
@@ -2630,7 +2861,7 @@ test("discoverSourcePage records a loud failure (never throws) on a 404", async 
 test("discoverSourcePage records a loud failure (never throws) when fetch itself throws", async () => {
   const entry = await discoverSourcePage(
     d20srdSourceId, "https://www.d20srd.org",
-    { corpusArea: "core", sourcePath: "/indexes/network-error.htm" },
+    { corpusArea: "core", sourcePath: "/srd/network-error.htm" },
     fakeFetchThrows("ECONNRESET"),
   );
   assert.equal(entry.lastError, "ECONNRESET");
@@ -2643,10 +2874,10 @@ test("runSrdManifestDiscovery runs both sources through the same pipeline and ne
   };
   const result = await runSrdManifestDiscovery(
     [
-      { sourceId: olimotSourceId, baseUrl: "https://cdn.jsdelivr.net/gh/olimot/srd-v3.5@faab739.../",
+      { sourceId: olimotSourceId, baseUrl: "https://cdn.jsdelivr.net/gh/olimot/srd-v3.5@faab739.../", delayMs: 0,
         entries: [{ corpusArea: "spells", sourcePath: "spells/spells-a-b.html" }, { corpusArea: "spells", sourcePath: "spells/spells-c.html" }] },
-      { sourceId: d20srdSourceId, baseUrl: "https://www.d20srd.org",
-        entries: [{ corpusArea: "open-variants", sourcePath: "/indexes/variantRaces.htm" }] },
+      { sourceId: d20srdSourceId, baseUrl: "https://www.d20srd.org", delayMs: 0,
+        entries: [{ corpusArea: "open-variants", sourcePath: "/srd/variant/races/strongheart.htm" }] },
     ],
     mixedFetch,
   );
@@ -2684,6 +2915,32 @@ test("runSrdManifestDiscovery never runs more than the configured concurrency li
   assert.ok(maxInFlight <= 3, `expected at most 3 concurrent fetches, observed ${maxInFlight}`);
 });
 
+test("runSrdManifestDiscovery's delayMs stagger is a real SHARED scheduler — every request start is spaced out, including within the initial concurrency-sized batch, not just requests beyond it", async () => {
+  const startTimestamps: number[] = [];
+  const timestampingFetch: typeof fetch = async () => {
+    startTimestamps.push(Date.now());
+    return new Response("<html>ok</html>", { status: 200 });
+  };
+  const manyEntries = Array.from({ length: 8 }, (_, i) => ({
+    corpusArea: "spells" as const, sourcePath: `/srd/spells/pacing-test-${i}.htm`,
+  }));
+  const DELAY_MS = 20;
+  await runSrdManifestDiscovery(
+    [{ sourceId: d20srdSourceId, baseUrl: "https://www.d20srd.org", entries: manyEntries, concurrency: 5, delayMs: DELAY_MS }],
+    timestampingFetch,
+  );
+  assert.equal(startTimestamps.length, 8);
+  for (let i = 1; i < startTimestamps.length; i++) {
+    const gap = startTimestamps[i] - startTimestamps[i - 1];
+    assert.ok(
+      gap >= DELAY_MS - 5, // small tolerance for real timer jitter, never for the design itself
+      `request ${i} started only ${gap}ms after request ${i - 1} (expected at least ~${DELAY_MS}ms) — starts must be ` +
+      `globally staggered by a shared scheduler, including within the initial concurrency-sized batch of 5, not merely ` +
+      `sleeping independently inside each worker (which would let the first 5 requests fire as a burst)`,
+    );
+  }
+});
+
 test("discoverSourcePage retries a 429 response via backoff and succeeds once the server recovers", async () => {
   let callCount = 0;
   const flakyRateLimitedFetch: typeof fetch = async () => {
@@ -2693,7 +2950,7 @@ test("discoverSourcePage retries a 429 response via backoff and succeeds once th
   };
   const entry = await discoverSourcePage(
     d20srdSourceId, "https://www.d20srd.org",
-    { corpusArea: "core", sourcePath: "/indexes/rate-limited-then-ok.htm" },
+    { corpusArea: "core", sourcePath: "/srd/rateLimitedThenOk.htm" },
     flakyRateLimitedFetch,
   );
   assert.equal(callCount, 3, "must have retried the 429 twice before the third attempt succeeded");
@@ -2701,11 +2958,28 @@ test("discoverSourcePage retries a 429 response via backoff and succeeds once th
   assert.equal(entry.processingStatus, "hashed");
 });
 
+test("discoverSourcePage's backoff parses an HTTP-date Retry-After header, not just the integer-seconds form", async () => {
+  let callCount = 0;
+  const httpDateRetryAfter = new Date(Date.now() + 10).toUTCString();
+  const dateFormRateLimitedFetch: typeof fetch = async () => {
+    callCount++;
+    if (callCount < 2) return new Response("slow down", { status: 429, headers: { "Retry-After": httpDateRetryAfter } });
+    return new Response("<html>ok</html>", { status: 200 });
+  };
+  const entry = await discoverSourcePage(
+    d20srdSourceId, "https://www.d20srd.org",
+    { corpusArea: "core", sourcePath: "/srd/rateLimitedHttpDateForm.htm" },
+    dateFormRateLimitedFetch,
+  );
+  assert.equal(callCount, 2, "must have retried once, honoring the HTTP-date Retry-After form, before the second attempt succeeded");
+  assert.equal(entry.lastError, null);
+});
+
 test("discoverSourcePage records a real failure (never throws) after a 429 that never recovers within the retry budget", async () => {
   const alwaysRateLimitedFetch: typeof fetch = async () => new Response("slow down", { status: 429, headers: { "Retry-After": "0" } });
   const entry = await discoverSourcePage(
     d20srdSourceId, "https://www.d20srd.org",
-    { corpusArea: "core", sourcePath: "/indexes/always-rate-limited.htm" },
+    { corpusArea: "core", sourcePath: "/srd/alwaysRateLimited.htm" },
     alwaysRateLimitedFetch,
   );
   assert.equal(entry.lastError, "HTTP 429");
@@ -2739,7 +3013,7 @@ after(() => {
 
 - [ ] **Step 3: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/srd-manifest-discovery.test.ts` — expect 9/9 (6 from the original task + 3 added this round: 429-retry-then-succeed, 429-exhausts-retries-and-fails-loudly, processingStatus-never-regressed).
+Run: `node --import tsx --test server/srd-manifest-discovery.test.ts` — expect 11/11 (6 from the original task + 3 from a prior round: 429-retry-then-succeed, 429-exhausts-retries-and-fails-loudly, processingStatus-never-regressed + 2 added this round: the shared-scheduler global-stagger test, and the HTTP-date-form Retry-After test).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
@@ -2747,10 +3021,10 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add server/srd-manifest-discovery.ts server/srd-manifest-discovery.test.ts
-git commit -m "feat: add discovery pipeline for both sources' full leaf-page lists, concurrency-capped and time-staggered, 429/503 backoff, never regresses an already-advanced processingStatus"
+git commit -m "feat: add discovery pipeline for both sources' full leaf-page lists, concurrency-capped with a real shared request-start scheduler, 429/503 backoff (integer-seconds and HTTP-date Retry-After), never regresses an already-advanced processingStatus"
 ```
 
-**Independent verification before Task 8 begins:** re-run tests fresh; grep the test file to confirm no test omits `fetchImpl` and falls through to the real network default; confirm `discoverSourcePage` never calls `recordRevision`/`canonical-id.ts` anywhere (a structural check, same discipline as Task 2's gate); confirm the concurrency test genuinely exercises the limiter by re-reading `runWithConcurrencyLimit`'s implementation, not just trusting the test's own timing-based assertion; confirm by reading the code that `runWithConcurrencyLimit`'s `delayMs` stagger only applies beyond the initial `limit`-sized batch (not to every request), and that `fetchWithBackoff` is invoked for every fetch `discoverSourcePage` makes, not just some paths.
+**Independent verification before Task 8 begins:** re-run tests fresh; grep the test file to confirm no test omits `fetchImpl` and falls through to the real network default, and that no fixture path uses `/indexes/...` (grep for it directly — zero hits expected, only `/srd/...` leaf paths); confirm `discoverSourcePage` never calls `recordRevision`/`canonical-id.ts` anywhere (a structural check, same discipline as Task 2's gate); confirm the concurrency test genuinely exercises the limiter by re-reading `runWithConcurrencyLimit`'s implementation, not just trusting the test's own timing-based assertion; confirm by reading the code that `claimStartSlot`'s read-then-advance of `nextAllowedStartAt` has no `await` between the read and the write (the property that makes it race-free under JavaScript's single-threaded model), that it applies to every worker call including the initial `limit`-sized batch (not just requests beyond it), and that `fetchWithBackoff`/`parseRetryAfterMs` is invoked for every fetch `discoverSourcePage` makes and correctly handles both the integer-seconds and HTTP-date `Retry-After` forms.
 
 ---
 
@@ -2942,7 +3216,7 @@ git commit -m "feat: add source-page verification write path, prove full page-pr
 - Create: `docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md`
 
 **Interfaces:**
-- Consumes: `runSrdManifestDiscovery` (Task 7), `SRD_MANIFEST_SOURCE_OLIMOT`/`SRD_MANIFEST_SOURCE_D20SRD`/`SRD_MANIFEST_ROOTS_D20SRD`/`crawlD20srdClosure`/`assertClosureExhaustive` (Task 6 — the completeness gate reuses the exact same closure implementation and the same fail-closed exhaustiveness gate Task 6's generation script uses, never a second parallel one), `storage.getSourcePageCoverageReport`/`findDuplicateSourcePages` (Task 4), the three real registered `rule_sources` rows (Task 1).
+- Consumes: `runSrdManifestDiscovery` (Task 7), `SRD_MANIFEST_SOURCE_OLIMOT`/`SRD_MANIFEST_SOURCE_D20SRD`/`SRD_MANIFEST_ROOTS_D20SRD`/`crawlD20srdClosure`/`assertClosureExhaustive` (Task 6 — the completeness gate reuses the exact same closure implementation and the same fail-closed exhaustiveness gate Task 6's generation script uses, never a second parallel one), `storage.getSourcePageCoverageReport`/`findDuplicateSourcePages` (Task 4), the three real registered `rule_sources` rows and `storage.recordSourceScanRevision` (Task 1 — called exactly once here, after both gates pass, with the real UTC timestamp of this run; never at registration time, never with a hardcoded date).
 
 **Expected behavior:** A real run against both pinned sources' full real leaf-page lists (~97 olimot + the real closure-crawled d20srd.org count), followed by two **blocking** completeness gates — the pinned-tree diff for the git-hosted mirror, and a fresh re-run of `crawlD20srdClosure` against the live site, diffed against the committed generated snapshot. **Corrected this round: the fresh live crawl must itself pass `assertClosureExhaustive` before it is trusted for diffing** — a fresh re-crawl that had its own fetch failures cannot be used to certify completeness, since a failed page during the re-crawl could mask a real discrepancy just as easily as it could during generation. **Corrected this round: the diff itself now compares more than `sourcePath` sets.** For every path present in both the committed snapshot and the fresh crawl, `corpusArea` is also compared — a classification mismatch is a real, blocking finding (it would mean `classifyD20srdCorpusArea`'s deterministic rules disagree with themselves between generation time and acceptance time, which should be structurally impossible for a pure function but is worth catching if it ever isn't). `discoveredFromPath` is compared too, but reported **separately and non-blockingly** — a page legitimately reachable from more than one root can have its recorded originating root shift between crawl runs purely from harmless traversal-order variation (e.g. dictionary/object key iteration order across two different real crawl executions), and treating that as a completion-blocking failure would produce false alarms unrelated to real content drift. Path additions, path removals, and classification mismatches remain blocking; `discoveredFromPath` mismatches are logged in the report but never block completion. Both blocking gates must pass with zero discrepancy before this task's acceptance report can be written; a non-zero diff on either blocking gate is a real site-drift finding that must be investigated, reconciled (regenerate the affected snapshot, re-run discovery, re-run both gates), and resolved — never merely logged as informational. **Before Step 1, re-confirm the fetch strategy from wherever this task actually executes** — this plan's "Fetch Strategy Verification" section confirmed Node `fetch()` works from the local dev environment; the VPS is a different network, and a wave of failures here should first be diagnosed as a possible network-strategy issue, not silently accepted as "the real coverage number." **Zero game-rule content is stored anywhere, regardless of scale.**
 
@@ -2972,8 +3246,13 @@ const hypertextD20 = storage.getRuleSource("dnd35e-srd-hypertext-d20");
 if (!olimot || !hypertextD20) throw new Error("Run Task 1 Step 6 first.");
 
 const result = await runSrdManifestDiscovery([
-  { sourceId: olimot.id, baseUrl: `https://cdn.jsdelivr.net/gh/olimot/srd-v3.5@${olimot.pinnedRevision}/`, entries: SRD_MANIFEST_SOURCE_OLIMOT, concurrency: 8 },
-  { sourceId: hypertextD20.id, baseUrl: "https://www.d20srd.org", entries: SRD_MANIFEST_SOURCE_D20SRD, concurrency: 5 },
+  // jsDelivr is a real CDN built for exactly this kind of traffic — no
+  // pacing needed, delayMs: 0 explicitly (not just an omitted default).
+  { sourceId: olimot.id, baseUrl: `https://cdn.jsdelivr.net/gh/olimot/srd-v3.5@${olimot.pinnedRevision}/`, entries: SRD_MANIFEST_SOURCE_OLIMOT, concurrency: 8, delayMs: 0 },
+  // d20srd.org is a small, volunteer-run, non-CDN-fronted site — use the
+  // conservative paced default (50ms, shared-scheduler-enforced across the
+  // whole run, not just a per-worker sleep).
+  { sourceId: hypertextD20.id, baseUrl: "https://www.d20srd.org", entries: SRD_MANIFEST_SOURCE_D20SRD, concurrency: 5, delayMs: 50 },
 ]);
 
 console.log("Discovery run result:", result);
@@ -3080,7 +3359,19 @@ console.log("d20srd.org completeness gate PASSED: committed snapshot and fresh l
 
 If the olimot gate fails, the same discipline applies: regenerate `server/srd-manifest-snapshot-olimot.generated.ts` (re-run Task 6's script), re-run discovery, re-run both gates — never proceed to Step 4 with either gate red.
 
-- [ ] **Step 4: Write the acceptance report in the literal evidence format specified**
+- [ ] **Step 4: Stamp the real scan revision on `dnd35e-srd-hypertext-d20`, now that both gates have passed**
+
+`d20srd.org` is a live, mutable site — its `pinnedRevision` was left `null` at registration (Task 1) precisely because there was no real scan to pin yet. Now that both completeness gates in Step 3 have passed cleanly, capture the real UTC timestamp of *this* completed, gate-passing scan and stamp it via the internal-only `recordSourceScanRevision` method (Task 1) — never a hardcoded date, never the date this plan was authored, and never called from any HTTP route:
+
+```ts
+const scanCompletedAt = new Date().toISOString(); // the REAL wall-clock time this gate-passing scan finished
+storage.recordSourceScanRevision("dnd35e-srd-hypertext-d20", `live-scan-${scanCompletedAt}`);
+console.log(`Stamped dnd35e-srd-hypertext-d20.pinnedRevision = "live-scan-${scanCompletedAt}"`);
+```
+
+Record this exact `scanCompletedAt` value — the real one your run actually produces, not a copy-pasted example — for use in Step 5's acceptance report; the report and the stamped `pinnedRevision` must carry the identical timestamp, since they're describing the same real event. This timestamp is an observation/snapshot label on the source row, not a claim that `d20srd.org` became immutable — the real drift evidence remains the per-page content hashes already recorded in `srd_manifest_entries` by Step 2's scan.
+
+- [ ] **Step 5: Write the acceptance report in the literal evidence format specified**
 
 `docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md`, written only after both completeness gates pass cleanly (possibly after one or more investigate-regenerate-rerun cycles per Step 3), containing at minimum:
 
@@ -3088,16 +3379,16 @@ If the olimot gate fails, the same discipline applies: regenerate `server/srd-ma
 discovered N source pages → accounted for N → fetch failures X → changed X → duplicates X
 ```
 
-with **real numbers from the final, gate-passing run's output** — N in the low thousands (≈1,657+ = ~97 olimot + the real closure-crawled d20srd.org count, exact numbers from the real generated snapshots, not this plan's estimate), broken down per source, per corpus area, and per processing status (`byProcessingStatus`), plus the specific `sourcePath`+`lastError` for every failure (never just a bare count), plus both Step 3 gate results (both must read PASSED — meaning zero blocking disagreement: zero `pathAdditions`, zero `pathRemovals`, zero `classificationMismatches` — in the version that ships in this report; if the report is being written after a regenerate-and-rerun cycle, say so explicitly, e.g. "gate failed on first attempt with N drifted paths, reconciled by regenerating the snapshot, second attempt passed clean"). If the final passing run's `discoveredFromMismatches` was non-empty, report its count and the specific paths explicitly, labeled informational/non-blocking — do not omit it just because it didn't block completion. `changed X` is legitimately `0`/not-yet-applicable on a first-ever scan — state that explicitly rather than omitting the field. **The report must never describe this as "X canonical rules verified" or similar — every count in it is a source-page count**, matching `reportScope: "source-page-coverage"`.
+with **real numbers from the final, gate-passing run's output** — N in the low thousands (≈1,657+ = ~97 olimot + the real closure-crawled d20srd.org count, exact numbers from the real generated snapshots, not this plan's estimate), broken down per source, per corpus area, and per processing status (`byProcessingStatus`), plus the specific `sourcePath`+`lastError` for every failure (never just a bare count), plus both Step 3 gate results (both must read PASSED — meaning zero blocking disagreement: zero `pathAdditions`, zero `pathRemovals`, zero `classificationMismatches` — in the version that ships in this report; if the report is being written after a regenerate-and-rerun cycle, say so explicitly, e.g. "gate failed on first attempt with N drifted paths, reconciled by regenerating the snapshot, second attempt passed clean"). If the final passing run's `discoveredFromMismatches` was non-empty, report its count and the specific paths explicitly, labeled informational/non-blocking — do not omit it just because it didn't block completion. `changed X` is legitimately `0`/not-yet-applicable on a first-ever scan — state that explicitly rather than omitting the field. **The report must never describe this as "X canonical rules verified" or similar — every count in it is a source-page count**, matching `reportScope: "source-page-coverage"`. **Also required this round:** report the exact `dnd35e-srd-hypertext-d20.pinnedRevision` value Step 4 stamped — the identical `live-scan-<realUTCtimestamp>` string, byte-for-byte, not a re-derived or re-rounded copy — as explicit confirmation that the source row's observation label and this report describe the same real completed scan, not two different moments.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md
-git commit -m "docs: capture real SRD manifest discovery scan and both completeness-gate results (real leaf-page scale)"
+git commit -m "docs: capture real SRD manifest discovery scan, both completeness-gate results, and the real stamped scan-revision timestamp (real leaf-page scale)"
 ```
 
-**Independent verification before Phase 2A is considered complete:** re-run the full test suite, typecheck, and build fresh; confirm the acceptance report's `discovered` count equals `SRD_MANIFEST_SOURCE_OLIMOT.length + SRD_MANIFEST_SOURCE_D20SRD.length` exactly (both real, generated numbers, not the plan's ~1,560 estimate); confirm zero rows anywhere in `srd_manifest_entries` reached `"parsed"` or `"source_verified"` from the real scan itself (those values must only exist from Task 8's deliberate sample row) — the concrete proof that Task 9 stayed within page-level discovery and never silently claimed entity-level progress it didn't earn; confirm the coverage report's `reportScope` field is present and correct in the real captured output; confirm by reading the shipped report that both blocking gate results explicitly show zero `pathAdditions`/`pathRemovals`/`classificationMismatches`, and that any non-zero `discoveredFromMismatches` is disclosed rather than silently dropped; confirm the fresh live crawl used for the d20srd.org gate genuinely called `assertClosureExhaustive` before diffing, by reading the executed code, not just trusting a PASSED log line.
+**Independent verification before Phase 2A is considered complete:** re-run the full test suite, typecheck, and build fresh; confirm the acceptance report's `discovered` count equals `SRD_MANIFEST_SOURCE_OLIMOT.length + SRD_MANIFEST_SOURCE_D20SRD.length` exactly (both real, generated numbers, not the plan's ~1,560 estimate); confirm zero rows anywhere in `srd_manifest_entries` reached `"parsed"` or `"source_verified"` from the real scan itself (those values must only exist from Task 8's deliberate sample row) — the concrete proof that Task 9 stayed within page-level discovery and never silently claimed entity-level progress it didn't earn; confirm the coverage report's `reportScope` field is present and correct in the real captured output; confirm by reading the shipped report that both blocking gate results explicitly show zero `pathAdditions`/`pathRemovals`/`classificationMismatches`, and that any non-zero `discoveredFromMismatches` is disclosed rather than silently dropped; confirm the fresh live crawl used for the d20srd.org gate genuinely called `assertClosureExhaustive` before diffing, by reading the executed code, not just trusting a PASSED log line; confirm `dnd35e-srd-hypertext-d20.pinnedRevision` in the real dev database is no longer `null` and matches the report's stated value exactly, and confirm — by grepping the entire diff — that `recordSourceScanRevision` is called from nowhere except this one real Step 4 invocation (never at registration time, never from a route, never with a hardcoded literal date).
 
 ---
 
