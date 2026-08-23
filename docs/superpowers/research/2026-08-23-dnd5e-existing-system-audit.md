@@ -14,6 +14,8 @@
 - `[OFFICIAL SOURCE]`, `[DERIVED SOURCE]`, and `[SECONDARY SOURCE]` are reserved for the companion source-research reports. This repository audit does not use external rules text to classify an implementation as mechanically correct.
 - `[INFERENCE]` is an engineering conclusion drawn from stated repository facts.
 - `[OPEN QUESTION]` identifies a decision or fact the frozen repository cannot establish.
+- `[AUDIT METHOD]` records how the repository inspection was performed; it is not a product fact.
+- `[EXECUTION ATTESTATION]` records what this documentation-only task did or did not change.
 
 Line references in this report refer to the frozen basis above. They are evidence coordinates, not promises that the same lines will exist after the parallel 3.5e work lands.
 
@@ -31,7 +33,7 @@ Line references in this report refer to the frozen basis above. They are evidenc
 
 ## Audit method and repository coverage
 
-`[REPOSITORY FACT]` The audit searched `shared/`, `server/`, `client/src/`, migrations, tests, and `docs/superpowers/` for ruleset IDs and for indirect mechanics vocabulary including proficiency, saves, rests, attacks, spells, conditions, advancement, compendium, canonical sources, prompts, and campaign source enablement. More than 1,400 textual matches were triaged; filenames that did not mention 5e were included.
+`[AUDIT METHOD]` The audit searched `shared/`, `server/`, `client/src/`, migrations, tests, and `docs/superpowers/` for ruleset IDs and for indirect mechanics vocabulary including proficiency, saves, rests, attacks, spells, conditions, advancement, compendium, canonical sources, prompts, and campaign source enablement. More than 1,400 textual matches were triaged; filenames that did not mention 5e were included.
 
 `[REPOSITORY FACT]` Baseline verification on the frozen worktree completed before documentation work:
 
@@ -60,7 +62,9 @@ git status        clean
 
 ## Ruleset identity and campaign ownership
 
-`[REPOSITORY FACT]` `RulesetId` in `shared/rulesets.ts` contains exactly `"dnd5e" | "dnd35e"`. The `RULESETS` registry supplies one 5e label and one 3.5e label. Ravenloft and Eberron setting descriptors both declare `baseRuleset: "dnd5e"`; neither expresses an edition generation.
+`[REPOSITORY FACT]` `RulesetId` in `shared/rulesets.ts:14-20` is a six-value product/catalog union: `dnd5e`, `dnd35e`, `ravenloft`, `eberron`, `vampire-dark-fantasy`, and `post-apocalyptic`. Only `dnd5e` and `dnd35e` are currently marked mechanically available, and `createCampaignFormSchema` permits those two. Ravenloft and Eberron are coming-soon catalogue entries whose descriptors declare `baseRuleset: "dnd5e"`; neither expresses a 5e generation.
+
+`[INFERENCE]` Future code should distinguish a mechanics-selectable ID from the broader product/catalog ID. A coming-soon setting ID may resolve presentation metadata or an explicit base-ruleset relationship, but it must never be accepted directly as a mechanics evaluator key.
 
 `[REPOSITORY FACT]` `campaigns.ruleset` is a text column with default `dnd5e`. The insert schema accepts only `dnd5e` and `dnd35e`. `server/storage.ts:423-437` also supplies `dnd5e` while normalizing older rows.
 
@@ -75,6 +79,8 @@ git status        clean
 ## Character model and character creation
 
 `[REPOSITORY FACT]` Character rows in `shared/schema.ts:307-350` store free-text race and class fields, six ability scores, raw armor class, damage dice, proficiency strings, and an untyped `characterData` JSON object. They have no ruleset ID, SRD generation, canonical class/species/background reference, source revision, or conversion provenance.
+
+`[REPOSITORY FACT]` The same rows require a legacy `visitorId` and allow nullable `userId` (`shared/schema.ts:307-313`). Character authorization checks in `server/routes.ts` are not uniform: some compare only `visitorId`, while others also accept `character.userId === req.user?.id` (for example `server/routes.ts:2647-2688`). `[INFERENCE]` Conversion cannot treat “Character Owner” as already normalized; account linking, anonymous ownership, orphaning, merge, and transfer need an explicit authority model first.
 
 `[REPOSITORY FACT]` Server character creation limits the class list through the campaign ruleset (`server/routes.ts:2435-2457`). `shared/classes.ts` contains a conventional 5e name roster and default hit-die/proficiency data but does not distinguish 2014 from revised progression. Only the 3.5 path has a structured race registry (`shared/races.ts`). The 5e path remains free text.
 
@@ -159,7 +165,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 
 ## AI / DM prompt and intent audit
 
-`[REPOSITORY FACT]` `server/dm-engine.ts:122-140` gives the model only the raw campaign string (`Ruleset: ${campaign.ruleset}`), alongside narrative guidance. It does not supply a 2014/revised generation, selected source IDs, source revisions, canonical spell/item/monster definitions, or an engine capability map.
+`[REPOSITORY FACT]` `server/dm-engine.ts:122-159` supplies campaign settings, homebrew text, currencies, party identity, world state/memory, and authoritative inventory context. Its only ruleset-specific field is the raw campaign string (`Ruleset: ${campaign.ruleset}`). It does not supply a 2014/revised generation, selected source IDs, source revisions, canonical spell/item/monster definitions, or an engine capability map.
 
 `[REPOSITORY FACT]` The same prompt describes generic ability checks with DCs bounded from 5 to 25 and supplies structured tags for checks, combat start, and attacks (`server/dm-engine.ts:189-219`). It does not contain a complete, generation-specific account of advantage, exhaustion, rests, spell preparation, origin construction, conditions, or revised action terminology.
 
@@ -186,6 +192,12 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 
 `[INFERENCE]` Keep projection adapters, but require an exact ruleset ID and return an explicit unsupported state when an adapter is absent. The client may display server-computed facts; it must not become a second rules engine with divergent 2014/2024 formulas.
 
+## Multiplayer publication and replay boundary
+
+`[REPOSITORY FACT]` `server/routes.ts:120-140` keeps connected clients in an in-memory `Map<number, Set<WebSocket>>` and sends broadcasts directly. The frozen schema/audit found no durable transactional outbox that commits state and publication intent together.
+
+`[INFERENCE]` Multi-generation conversion and state-changing rules work cannot assume an “established outbox.” A durable versioned event/outbox prerequisite must prove commit-before-broadcast, retry after send failure, duplicate delivery, reconnect/catch-up, ordering, and idempotent client projection. Existing direct broadcasts remain a compatibility surface to revalidate, not evidence of atomic multiplayer delivery.
+
 ## Existing canonical-rules architecture
 
 ### Generic pieces already present
@@ -204,7 +216,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 
 `[REPOSITORY FACT]` The `all_official` source-enablement branch selects applicable same-ruleset records without independently testing the stored provenance/license role. The current type lacks an explicit `authoritative_source` versus `derived_transport` campaign-selectability boundary.
 
-`[INFERENCE]` Add an explicit source role and fail-closed `campaignSelectable` policy. A derived JSON transport can be valid ingestion input without becoming a user-selectable rules source. “Official” should be derived from verified provenance policy, not a preset name and a hopeful expression.
+`[INFERENCE]` Add an explicit source role and fail-closed `campaignSelectable` policy. Selection must require the exact mechanical ruleset, permitted role, verified authenticity and integrity, semantic reconciliation, an affirmative segment-scoped `verified_open` rights decision, and immutable license/obligation evidence. A derived JSON transport can be valid ingestion input without becoming a user-selectable rules source. “Official” proves publisher provenance, not openness; public-but-closed Basic Rules material is the obvious counterexample.
 
 ### Phase 2A status
 
@@ -220,7 +232,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 
 | File / area | Function, type, or data | Current behavior and classification | Risk and future disposition |
 |---|---|---|---|
-| `shared/rulesets.ts` | `RulesetId`, `RULESETS`, `getRuleset` | `[REPOSITORY FACT]` One 5e ID; unknown values fall back to it. | `[INFERENCE]` Add explicit generation IDs, keep legacy identity non-selectable, and fail closed. |
+| `shared/rulesets.ts` | `RulesetId`, `RULESETS`, `getRuleset` | `[REPOSITORY FACT]` Six catalogue IDs but only one mechanically active 5e identity; unknown values fall back to it. | `[INFERENCE]` Split catalogue from mechanical identity, add explicit generation IDs, keep legacy identity non-selectable, and fail closed. |
 | `shared/schema.ts` | `campaigns.ruleset`, campaign insert enum | `[REPOSITORY FACT]` Defaults/validates bare `dnd5e`. | `[INFERENCE]` Additive migration with audit provenance; never bulk reinterpret silently. |
 | `shared/schema.ts` | `characters` | `[REPOSITORY FACT]` No ruleset or canonical references; substantial free text/JSON. | `[INFERENCE]` Add provenance without rewriting player-owned fields. |
 | `shared/schema.ts` | roll/encounter/effect tables | `[REPOSITORY FACT]` Useful server-state/audit structures; no immutable ruleset evaluator revision on historical events. | `[INFERENCE]` Add rules snapshot/evaluator identity for replay. |
@@ -234,7 +246,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 | `server/leveling.ts` | XP, level, hit dice, ASI, awards | `[REPOSITORY FACT]` 5e-shaped fallback plus custom fixed awards. | `[INFERENCE]` Version progression content and separate award policy. |
 | `server/mechanics-tags.ts` | AI intent schemas | `[REPOSITORY FACT]` Bounded proposals for checks/combat/NPC stats. | `[INFERENCE]` Extend with ruleset-qualified canonical refs; never accept authoritative totals. |
 | `server/mechanics-resolver.ts` | resolution | `[REPOSITORY FACT]` Server retrieves state, adjudicates, logs. | `[INFERENCE]` This is the primary dispatch seam for edition-specific evaluators. |
-| `server/dm-engine.ts` | system prompt/tag guidance | `[REPOSITORY FACT]` Sends only raw `dnd5e`, no generation/source/revision context. | `[INFERENCE]` Feed pre-resolved context and capability declarations; keep precedence out of the model. |
+| `server/dm-engine.ts` | system prompt/tag guidance | `[REPOSITORY FACT]` Sends rich campaign/state context, but only raw `dnd5e` as ruleset-specific context and no generation/source/revision capability contract. | `[INFERENCE]` Feed pre-resolved context and capability declarations; keep precedence out of the model. |
 | `server/compendium.ts` | source config/importer | `[REPOSITORY FACT]` Imports both eras from mutable derived transport; inline provenance; mixed ruleset. | `[INFERENCE]` Snapshot immutably, connect to canonical sources, preserve legacy keys. |
 | `server/compendium-routes.ts` | public catalogue | `[REPOSITORY FACT]` Optional ruleset/edition filters; not campaign-source-authoritative. | `[INFERENCE]` Require server-resolved campaign/source scope for campaign use. |
 | `client/src/lib/rulesAdapters/*` | rules adapter registry | `[REPOSITORY FACT]` Only 3.5 exists and is the fallback. | `[INFERENCE]` Exact lookup, no fallback; add generation-specific display adapters later. |
@@ -250,7 +262,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 `[INFERENCE]`
 
 - Campaign-owned ruleset selection as the root authority boundary.
-- AI intent tags, server validation, server dice, state transitions, idempotence, and append-only roll/event logs.
+- AI intent tags, server validation, server dice, state-transition/idempotency seams, and persisted roll audit records.
 - `rule_sources`, explicit provenance/license fields, supersession, source verification, and campaign source enablement.
 - Canonical IDs namespaced by exact ruleset, immutable canonical revision records, and separate ingestion versus automation status.
 - The rule-adapter interface shape for nullable presentation projections backed by server saves.
@@ -264,7 +276,7 @@ Every group is assigned `ruleset: "dnd5e"`. Each is labelled with an `edition`, 
 - All “non-3.5 means 5e” fallbacks must become explicit registry lookups with unsupported-state errors.
 - Canonical entities and character/item references need exact ruleset/source/revision provenance.
 - The legacy item compendium must join the canonical source resolver rather than remain a second source-control plane.
-- Source records need authoritative-original versus derived-transport roles and an explicit campaign-selectability policy.
+- Source records need authoritative-original versus derived-transport roles, separate authenticity/integrity/semantic checks, affirmative segment-scoped `verified_open` rights plus immutable license/obligation evidence, and an explicit campaign-selectability policy.
 - AI context must include the selected generation, enabled source snapshot, and deterministic capability set.
 - Rule primitives such as condition and action identifiers must be scoped or profiled by ruleset where their semantics differ.
 
@@ -326,10 +338,10 @@ Every item in D carries: **REVALIDATE AGAINST LATEST production-live-base BEFORE
 - `[OPEN QUESTION]` Should a campaign be permanently locked to its initial ruleset, or may an owner begin an explicit versioned conversion workflow after all affected character owners review it?
 - `[OPEN QUESTION]` Is mixed legacy/revised content ever a supported campaign policy? If so, which rule evaluator wins for same-name content? No default hybrid policy should be inferred.
 - `[OPEN QUESTION]` Which checked-in Phase 2A manifest, snapshot, and verification interfaces will actually exist after Claude's parallel work lands?
-- `[OPEN QUESTION]` Where should immutable source bytes live: repository fixtures, object storage, or an external evidence store? The answer must preserve checksums, licensing, rollback, and reproducibility.
+- `[OPEN QUESTION]` Will landed Phase 2A provide an immutable byte store with the required hash, retention, reference, and backup semantics? If not, the companion design/plan specifies a content-addressed SQLite BLOB fallback; production backup/restore still needs separate verification.
 - `[OPEN QUESTION]` Which custom DMOS behaviors—cinematic bonuses, NPC bounds, fixed XP awards, 0-HP policy—are intentional product rules versus temporary scaffolding?
 - `[OPEN QUESTION]` What production-safe remediation sequence will address the 3.5 adapter fallback and attack-bonus-as-damage defects without changing ongoing campaign outcomes unexpectedly?
 
 ## Non-implementation confirmation
 
-`[REPOSITORY FACT]` This audit changed only this documentation file. It did not modify ruleset IDs, schemas, migrations, storage, routes, compendium data, source registration, prompts, UI, campaigns, characters, tests, deployment state, the VPS, or `production-live-base`.
+`[EXECUTION ATTESTATION]` This audit changed only documentation. It did not modify ruleset IDs, schemas, migrations, storage, routes, compendium data, source registration, prompts, UI, campaigns, characters, tests, deployment state, the VPS, or `production-live-base`.
