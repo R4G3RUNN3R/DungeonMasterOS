@@ -76,6 +76,14 @@ import type {
   Dnd35eRacialLanguages,
   Dnd35eRacialTrait,
 } from "@shared/rules-registry/dnd35e/races";
+import type {
+  Dnd35eBabProgression,
+  Dnd35eClassDefinition,
+  Dnd35eClassFeature,
+  Dnd35eClassLevelProgressionRow,
+  Dnd35eClassSkill,
+  Dnd35eSaveProgression,
+} from "@shared/rules-registry/dnd35e/classes";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
@@ -621,6 +629,27 @@ export function runMigrations() {
     updated_at TEXT NOT NULL
   );`);
 
+  // Classes/Progression — same pattern as dnd35e_feat_definitions/
+  // dnd35e_race_definitions above: structured-content changes recorded via
+  // recordRevision(entityType: "class").
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_class_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    alignment TEXT NOT NULL DEFAULT '',
+    hit_die INTEGER NOT NULL DEFAULT 0,
+    bab_progression TEXT NOT NULL,
+    save_progression_json TEXT NOT NULL DEFAULT '{}',
+    skill_points_base INTEGER NOT NULL DEFAULT 0,
+    class_skills_json TEXT NOT NULL DEFAULT '[]',
+    level_progression_json TEXT NOT NULL DEFAULT '[]',
+    class_features_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -887,6 +916,74 @@ function dnd35eRaceStructuredContentJson(race: {
   });
 }
 
+// Classes/Progression — mirrors the feat/race-definition row/mapper/
+// structured-content pattern above field-for-field.
+export interface Dnd35eClassDefinitionRow {
+  canonicalId: string;
+  name: string;
+  alignment: string;
+  hitDie: number;
+  babProgression: Dnd35eBabProgression;
+  saveProgression: { fort: Dnd35eSaveProgression; ref: Dnd35eSaveProgression; will: Dnd35eSaveProgression };
+  skillPointsBase: number;
+  classSkills: Dnd35eClassSkill[];
+  levelProgression: Dnd35eClassLevelProgressionRow[];
+  classFeatures: Dnd35eClassFeature[];
+  extractionStatus: Dnd35eClassDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eClassDefinitionRow(row: any): Dnd35eClassDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    alignment: row.alignment,
+    hitDie: row.hit_die,
+    babProgression: row.bab_progression,
+    saveProgression: JSON.parse(row.save_progression_json),
+    skillPointsBase: row.skill_points_base,
+    classSkills: JSON.parse(row.class_skills_json),
+    levelProgression: JSON.parse(row.level_progression_json),
+    classFeatures: JSON.parse(row.class_features_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eClassStructuredContentJson(cls: {
+  name: string;
+  alignment: string;
+  hitDie: number;
+  babProgression: Dnd35eBabProgression;
+  saveProgression: { fort: Dnd35eSaveProgression; ref: Dnd35eSaveProgression; will: Dnd35eSaveProgression };
+  skillPointsBase: number;
+  classSkills: Dnd35eClassSkill[];
+  levelProgression: Dnd35eClassLevelProgressionRow[];
+  classFeatures: Dnd35eClassFeature[];
+  extractionStatus: Dnd35eClassDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: cls.name,
+    alignment: cls.alignment,
+    hitDie: cls.hitDie,
+    babProgression: cls.babProgression,
+    saveProgression: cls.saveProgression,
+    skillPointsBase: cls.skillPointsBase,
+    classSkills: cls.classSkills,
+    levelProgression: cls.levelProgression,
+    classFeatures: cls.classFeatures,
+    extractionStatus: cls.extractionStatus,
+    extractionNotes: cls.extractionNotes,
+  });
+}
+
 // ── Storage interface ──────────────────────────────────────────────────────
 export interface IStorage {
   // Users
@@ -1109,6 +1206,9 @@ export interface IStorage {
   upsertDnd35eRaceDefinition(race: Dnd35eRaceDefinition, evidence: EvidenceCitation): Dnd35eRaceDefinitionRow;
   getDnd35eRaceDefinition(canonicalId: string): Dnd35eRaceDefinitionRow | undefined;
   listDnd35eRaceDefinitions(filter?: { extractionStatus?: Dnd35eRaceDefinition["extractionStatus"] }): Dnd35eRaceDefinitionRow[];
+  upsertDnd35eClassDefinition(cls: Dnd35eClassDefinition, evidence: EvidenceCitation): Dnd35eClassDefinitionRow;
+  getDnd35eClassDefinition(canonicalId: string): Dnd35eClassDefinitionRow | undefined;
+  listDnd35eClassDefinitions(filter?: { extractionStatus?: Dnd35eClassDefinition["extractionStatus"] }): Dnd35eClassDefinitionRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -2539,6 +2639,131 @@ export class DatabaseStorage implements IStorage {
       ? sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
       : sqlite.prepare("SELECT * FROM dnd35e_race_definitions").all();
     return (rows as any[]).map(mapDnd35eRaceDefinitionRow);
+  }
+
+  upsertDnd35eClassDefinition(cls: Dnd35eClassDefinition, evidence: EvidenceCitation): Dnd35eClassDefinitionRow {
+    if (!isValidCanonicalId(cls.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${cls.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(cls.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "class") {
+      throw new Error(
+        `Invalid canonicalId "${cls.canonicalId}" for upsertDnd35eClassDefinition: expected ruleset "dnd35e" and entityType "class", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_class_definitions WHERE canonical_id = ?")
+      .get(cls.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_class_definitions (
+            canonical_id, name, alignment, hit_die, bab_progression,
+            save_progression_json, skill_points_base, class_skills_json,
+            level_progression_json, class_features_json, extraction_status,
+            extraction_notes_json, evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          cls.canonicalId,
+          cls.name,
+          cls.alignment,
+          cls.hitDie,
+          cls.babProgression,
+          JSON.stringify(cls.saveProgression),
+          cls.skillPointsBase,
+          JSON.stringify(cls.classSkills),
+          JSON.stringify(cls.levelProgression),
+          JSON.stringify(cls.classFeatures),
+          cls.extractionStatus,
+          JSON.stringify(cls.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eClassDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE canonical_id = ?").get(cls.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eClassStructuredContentJson({
+      name: existing.name,
+      alignment: existing.alignment,
+      hitDie: existing.hit_die,
+      babProgression: existing.bab_progression,
+      saveProgression: JSON.parse(existing.save_progression_json),
+      skillPointsBase: existing.skill_points_base,
+      classSkills: JSON.parse(existing.class_skills_json),
+      levelProgression: JSON.parse(existing.level_progression_json),
+      classFeatures: JSON.parse(existing.class_features_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eClassStructuredContentJson(cls);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_class_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, cls.canonicalId);
+      return mapDnd35eClassDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE canonical_id = ?").get(cls.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_class_definitions SET
+          name = ?, alignment = ?, hit_die = ?, bab_progression = ?,
+          save_progression_json = ?, skill_points_base = ?, class_skills_json = ?,
+          level_progression_json = ?, class_features_json = ?, extraction_status = ?,
+          extraction_notes_json = ?, evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        cls.name,
+        cls.alignment,
+        cls.hitDie,
+        cls.babProgression,
+        JSON.stringify(cls.saveProgression),
+        cls.skillPointsBase,
+        JSON.stringify(cls.classSkills),
+        JSON.stringify(cls.levelProgression),
+        JSON.stringify(cls.classFeatures),
+        cls.extractionStatus,
+        JSON.stringify(cls.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        cls.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(cls.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: cls.canonicalId,
+      entityType: "class",
+      revision: nextRevision,
+      changeReason: "structured class content changed on re-extraction",
+      diffSummary: `structured content for ${cls.canonicalId} changed`,
+    });
+
+    return mapDnd35eClassDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE canonical_id = ?").get(cls.canonicalId),
+    );
+  }
+
+  getDnd35eClassDefinition(canonicalId: string): Dnd35eClassDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eClassDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eClassDefinitions(filter?: { extractionStatus?: Dnd35eClassDefinition["extractionStatus"] }): Dnd35eClassDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_class_definitions").all();
+    return (rows as any[]).map(mapDnd35eClassDefinitionRow);
   }
 }
 
