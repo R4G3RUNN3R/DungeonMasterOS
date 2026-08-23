@@ -75,6 +75,7 @@ import {
   type CorpusArea,
   type PageProcessingStatus,
   buildSourcePageKey,
+  isValidSourcePageVerification,
 } from "@shared/rules-registry/srd-manifest";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -896,6 +897,7 @@ export interface IStorage {
   listSrdManifestEntries(filter?: { corpusArea?: CorpusArea; sourceId?: number }): SrdManifestEntry[];
   recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision;
   getSourcePageRevisionHistory(sourcePageKey: string): SrdSourcePageRevision[];
+  recordSourcePageVerification(sourcePageKey: string, metadata: VerificationMetadata): void;
   getSourcePageCoverageReport(): {
     reportScope: "source-page-coverage";
     totalDiscovered: number;
@@ -1952,6 +1954,25 @@ export class DatabaseStorage implements IStorage {
       oldContentHash: input.oldContentHash ?? null,
       newContentHash: input.newContentHash ?? null,
     }).returning().get();
+  }
+  recordSourcePageVerification(sourcePageKey: string, metadata: VerificationMetadata): void {
+    const existing = this.getSrdManifestEntry(sourcePageKey);
+    if (!existing) throw new Error(`SRD manifest entry "${sourcePageKey}" not found`);
+    if (!isValidSourcePageVerification(existing.processingStatus as PageProcessingStatus, true)) {
+      throw new Error(
+        `Cannot record verification for "${sourcePageKey}": processingStatus is "${existing.processingStatus}", must be "source_verified" first`,
+      );
+    }
+    db.update(srdManifestEntries)
+      .set({
+        verificationMethod: metadata.method,
+        verifiedBy: metadata.verifiedBy ?? "",
+        verifiedAt: metadata.verifiedAt ?? new Date().toISOString(),
+        verificationNotes: metadata.notes ?? "",
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
   }
 
   getSourcePageRevisionHistory(sourcePageKey: string): SrdSourcePageRevision[] {
