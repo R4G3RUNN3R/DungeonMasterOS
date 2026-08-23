@@ -30,8 +30,12 @@ export type CorpusArea =
 // discovery (server/srd-manifest-discovery.ts) only ever drives a row from
 // "discovered" to "hashed" (fetch+hash happen as one atomic step in this
 // implementation). "parsed" and "source_verified" are reachable only via a
-// deliberate hand-advanced sample row (Phase 2A Task 7), proving the
+// deliberate hand-advanced sample row (Phase 2A Task 8), proving the
 // machinery without claiming any bulk page was individually parsed/verified.
+// No such hand-advanced row exists in the real production manifest at all —
+// it lives only in Task 8's own isolated test database. Task 9's real
+// acceptance scan confirmed zero rows at "parsed"/"source_verified" in the
+// real database.
 export type PageProcessingStatus = "discovered" | "fetched" | "hashed" | "parsed" | "source_verified";
 
 export const srdManifestEntries = sqliteTable("srd_manifest_entries", {

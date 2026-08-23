@@ -22,6 +22,7 @@ const DIRECTORY_DEFAULT_AREA: Record<string, string> = {
   "divine": "divine",
   "epic": "epic",
   "psionics": "psionics",
+  "basic-rules-and-legal": "core",
 };
 
 const FILENAME_AREA_OVERRIDES: Record<string, string> = {
@@ -60,7 +61,15 @@ async function main() {
     const filename = item.path.split("/").pop()!;
     if (EXCLUDED_FILENAMES.has(filename)) continue;
     const directory = item.path.split("/")[0];
-    const corpusArea = FILENAME_AREA_OVERRIDES[filename] ?? DIRECTORY_DEFAULT_AREA[directory] ?? "core";
+    const corpusArea = FILENAME_AREA_OVERRIDES[filename] ?? DIRECTORY_DEFAULT_AREA[directory];
+    if (corpusArea === undefined) {
+      throw new Error(
+        `Cannot classify corpus area for "${item.path}" — directory "${directory}" has no entry in ` +
+        `DIRECTORY_DEFAULT_AREA and filename "${filename}" has no entry in FILENAME_AREA_OVERRIDES. ` +
+        `Add a real rule to one of those tables in scripts/generate-olimot-srd-snapshot.ts (verify the ` +
+        `real file's content first) — never silently default to "core".`,
+      );
+    }
     entries.push({ corpusArea, sourcePath: item.path });
   }
 

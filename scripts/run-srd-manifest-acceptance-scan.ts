@@ -8,12 +8,18 @@
 // automated test suite. See docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md
 // for the real output of the run this script produced.
 //
+// Registers the three real rule_sources rows (idempotently, via
+// scripts/register-srd-sources.ts's registerSrdSources()) before running
+// discovery, so a fresh checkout with an empty/fresh database can run this
+// script end-to-end with no separate manual registration step.
+//
 // Re-run with: node --import tsx scripts/run-srd-manifest-acceptance-scan.ts
 // Targets the real dev database (server/storage.ts's default DATABASE_URL,
 // data.db) unless DATABASE_URL is overridden. Do NOT point this at the live
 // VPS database.
 
 import { storage, runMigrations } from "../server/storage";
+import { registerSrdSources } from "./register-srd-sources";
 import { runSrdManifestDiscovery } from "../server/srd-manifest-discovery";
 import { SRD_MANIFEST_SOURCE_OLIMOT } from "../server/srd-manifest-snapshot-olimot.generated";
 import { SRD_MANIFEST_SOURCE_D20SRD } from "../server/srd-manifest-snapshot-d20srd.generated";
@@ -139,6 +145,7 @@ async function stampScanRevision() {
 
 async function main() {
   runMigrations();
+  await registerSrdSources();
   await runDiscoveryScan();
   // Both gates must pass — runBothGates throws on any blocking discrepancy —
   // before the scan revision is stamped. Stamping only happens on success.
