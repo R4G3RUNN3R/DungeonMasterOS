@@ -25,6 +25,7 @@ import type { CorpusArea } from "@shared/rules-registry/srd-manifest";
 const PATH_PREFIX_RULES: Array<[string, CorpusArea]> = [
   ["/srd/spellLists/", "spells"],
   ["/srd/spells/", "spells"],
+  ["/srd/magicOverview/", "spells"],
   ["/srd/monsters/", "monsters"],
   ["/srd/prestigeClasses/", "prestige-classes"],
   ["/srd/npcClasses/", "classes"],
@@ -44,6 +45,7 @@ const PATH_PREFIX_RULES: Array<[string, CorpusArea]> = [
 const EXACT_PATH_RULES: Record<string, CorpusArea> = {
   "/srd/feats.htm": "feats",
   "/srd/conditionSummary.htm": "conditions",
+  "/srd/specialAbilities.htm": "conditions",
   "/srd/monsterFeats.htm": "monsters",
   "/srd/typesSubtypes.htm": "monsters",
   "/srd/races.htm": "races",
@@ -53,6 +55,15 @@ const EXACT_PATH_RULES: Record<string, CorpusArea> = {
   "/srd/description.htm": "core",
   "/srd/traps.htm": "core",
   "/srd/planes.htm": "core",
+  "/srd/improvingMonsters.htm": "monsters",
+  "/srd/monstersAsRaces.htm": "monsters",
+  "/srd/carryingCapacity.htm": "core",
+  "/srd/movement.htm": "core",
+  "/srd/exploration.htm": "core",
+  "/srd/dungeons.htm": "core",
+  "/srd/wilderness.htm": "core",
+  "/srd/weather.htm": "core",
+  "/srd/environment.htm": "core",
 };
 
 export function classifyD20srdCorpusArea(
