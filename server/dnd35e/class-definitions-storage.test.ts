@@ -26,6 +26,7 @@ const SAMPLE_CLASS = {
   classSkills: [{ skillCanonicalId: "dnd35e:skill:climb", keyAbility: "str" as const }],
   levelProgression: [{ level: 1, baseAttackBonus: 1, fortSave: 2, refSave: 0, willSave: 0, specialFeatureSlugs: ["bonusFeats"] }],
   classFeatures: [{ slug: "bonusFeats", name: "Bonus Feats", description: "real description" }],
+  spellcasting: null,
   extractionStatus: "fully_structured" as const,
   extractionNotes: [],
 };
@@ -69,6 +70,30 @@ test("getDnd35eClassDefinition round-trips the full structured shape, including 
   const row = storage.getDnd35eClassDefinition("dnd35e:class:fighter");
   assert.deepEqual(row?.levelProgression, SAMPLE_CLASS.levelProgression);
   assert.deepEqual(row?.classFeatures, SAMPLE_CLASS.classFeatures);
+});
+
+test("getDnd35eClassDefinition round-trips a real spellcasting progression (a Cleric-shaped definition), including bonusSlots and null base entries", () => {
+  const clericLike = {
+    ...SAMPLE_CLASS,
+    canonicalId: "dnd35e:class:cleric",
+    spellcasting: {
+      spellcastingAbility: "wis" as const,
+      type: "prepared" as const,
+      spellsPerDay: [
+        {
+          level: 1,
+          entries: [
+            { spellLevel: 0, base: 3, bonusSlots: 0 },
+            { spellLevel: 1, base: 1, bonusSlots: 1 },
+            { spellLevel: 2, base: null, bonusSlots: 0 },
+          ],
+        },
+      ],
+    },
+  };
+  storage.upsertDnd35eClassDefinition(clericLike, REAL_EVIDENCE);
+  const row = storage.getDnd35eClassDefinition("dnd35e:class:cleric");
+  assert.deepEqual(row?.spellcasting, clericLike.spellcasting);
 });
 
 test("listDnd35eClassDefinitions filters by extractionStatus", () => {

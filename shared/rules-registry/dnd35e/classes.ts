@@ -50,6 +50,32 @@ export interface Dnd35eClassFeature {
   description: string;
 }
 
+export type Dnd35eSpellcastingType = "prepared" | "spontaneous";
+
+export interface Dnd35eSpellsPerDayEntry {
+  spellLevel: number;
+  base: number | null; // null = not yet available at this class level (the real page's "—")
+  // A real, class-specific bonus slot notation, e.g. Cleric's "+1" domain
+  // spell (always exactly 1, every level once domain spells are available).
+  // 0 when the real cell has no "+N" suffix.
+  bonusSlots: number;
+}
+
+export interface Dnd35eSpellsPerDayRow {
+  level: number;
+  entries: Dnd35eSpellsPerDayEntry[];
+}
+
+export interface Dnd35eClassSpellcasting {
+  spellcastingAbility: Dnd35eAbilityCode;
+  // "prepared" (Cleric/Druid/Wizard/Paladin/Ranger — chooses spells from a
+  // known list before the day begins) vs "spontaneous" (Sorcerer/Bard — casts
+  // from a fixed, smaller repertoire and needs a real Spells Known table,
+  // not modeled here yet — see the extraction report's scope note).
+  type: Dnd35eSpellcastingType;
+  spellsPerDay: Dnd35eSpellsPerDayRow[];
+}
+
 export interface Dnd35eClassDefinition {
   canonicalId: string;
   name: string;
@@ -66,6 +92,8 @@ export interface Dnd35eClassDefinition {
   classSkills: Dnd35eClassSkill[];
   levelProgression: Dnd35eClassLevelProgressionRow[];
   classFeatures: Dnd35eClassFeature[];
+  // null for non-spellcasting classes (Fighter, Barbarian, Rogue, Monk).
+  spellcasting: Dnd35eClassSpellcasting | null;
   extractionStatus: "fully_structured" | "partially_structured" | "unresolved";
   extractionNotes: string[];
 }

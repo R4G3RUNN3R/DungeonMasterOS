@@ -25,7 +25,9 @@ import type {
   Dnd35eClassFeature,
   Dnd35eClassLevelProgressionRow,
   Dnd35eClassSkill,
+  Dnd35eClassSpellcasting,
   Dnd35eSaveProgression,
+  Dnd35eSpellsPerDayRow,
 } from "@shared/rules-registry/dnd35e/classes";
 import { stripTags, kebabCase } from "./html-utils";
 
@@ -65,6 +67,17 @@ const FEATURE_BLOCK_RE = /<h5(?:\s+id="([a-zA-Z0-9]+)")?[^>]*>([^<]+)<\/h5>([\s\
 const PARAGRAPH_RE = /<p[^>]*>([\s\S]*?)<\/p>/g;
 const SPECIAL_CELL_ANCHOR_RE = /href="#([a-zA-Z0-9]+)"/g;
 
+// Real, standard SRD phrasing for how a class's spellcasting ability is
+// stated, e.g. "a cleric must have a Wisdom score equal to at least 10 +
+// the spell level." Verified against Cleric; used as the real, deterministic
+// signal for both spellcastingAbility and (implicitly) that this is a
+// spellcasting class at all.
+const SPELLCASTING_ABILITY_RE = /must have an? (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) score equal to at least 10 \+ the spell level/i;
+// Real, standard SRD phrasing distinguishing prepared casters ("must choose
+// and prepare spells in advance") from spontaneous casters (who instead have
+// a real "Spells Known" table — not modeled yet, see the extraction report).
+const PREPARED_CASTER_RE = /must (?:choose and )?prepare (?:his|her|its|their)?\s*spells? in advance/i;
+
 const ABILITY_ABBR_TO_CODE: Record<string, Dnd35eAbilityCode> = {
   Str: "str",
   Dex: "dex",
@@ -72,6 +85,15 @@ const ABILITY_ABBR_TO_CODE: Record<string, Dnd35eAbilityCode> = {
   Int: "int",
   Wis: "wis",
   Cha: "cha",
+};
+
+const ABILITY_NAME_TO_CODE: Record<string, Dnd35eAbilityCode> = {
+  strength: "str",
+  dexterity: "dex",
+  constitution: "con",
+  intelligence: "int",
+  wisdom: "wis",
+  charisma: "cha",
 };
 
 function classifyBabProgression(level20Bab: number): Dnd35eBabProgression {
@@ -91,7 +113,24 @@ function headersMatch(headers: string[], expected: string[]): boolean {
   return headers.length === expected.length && headers.every((h, i) => h === expected[i]);
 }
 
-function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgressionRow[] {
+// A real cell in a "Spells per Day" column is either an em dash "—" (spells
+// of this level aren't available yet at this class level), a plain number,
+// or "N+M" (e.g. Cleric's "1+1" — a base allotment plus a real class-specific
+// bonus slot, such as a domain spell).
+function parseSpellsPerDayCell(raw: string): { base: number | null; bonusSlots: number } {
+  const text = stripTags(raw).trim();
+  if (text === "—" || text === "-") return { base: null, bonusSlots: 0 };
+  const match = /^(\d+)(?:\+(\d+))?$/.exec(text);
+  if (!match) throw new Error(`Unrecognized spells-per-day cell value: "${text}"`);
+  return { base: Number(match[1]), bonusSlots: match[2] ? Number(match[2]) : 0 };
+}
+
+interface LevelProgressionExtraction {
+  rows: Dnd35eClassLevelProgressionRow[];
+  spellsPerDay: Dnd35eSpellsPerDayRow[] | null;
+}
+
+function extractLevelProgression(tableHtml: string): LevelProgressionExtraction {
   const headers: string[] = [];
   let thMatch: RegExpExecArray | null;
   TH_RE.lastIndex = 0;
@@ -99,34 +138,43 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
     headers.push(normalizeHeaderText(thMatch[1]));
   }
 
-  let columnSet: "standard" | "monk";
-  if (headersMatch(headers, EXPECTED_HEADERS_STANDARD)) columnSet = "standard";
-  else if (headersMatch(headers, EXPECTED_HEADERS_MONK)) columnSet = "monk";
-  else {
+  let columnSet: "standard" | "monk" | "prepared-caster";
+  let spellLevels: number[] = [];
+  if (headersMatch(headers.slice(0, 6), EXPECTED_HEADERS_STANDARD) && headers[6] === "Spells per Day") {
+    columnSet = "prepared-caster";
+    spellLevels = headers.slice(7).map((h) => {
+      const m = /^(\d+)/.exec(h);
+      if (!m) throw new Error(`Unrecognized spell-level sub-header in a "Spells per Day" table: "${h}"`);
+      return Number(m[1]);
+    });
+  } else if (headersMatch(headers, EXPECTED_HEADERS_STANDARD)) {
+    columnSet = "standard";
+  } else if (headersMatch(headers, EXPECTED_HEADERS_MONK)) {
+    columnSet = "monk";
+  } else {
     throw new Error(
-      `Unexpected class progression table header order: ${JSON.stringify(headers)}, expected the standard 6-column set ${JSON.stringify(EXPECTED_HEADERS_STANDARD)} or Monk's 10-column set ${JSON.stringify(EXPECTED_HEADERS_MONK)}`,
+      `Unexpected class progression table header order: ${JSON.stringify(headers)}, expected the standard 6-column set, Monk's 10-column set, or a "Spells per Day" prepared-caster table`,
     );
   }
-  const expectedCellCount = headers.length;
+  const expectedCellCount = columnSet === "prepared-caster" ? 6 + spellLevels.length : headers.length;
 
   const rows: Dnd35eClassLevelProgressionRow[] = [];
+  const spellsPerDay: Dnd35eSpellsPerDayRow[] = [];
   let trMatch: RegExpExecArray | null;
   TR_RE.lastIndex = 0;
-  let isFirstRow = true;
   while ((trMatch = TR_RE.exec(tableHtml))) {
-    if (isFirstRow) {
-      isFirstRow = false;
-      continue; // header row, already consumed above via TH_RE
-    }
     const cells: string[] = [];
     let tdMatch: RegExpExecArray | null;
     TD_RE.lastIndex = 0;
     while ((tdMatch = TD_RE.exec(trMatch[1]))) {
       cells.push(tdMatch[1]);
     }
-    // Skips both the tfoot footnote row (a single <td colspan="N"> cell, on
-    // pages like Monk's that have one) and any other non-data row — a real
-    // data row always has exactly expectedCellCount plain cells.
+    // A header row (<th> only, no <td>) naturally has 0 <td> matches here,
+    // and a tfoot footnote row (a single <td colspan="N"> cell) has 1 — both
+    // fail this check and are skipped without any position-based "skip the
+    // first row" assumption, which would break on tables with 2 real header
+    // rows (prepared-caster tables have a grouped-column row plus a
+    // spell-level sub-header row).
     if (cells.length !== expectedCellCount) continue;
 
     const level = Number(stripTags(cells[0]).match(/^(\d+)/)?.[1]);
@@ -144,8 +192,16 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
       row.unarmoredSpeedBonus = Number(stripTags(cells[9]).match(/^\+(\d+)/)?.[1]);
     }
     rows.push(row);
+
+    if (columnSet === "prepared-caster") {
+      const entries = spellLevels.map((spellLevel, i) => {
+        const { base, bonusSlots } = parseSpellsPerDayCell(cells[6 + i]);
+        return { spellLevel, base, bonusSlots };
+      });
+      spellsPerDay.push({ level, entries });
+    }
   }
-  return rows;
+  return { rows, spellsPerDay: columnSet === "prepared-caster" ? spellsPerDay : null };
 }
 
 function extractClassSkills(html: string): Dnd35eClassSkill[] {
@@ -179,7 +235,7 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
 
   const tableMatch = TABLE_RE.exec(html);
   if (!tableMatch) throw new Error(`No real level-progression table found for class "${name}".`);
-  const levelProgression = extractLevelProgression(tableMatch[1]);
+  const { rows: levelProgression, spellsPerDay } = extractLevelProgression(tableMatch[1]);
   const level20 = levelProgression.find((r) => r.level === 20);
   if (!level20) throw new Error(`No level-20 row found in the real progression table for class "${name}".`);
 
@@ -195,6 +251,20 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
   if (!skillPointsMatch) notes.push("Skill Points section did not match the expected real page pattern.");
   if (classSkills.length === 0) notes.push("No class skills were extracted — Class Skills section may be absent or differently formatted.");
   if (classFeatures.length === 0) notes.push("No class features were extracted — Class Features section may be absent or differently formatted.");
+
+  let spellcasting: Dnd35eClassSpellcasting | null = null;
+  if (spellsPerDay !== null) {
+    const abilityMatch = SPELLCASTING_ABILITY_RE.exec(html);
+    if (!abilityMatch) {
+      notes.push('This class has a real "Spells per Day" table, but no spellcasting-ability sentence matched the expected real page pattern.');
+    } else {
+      spellcasting = {
+        spellcastingAbility: ABILITY_NAME_TO_CODE[abilityMatch[1].toLowerCase()],
+        type: PREPARED_CASTER_RE.test(html) ? "prepared" : "spontaneous",
+        spellsPerDay,
+      };
+    }
+  }
 
   const extractionStatus: Dnd35eClassDefinition["extractionStatus"] =
     notes.length === 0 ? "fully_structured" : alignmentMatch && hitDieMatch && skillPointsMatch ? "partially_structured" : "unresolved";
@@ -214,6 +284,7 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
     classSkills,
     levelProgression,
     classFeatures,
+    spellcasting,
     extractionStatus,
     extractionNotes: notes,
   };

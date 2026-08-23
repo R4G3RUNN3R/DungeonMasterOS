@@ -6,13 +6,15 @@
 // same exclusion from the automated test suite via package.json's
 // *.test.ts glob).
 //
-// Currently extracts Fighter, Barbarian, Rogue, and Monk — the 4 core
-// non-spellcasting classes. The remaining 7 core classes (Bard, Cleric,
-// Druid, Paladin, Ranger, Sorcerer, Wizard) are casters and need a real
-// spellcasting-progression schema/extractor addition first. See classes.ts
-// and the extraction report for the explicit scope gap this leaves.
-// Structured as a list so extending to more class pages is a one-line
-// addition once each is real-verified, not a rewrite.
+// Currently extracts Fighter, Barbarian, Rogue, Monk (non-spellcasters) and
+// Cleric (the first real prepared-caster, verified against its real "Spells
+// per Day" table). The remaining 6 core classes (Bard, Druid, Paladin,
+// Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer
+// and Bard are spontaneous casters and need a real "Spells Known" table this
+// extractor doesn't parse yet. See classes.ts and the extraction report for
+// the explicit scope gap this leaves. Structured as a list so extending to
+// more class pages is a one-line addition once each is real-verified, not a
+// rewrite.
 //
 // Re-run with: node --import tsx server/dnd35e/extraction/run-classes-extraction.ts
 // Targets the real dev database (server/storage.ts's default DATABASE_URL,
@@ -28,6 +30,7 @@ const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/barbarian.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/rogue.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/monk.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/cleric.htm",
 ];
 
 async function runClassExtraction(sourcePageKey: string): Promise<void> {

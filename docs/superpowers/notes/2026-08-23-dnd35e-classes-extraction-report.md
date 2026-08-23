@@ -1,6 +1,6 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23 → 2026-08-24)
 
-**Scope note, stated explicitly:** this covers **all 4 real non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) — the full set of core classes the extractor can handle without a real spellcasting-progression schema. The remaining 7 core classes (Bard, Cleric, Druid, Paladin, Ranger, Sorcerer, Wizard) are full or partial spellcasters and need that schema/extractor work first — deliberately not attempted this pass. It does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **the first real prepared spellcaster (Cleric)**. The remaining 6 core classes (Bard, Druid, Paladin, Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
 
 ## Architecture
 
@@ -35,6 +35,7 @@ Extracted real class "Fighter" (dnd35e:class:fighter): fully_structured, 20 leve
 Extracted real class "Barbarian" (dnd35e:class:barbarian): fully_structured, 20 level rows, 2 class features.
 Extracted real class "Rogue" (dnd35e:class:rogue): fully_structured, 20 level rows, 4 class features.
 Extracted real class "Monk" (dnd35e:class:monk): fully_structured, 20 level rows, 4 class features.
+Extracted real class "Cleric" (dnd35e:class:cleric): fully_structured, 20 level rows, 6 class features.
 ```
 
 ## Three real page-format/structure differences found and fixed during verification
@@ -82,10 +83,23 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **Level 20 progression row**: Flurry of Blows `+15/+15/+15/+10/+5`, Unarmed Damage `2d10`, AC Bonus `+4`, Unarmored Speed Bonus `+60 ft.` — verified real.
 - `extractionStatus: fully_structured`, zero extraction notes.
 
+## Real verified facts (Cleric — first real prepared caster)
+
+- **BAB progression**: `full`. **Save progression**: Fort `good`, Ref/Will `poor`. **Hit die**: d8. **Alignment**: "Any." **Skill points**: base 2.
+- **Spellcasting**: ability `wis`, type `prepared` — both correctly derived from the real page's own stated rules text ("a cleric must have a Wisdom score equal to at least 10 + the spell level" and "a cleric must choose and prepare his spells in advance"), not hard-coded per class.
+- **Spells per Day table**: all 20 rows, 10 spell levels each (0-9), correctly parsed from the real two-row grouped header (`rowspan="2"` standard cells + `colspan="10"` "Spells per Day" group label + a sub-header row of spell-level links). Level 1: 3 cantrips, 1 first-level spell plus the real domain-spell `+1` bonus slot, levels 2-9 correctly `null` (the real page's "—"). Level 20: the real domain-spell `+1` bonus slot verified present on every available spell level 1-9, absent on cantrips (spell level 0 never gets a domain spell, per the real rule).
+- **Class Features**: 6 real features, including "Turn or Rebuke Undead."
+- `extractionStatus: fully_structured`, zero extraction notes.
+
+## New schema: `Dnd35eClassSpellcasting`
+
+Added to `Dnd35eClassDefinition.spellcasting` (`null` for non-casters): `spellcastingAbility`, `type` (`"prepared"` vs `"spontaneous"` — detected from the page's own real stated rules text, not asserted per class), and `spellsPerDay: Dnd35eSpellsPerDayRow[]` (one row per level, each an array of `{spellLevel, base, bonusSlots}` entries — `base: null` for the real "—" cells, `bonusSlots` for real class-specific bonus notation like Cleric's domain spell). A real, simplifying discovery made while building this: the level-progression row-skip logic no longer assumes exactly one header `<tr>` to skip by position — it now relies purely on the existing cell-count check (a header row naturally has 0 `<td>` cells), which turned out to already correctly handle both the single-header-row standard/Monk tables and the two-header-row prepared-caster tables with no special-casing needed.
+
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **The 7 spellcasting core classes** — Bard, Cleric, Druid, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`). No `spellsPerDay`/`spellsKnown` table exists in `Dnd35eClassDefinition` yet — the real per-class tables have a different shape (spell-level columns instead of a flat Special column, prepared-vs-known casting distinctions, bonus spells from high ability scores). Deliberately not guessed or stubbed ahead of doing it for real against an actual caster page.
+1. **6 remaining core classes** — Bard, Druid, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Druid and Wizard are prepared casters and should extract with the current extractor largely as-is (real, likely-cheap next wins, pending real verification — never assumed working without checking). Paladin and Ranger are partial casters (spellcasting starts at level 4, only reaches spell level 4) — their real table shape is not yet inspected. Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
 2. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
 3. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
+4. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.
 
 None of the above is claimed as done — this section names real, concrete follow-on work, not a completion promise.

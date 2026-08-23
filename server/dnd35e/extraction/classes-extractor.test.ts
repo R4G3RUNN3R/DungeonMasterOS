@@ -11,6 +11,7 @@ const FIXTURE_HTML = fs.readFileSync(path.join(__dirname, "fighter-fixture.html"
 const BARBARIAN_HTML = fs.readFileSync(path.join(__dirname, "barbarian-fixture.html"), "utf-8");
 const ROGUE_HTML = fs.readFileSync(path.join(__dirname, "rogue-fixture.html"), "utf-8");
 const MONK_HTML = fs.readFileSync(path.join(__dirname, "monk-fixture.html"), "utf-8");
+const CLERIC_HTML = fs.readFileSync(path.join(__dirname, "cleric-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -183,4 +184,48 @@ test("Monk: real non-Monk classes never populate the Monk-specific optional prog
     assert.equal(row.acBonus, undefined);
     assert.equal(row.unarmoredSpeedBonus, undefined);
   }
+});
+
+// --- Cleric: real two-row "Spells per Day" grouped-header table -----------
+
+test("non-spellcasting classes (Fighter/Barbarian/Rogue/Monk) all have spellcasting: null", () => {
+  for (const html of [FIXTURE_HTML, BARBARIAN_HTML, ROGUE_HTML, MONK_HTML]) {
+    const cls = extractClassFromHtml(html);
+    assert.equal(cls.spellcasting, null);
+  }
+});
+
+test("Cleric: real two-row grouped 'Spells per Day' header (rowspan-2 standard cells + colspan-10 group label + 10 spell-level sub-headers) is recognized, not rejected by the fail-closed header check", () => {
+  const cleric = extractClassFromHtml(CLERIC_HTML);
+  assert.equal(cleric.canonicalId, "dnd35e:class:cleric");
+  assert.equal(cleric.extractionStatus, "fully_structured");
+  assert.equal(cleric.levelProgression.length, 20);
+});
+
+test("Cleric: real spellcasting ability (Wisdom) and type (prepared) are correctly detected from the real page's own stated rules text", () => {
+  const cleric = extractClassFromHtml(CLERIC_HTML);
+  assert.ok(cleric.spellcasting);
+  assert.equal(cleric.spellcasting!.spellcastingAbility, "wis");
+  assert.equal(cleric.spellcasting!.type, "prepared");
+});
+
+test("Cleric: real level-1 Spells per Day row — 3 cantrips, 1 first-level spell plus the real +1 domain-spell bonus slot, nothing at 2nd level or higher (real '—' cells)", () => {
+  const cleric = extractClassFromHtml(CLERIC_HTML);
+  const level1 = cleric.spellcasting!.spellsPerDay.find((r) => r.level === 1);
+  assert.ok(level1);
+  assert.deepEqual(level1!.entries[0], { spellLevel: 0, base: 3, bonusSlots: 0 });
+  assert.deepEqual(level1!.entries[1], { spellLevel: 1, base: 1, bonusSlots: 1 });
+  for (let i = 2; i <= 9; i++) {
+    assert.deepEqual(level1!.entries[i], { spellLevel: i, base: null, bonusSlots: 0 }, `level 1 spell-level ${i} must be unavailable ("—")`);
+  }
+});
+
+test("Cleric: real level-20 Spells per Day row has the real domain-spell +1 bonus slot on every available spell level 1-9", () => {
+  const cleric = extractClassFromHtml(CLERIC_HTML);
+  const level20 = cleric.spellcasting!.spellsPerDay.find((r) => r.level === 20);
+  assert.ok(level20);
+  for (let i = 1; i <= 9; i++) {
+    assert.equal(level20!.entries[i].bonusSlots, 1, `level 20 spell-level ${i} should carry the real domain-spell bonus slot`);
+  }
+  assert.equal(level20!.entries[0].bonusSlots, 0, "cantrips (spell level 0) never get a domain-spell bonus slot");
 });

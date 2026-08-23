@@ -82,6 +82,7 @@ import type {
   Dnd35eClassFeature,
   Dnd35eClassLevelProgressionRow,
   Dnd35eClassSkill,
+  Dnd35eClassSpellcasting,
   Dnd35eSaveProgression,
 } from "@shared/rules-registry/dnd35e/classes";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
@@ -643,12 +644,17 @@ export function runMigrations() {
     class_skills_json TEXT NOT NULL DEFAULT '[]',
     level_progression_json TEXT NOT NULL DEFAULT '[]',
     class_features_json TEXT NOT NULL DEFAULT '[]',
+    spellcasting_json TEXT NOT NULL DEFAULT 'null',
     extraction_status TEXT NOT NULL DEFAULT 'unresolved',
     extraction_notes_json TEXT NOT NULL DEFAULT '[]',
     evidence_json TEXT NOT NULL DEFAULT 'null',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`);
+  // Added after dnd35e_class_definitions' initial creation (Fighter/
+  // Barbarian/Rogue/Monk were extracted before spellcasting existed) — a
+  // real dev DB from before this change won't have the column yet.
+  addColumnIfMissing("dnd35e_class_definitions", "spellcasting_json", "TEXT NOT NULL DEFAULT 'null'");
 
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -929,6 +935,7 @@ export interface Dnd35eClassDefinitionRow {
   classSkills: Dnd35eClassSkill[];
   levelProgression: Dnd35eClassLevelProgressionRow[];
   classFeatures: Dnd35eClassFeature[];
+  spellcasting: Dnd35eClassSpellcasting | null;
   extractionStatus: Dnd35eClassDefinition["extractionStatus"];
   extractionNotes: string[];
   evidence: EvidenceCitation;
@@ -948,6 +955,7 @@ function mapDnd35eClassDefinitionRow(row: any): Dnd35eClassDefinitionRow {
     classSkills: JSON.parse(row.class_skills_json),
     levelProgression: JSON.parse(row.level_progression_json),
     classFeatures: JSON.parse(row.class_features_json),
+    spellcasting: JSON.parse(row.spellcasting_json),
     extractionStatus: row.extraction_status,
     extractionNotes: JSON.parse(row.extraction_notes_json),
     evidence: JSON.parse(row.evidence_json),
@@ -966,6 +974,7 @@ function dnd35eClassStructuredContentJson(cls: {
   classSkills: Dnd35eClassSkill[];
   levelProgression: Dnd35eClassLevelProgressionRow[];
   classFeatures: Dnd35eClassFeature[];
+  spellcasting: Dnd35eClassSpellcasting | null;
   extractionStatus: Dnd35eClassDefinition["extractionStatus"];
   extractionNotes: string[];
 }): string {
@@ -979,6 +988,7 @@ function dnd35eClassStructuredContentJson(cls: {
     classSkills: cls.classSkills,
     levelProgression: cls.levelProgression,
     classFeatures: cls.classFeatures,
+    spellcasting: cls.spellcasting,
     extractionStatus: cls.extractionStatus,
     extractionNotes: cls.extractionNotes,
   });
@@ -2663,9 +2673,10 @@ export class DatabaseStorage implements IStorage {
           INSERT INTO dnd35e_class_definitions (
             canonical_id, name, alignment, hit_die, bab_progression,
             save_progression_json, skill_points_base, class_skills_json,
-            level_progression_json, class_features_json, extraction_status,
-            extraction_notes_json, evidence_json, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            level_progression_json, class_features_json, spellcasting_json,
+            extraction_status, extraction_notes_json, evidence_json,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           cls.canonicalId,
@@ -2678,6 +2689,7 @@ export class DatabaseStorage implements IStorage {
           JSON.stringify(cls.classSkills),
           JSON.stringify(cls.levelProgression),
           JSON.stringify(cls.classFeatures),
+          JSON.stringify(cls.spellcasting),
           cls.extractionStatus,
           JSON.stringify(cls.extractionNotes),
           JSON.stringify(evidence),
@@ -2699,6 +2711,7 @@ export class DatabaseStorage implements IStorage {
       classSkills: JSON.parse(existing.class_skills_json),
       levelProgression: JSON.parse(existing.level_progression_json),
       classFeatures: JSON.parse(existing.class_features_json),
+      spellcasting: JSON.parse(existing.spellcasting_json),
       extractionStatus: existing.extraction_status,
       extractionNotes: JSON.parse(existing.extraction_notes_json),
     });
@@ -2718,8 +2731,8 @@ export class DatabaseStorage implements IStorage {
         UPDATE dnd35e_class_definitions SET
           name = ?, alignment = ?, hit_die = ?, bab_progression = ?,
           save_progression_json = ?, skill_points_base = ?, class_skills_json = ?,
-          level_progression_json = ?, class_features_json = ?, extraction_status = ?,
-          extraction_notes_json = ?, evidence_json = ?, updated_at = ?
+          level_progression_json = ?, class_features_json = ?, spellcasting_json = ?,
+          extraction_status = ?, extraction_notes_json = ?, evidence_json = ?, updated_at = ?
         WHERE canonical_id = ?
       `)
       .run(
@@ -2732,6 +2745,7 @@ export class DatabaseStorage implements IStorage {
         JSON.stringify(cls.classSkills),
         JSON.stringify(cls.levelProgression),
         JSON.stringify(cls.classFeatures),
+        JSON.stringify(cls.spellcasting),
         cls.extractionStatus,
         JSON.stringify(cls.extractionNotes),
         JSON.stringify(evidence),
