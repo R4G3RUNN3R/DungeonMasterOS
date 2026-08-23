@@ -34,6 +34,9 @@ export function evaluateFeatPrerequisite(
 
   switch (prerequisite.kind) {
     case "all": {
+      if (prerequisite.requirements.length === 0) {
+        return { qualified: false, failureReasons: ["Malformed prerequisite: 'all' with no requirements"] };
+      }
       const results = prerequisite.requirements.map((req) => evaluateFeatPrerequisite(req, state));
       return {
         qualified: results.every((r) => r.qualified),
@@ -41,6 +44,9 @@ export function evaluateFeatPrerequisite(
       };
     }
     case "any": {
+      if (prerequisite.requirements.length === 0) {
+        return { qualified: false, failureReasons: ["Malformed prerequisite: 'any' with no requirements"] };
+      }
       const results = prerequisite.requirements.map((req) => evaluateFeatPrerequisite(req, state));
       if (results.some((r) => r.qualified)) return { qualified: true, failureReasons: [] };
       return { qualified: false, failureReasons: [describeFeatPrerequisite(prerequisite)] };
@@ -78,5 +84,20 @@ export function evaluateFeatPrerequisite(
     case "special":
       // Never silently qualifies — see module header.
       return { qualified: false, failureReasons: [`Requires manual confirmation: ${prerequisite.description}`] };
+    default: {
+      // Defense against genuinely malformed runtime data: server/storage.ts's
+      // mapDnd35eFeatDefinitionRow does JSON.parse(row.prerequisites_json) with
+      // zero runtime validation before typing the result as
+      // Dnd35eFeatPrerequisite | null, so an unrecognized `kind` really can
+      // reach here at runtime even though the type system considers every
+      // branch above exhaustive. Fail closed rather than falling through the
+      // switch with no matching case (which would otherwise return `undefined`).
+      const _exhaustiveCheck: never = prerequisite;
+      const malformed = _exhaustiveCheck as unknown;
+      return {
+        qualified: false,
+        failureReasons: [`Unrecognized prerequisite structure: ${JSON.stringify(malformed)}`],
+      };
+    }
   }
 }

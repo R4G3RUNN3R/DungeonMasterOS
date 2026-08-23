@@ -132,6 +132,32 @@ test("a special prerequisite nested inside any does not block the composite when
   assert.equal(result.qualified, true, "any only needs one qualifying branch; an unrelated special sibling must not block it");
 });
 
+test("an unrecognized prerequisite kind fails closed with a real reason, not undefined and not a throw — defends against malformed data that bypassed the type system via storage.ts's unvalidated JSON.parse", () => {
+  const malformed = { kind: "proficiency", weapon: "longsword" } as unknown as Dnd35eFeatPrerequisite;
+  const result = evaluateFeatPrerequisite(malformed, BASE_STATE);
+  assert.notEqual(result, undefined, "must never return undefined for unrecognized input");
+  assert.equal(result.qualified, false, "an unrecognized prerequisite kind must never be treated as satisfied");
+  assert.equal(result.failureReasons.length, 1);
+  assert.match(result.failureReasons[0], /Unrecognized prerequisite structure/);
+});
+
+test("an empty 'all' (zero requirements) fails closed instead of vacuously qualifying via Array.prototype.every", () => {
+  const p: Dnd35eFeatPrerequisite = { kind: "all", requirements: [] };
+  const result = evaluateFeatPrerequisite(p, BASE_STATE);
+  assert.equal(result.qualified, false, "an empty 'all' means no real requirement was ever evaluated — it must not qualify");
+  assert.equal(result.failureReasons.length, 1);
+  assert.match(result.failureReasons[0], /Malformed prerequisite: 'all' with no requirements/);
+});
+
+test("an empty 'any' (zero requirements) fails closed with a real, non-blank reason", () => {
+  const p: Dnd35eFeatPrerequisite = { kind: "any", requirements: [] };
+  const result = evaluateFeatPrerequisite(p, BASE_STATE);
+  assert.equal(result.qualified, false);
+  assert.equal(result.failureReasons.length, 1);
+  assert.notEqual(result.failureReasons[0], "", "the empty-any failure reason must not be a blank string");
+  assert.match(result.failureReasons[0], /Malformed prerequisite: 'any' with no requirements/);
+});
+
 test("a special prerequisite nested two levels deep inside all (via an any with no other qualifying branch) still fails the whole tree", () => {
   const p: Dnd35eFeatPrerequisite = {
     kind: "all",
