@@ -64,7 +64,7 @@ import {
   type CanonicalRevision,
   type RecordRevisionInput,
 } from "@shared/rules-registry/revisions";
-import { isValidCanonicalId } from "@shared/rules-registry/canonical-id";
+import { isValidCanonicalId, parseCanonicalId } from "@shared/rules-registry/canonical-id";
 import type {
   Dnd35eFeatDefinition,
   Dnd35eFeatType,
@@ -2246,6 +2246,17 @@ export class DatabaseStorage implements IStorage {
   upsertDnd35eFeatDefinition(feat: Dnd35eFeatDefinition, evidence: EvidenceCitation): Dnd35eFeatDefinitionRow {
     if (!isValidCanonicalId(feat.canonicalId)) {
       throw new Error(`Invalid canonicalId "${feat.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    // Grammar alone isn't enough: this table is dnd35e-feat-specific, so the
+    // parsed segments themselves must match, or a well-formed ID from the
+    // wrong ruleset/entity type (e.g. "dnd35e:skill:jump" or
+    // "dnd5e:feat:x") would be silently accepted here and later produce a
+    // self-contradictory canonical_revisions row via recordRevision below.
+    const parsed = parseCanonicalId(feat.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "feat") {
+      throw new Error(
+        `Invalid canonicalId "${feat.canonicalId}" for upsertDnd35eFeatDefinition: expected ruleset "dnd35e" and entityType "feat", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
     }
 
     const now = new Date().toISOString();

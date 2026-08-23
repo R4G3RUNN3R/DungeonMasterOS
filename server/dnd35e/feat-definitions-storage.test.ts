@@ -36,6 +36,14 @@ test("upsertDnd35eFeatDefinition throws on an invalid canonical ID rather than s
   assert.throws(() => storage.upsertDnd35eFeatDefinition({ ...SAMPLE_FEAT, canonicalId: "not-a-canonical-id" }, REAL_EVIDENCE));
 });
 
+test("upsertDnd35eFeatDefinition throws on a well-formed canonical ID from the wrong ruleset", () => {
+  assert.throws(() => storage.upsertDnd35eFeatDefinition({ ...SAMPLE_FEAT, canonicalId: "dnd5e:feat:acrobatic" }, REAL_EVIDENCE));
+});
+
+test("upsertDnd35eFeatDefinition throws on a well-formed canonical ID with the wrong entity type", () => {
+  assert.throws(() => storage.upsertDnd35eFeatDefinition({ ...SAMPLE_FEAT, canonicalId: "dnd35e:skill:jump" }, REAL_EVIDENCE));
+});
+
 test("upsertDnd35eFeatDefinition is a no-op (no revision) when the structured content is unchanged", () => {
   storage.upsertDnd35eFeatDefinition(SAMPLE_FEAT, REAL_EVIDENCE);
   const history = storage.getRevisionHistory("dnd35e:feat:acrobatic");
