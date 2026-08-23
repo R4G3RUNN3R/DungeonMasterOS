@@ -13,6 +13,7 @@ const BASE_STATE: Dnd35eCharacterQualificationState = {
   skillRanks: {},
   featCanonicalIds: [],
   casterLevel: 0,
+  manifesterLevel: 0,
 };
 
 test("null prerequisite always qualifies", () => {
@@ -104,6 +105,26 @@ test("caster_level prerequisite: qualifies at exactly the required level, fails 
   assert.equal(evaluateFeatPrerequisite(p, { ...BASE_STATE, casterLevel: 2 }).qualified, false);
 });
 
+test("manifester_level prerequisite: qualifies at exactly the required level, fails one below it", () => {
+  const p: Dnd35eFeatPrerequisite = { kind: "manifester_level", minimum: 5 };
+  assert.equal(evaluateFeatPrerequisite(p, { ...BASE_STATE, manifesterLevel: 5 }).qualified, true);
+  assert.equal(evaluateFeatPrerequisite(p, { ...BASE_STATE, manifesterLevel: 4 }).qualified, false);
+});
+
+test("proficiency prerequisite NEVER silently qualifies — no canonical weapon/armor entity family exists yet to check against, so it fails closed like special", () => {
+  const p: Dnd35eFeatPrerequisite = { kind: "proficiency", description: "Proficiency with selected weapon" };
+  const result = evaluateFeatPrerequisite(p, BASE_STATE);
+  assert.equal(result.qualified, false, "proficiency cannot be mechanically verified yet and must never be treated as satisfied");
+  assert.match(result.failureReasons[0], /Proficiency with selected weapon/);
+});
+
+test("class_feature prerequisite NEVER silently qualifies — no canonical class-feature entity family exists yet to check against, so it fails closed like special", () => {
+  const p: Dnd35eFeatPrerequisite = { kind: "class_feature", description: "Ability to turn or rebuke creatures" };
+  const result = evaluateFeatPrerequisite(p, BASE_STATE);
+  assert.equal(result.qualified, false, "class_feature cannot be mechanically verified yet and must never be treated as satisfied");
+  assert.match(result.failureReasons[0], /Ability to turn or rebuke creatures/);
+});
+
 test("a special prerequisite nested inside all blocks the whole composite even when every other sibling is satisfied", () => {
   const p: Dnd35eFeatPrerequisite = {
     kind: "all",
@@ -133,7 +154,7 @@ test("a special prerequisite nested inside any does not block the composite when
 });
 
 test("an unrecognized prerequisite kind fails closed with a real reason, not undefined and not a throw — defends against malformed data that bypassed the type system via storage.ts's unvalidated JSON.parse", () => {
-  const malformed = { kind: "proficiency", weapon: "longsword" } as unknown as Dnd35eFeatPrerequisite;
+  const malformed = { kind: "bogus_kind", weapon: "longsword" } as unknown as Dnd35eFeatPrerequisite;
   const result = evaluateFeatPrerequisite(malformed, BASE_STATE);
   assert.notEqual(result, undefined, "must never return undefined for unrecognized input");
   assert.equal(result.qualified, false, "an unrecognized prerequisite kind must never be treated as satisfied");

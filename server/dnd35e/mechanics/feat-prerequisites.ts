@@ -19,6 +19,7 @@ export interface Dnd35eCharacterQualificationState {
   skillRanks: Record<string, number>;
   featCanonicalIds: string[];
   casterLevel: number;
+  manifesterLevel: number;
 }
 
 export interface Dnd35eFeatQualificationResult {
@@ -81,6 +82,20 @@ export function evaluateFeatPrerequisite(
       return state.casterLevel >= prerequisite.minimum
         ? { qualified: true, failureReasons: [] }
         : { qualified: false, failureReasons: [describeFeatPrerequisite(prerequisite)] };
+    case "manifester_level":
+      return state.manifesterLevel >= prerequisite.minimum
+        ? { qualified: true, failureReasons: [] }
+        : { qualified: false, failureReasons: [describeFeatPrerequisite(prerequisite)] };
+    case "proficiency":
+      // No canonical weapon/armor/shield entity family exists yet to check
+      // proficiency against, so — like `special` — this always fails and
+      // requires manual confirmation. Kept as its own kind (not folded into
+      // `special`) so a future UI pass can group and explain it distinctly.
+      return { qualified: false, failureReasons: [`Requires manual confirmation (proficiency): ${prerequisite.description}`] };
+    case "class_feature":
+      // Same reasoning as `proficiency`: no canonical class-feature entity
+      // family exists yet to check against.
+      return { qualified: false, failureReasons: [`Requires manual confirmation (class feature): ${prerequisite.description}`] };
     case "special":
       // Never silently qualifies — see module header.
       return { qualified: false, failureReasons: [`Requires manual confirmation: ${prerequisite.description}`] };

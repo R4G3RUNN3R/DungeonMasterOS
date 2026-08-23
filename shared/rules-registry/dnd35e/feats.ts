@@ -17,6 +17,17 @@ export type Dnd35eFeatPrerequisite =
   | { kind: "class_level"; classCanonicalId: string; minimum: number }
   | { kind: "character_level"; minimum: number }
   | { kind: "caster_level"; minimum: number }
+  | { kind: "manifester_level"; minimum: number }
+  // Typed-but-not-yet-independently-evaluable: no canonical weapon/armor or
+  // class-feature entity family exists yet to check these against, so the
+  // evaluator treats them like `special` (always fails, requires manual
+  // confirmation) — but keeping them as their own kind, rather than folding
+  // into generic `special`, means a future UI/pass can group and explain
+  // them correctly instead of treating every unstructured requirement the
+  // same way. This is the "explicit structured exception" middle ground
+  // between "fully evaluable" and "opaque prose."
+  | { kind: "proficiency"; description: string }
+  | { kind: "class_feature"; description: string }
   | { kind: "special"; description: string };
 
 export type Dnd35eFeatEffect =
@@ -48,6 +59,9 @@ export function describeFeatPrerequisite(prereq: Dnd35eFeatPrerequisite | null):
     case "class_level": return `${prereq.classCanonicalId} level ${prereq.minimum}`;
     case "character_level": return `Character level ${prereq.minimum}`;
     case "caster_level": return `Caster level ${prereq.minimum}`;
+    case "manifester_level": return `Manifester level ${prereq.minimum}`;
+    case "proficiency": return prereq.description;
+    case "class_feature": return prereq.description;
     case "special": return prereq.description;
   }
 }
