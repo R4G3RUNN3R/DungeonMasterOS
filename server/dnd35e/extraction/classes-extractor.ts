@@ -63,7 +63,15 @@ const CLASS_SKILLS_SECTION_RE = /<h4>Class Skills<\/h4>\s*<p>([\s\S]*?)<\/p>/;
 const CLASS_SKILL_ENTRY_RE = /<a href="\/srd\/skills\/[^"]+">([^<]+)<\/a>\s*\((Str|Dex|Con|Int|Wis|Cha)\)/g;
 const SKILL_POINTS_RE = /<h5>Skill Points at Each Additional Level<\/h5>\s*<p>\s*(\d+)\s*\+\s*Int modifier\.?\s*<\/p>/i;
 const CLASS_FEATURES_SECTION_RE = /<h4>Class Features<\/h4>([\s\S]*?)(?=<div class="footer">|$)/;
-const FEATURE_BLOCK_RE = /<h5(?:\s+id="([a-zA-Z0-9]+)")?[^>]*>([^<]+)<\/h5>([\s\S]*?)(?=<h5|$)/g;
+// Real page inconsistency, found on Druid: some feature headings carry a
+// nested tag for a supernatural/extraordinary-ability suffix, e.g.
+// <h5 id="wildShape">Wild Shape (<a href="...">Su</a>)</h5>. A heading-text
+// capture that stops at the first "<" (like feats-extractor's H3_BLOCK_RE)
+// would silently fail to match this <h5> at all — not truncate it, just
+// never see it, and with no <p> content anywhere else to catch the loss,
+// the whole feature vanishes with no disclosure. [\s\S]*? tolerates any
+// nested tags in the heading; the captured text is stripped afterward.
+const FEATURE_BLOCK_RE = /<h5(?:\s+id="([a-zA-Z0-9]+)")?[^>]*>([\s\S]*?)<\/h5>([\s\S]*?)(?=<h5|$)/g;
 const PARAGRAPH_RE = /<p[^>]*>([\s\S]*?)<\/p>/g;
 const SPECIAL_CELL_ANCHOR_RE = /href="#([a-zA-Z0-9]+)"/g;
 
@@ -220,7 +228,7 @@ function extractClassFeatures(html: string): Dnd35eClassFeature[] {
   let blockMatch: RegExpExecArray | null;
   FEATURE_BLOCK_RE.lastIndex = 0;
   while ((blockMatch = FEATURE_BLOCK_RE.exec(sectionMatch[1]))) {
-    const name = blockMatch[2].trim();
+    const name = stripTags(blockMatch[2]).trim();
     const slug = blockMatch[1] ?? kebabCase(name);
     const paragraphs = [...blockMatch[3].matchAll(PARAGRAPH_RE)].map((p) => stripTags(p[1]));
     features.push({ slug, name, description: paragraphs.join(" ") });

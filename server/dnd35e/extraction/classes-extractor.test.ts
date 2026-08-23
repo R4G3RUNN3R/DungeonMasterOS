@@ -12,6 +12,7 @@ const BARBARIAN_HTML = fs.readFileSync(path.join(__dirname, "barbarian-fixture.h
 const ROGUE_HTML = fs.readFileSync(path.join(__dirname, "rogue-fixture.html"), "utf-8");
 const MONK_HTML = fs.readFileSync(path.join(__dirname, "monk-fixture.html"), "utf-8");
 const CLERIC_HTML = fs.readFileSync(path.join(__dirname, "cleric-fixture.html"), "utf-8");
+const DRUID_HTML = fs.readFileSync(path.join(__dirname, "druid-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -228,4 +229,69 @@ test("Cleric: real level-20 Spells per Day row has the real domain-spell +1 bonu
     assert.equal(level20!.entries[i].bonusSlots, 1, `level 20 spell-level ${i} should carry the real domain-spell bonus slot`);
   }
   assert.equal(level20!.entries[0].bonusSlots, 0, "cantrips (spell level 0) never get a domain-spell bonus slot");
+});
+
+// --- real bug regression: <h5> headings with a nested (Ex)/(Su) tag -------
+//
+// Found on Druid: FEATURE_BLOCK_RE originally required a heading's text to
+// contain no nested tags at all (`[^<]+`). A heading like
+// <h5 id="wildShape">Wild Shape (<a href="...">Su</a>)</h5> — a real,
+// extremely common 3.5 class-feature pattern (every (Ex)/(Su)/(Sp)-tagged
+// ability-type suffix links to specialAbilities.htm) — silently failed to
+// match at all. Not truncated, not swallowed into a neighboring feature's
+// description: just invisible, with zero extractionNotes disclosing the
+// loss. This silently dropped 10 of Druid's real features, and (discovered
+// only once this was fixed) had already been silently dropping real
+// features from every already-extracted class with an (Ex)/(Su) feature:
+// Barbarian (10 of 12 features), Rogue (5 of 8), Monk (16 of 21), and
+// Cleric (2 of 8). These tests assert real, exact, verified-against-the-
+// live-page feature counts so this exact bug class can never regress
+// silently again.
+
+test("Druid: real 21 class features, including every (Ex)/(Su)-suffixed feature (Animal Companion, Nature Sense, Wild Empathy, Woodland Stride, Trackless Step, Resist Nature's Lure, Wild Shape, Venom Immunity, A Thousand Faces, Timeless Body) that the nested-tag bug used to drop silently", () => {
+  const druid = extractClassFromHtml(DRUID_HTML);
+  assert.equal(druid.classFeatures.length, 21);
+  const wildShape = druid.classFeatures.find((f) => f.slug === "wildShape");
+  assert.ok(wildShape);
+  assert.equal(wildShape!.name, "Wild Shape (Su)");
+  assert.ok(wildShape!.description.length > 100, "Wild Shape's real description must be captured, not empty");
+  const animalCompanion = druid.classFeatures.find((f) => f.slug === "animalCompanion");
+  assert.ok(animalCompanion);
+  assert.equal(animalCompanion!.name, "Animal Companion (Ex)");
+});
+
+test("Druid: real full BAB/save/spellcasting facts — three-quarter BAB, good Fort+Will (poor Ref), Wisdom/prepared spellcasting with no domain-spell bonus slots (unlike Cleric)", () => {
+  const druid = extractClassFromHtml(DRUID_HTML);
+  assert.equal(druid.babProgression, "three-quarter");
+  assert.deepEqual(druid.saveProgression, { fort: "good", ref: "poor", will: "good" });
+  assert.ok(druid.spellcasting);
+  assert.equal(druid.spellcasting!.spellcastingAbility, "wis");
+  assert.equal(druid.spellcasting!.type, "prepared");
+  const level20 = druid.spellcasting!.spellsPerDay.find((r) => r.level === 20)!;
+  assert.ok(level20.entries.every((e) => e.bonusSlots === 0), "Druids get no domain-spell bonus slots, unlike Cleric");
+});
+
+test("Barbarian: real 12 class features (the nested-tag bug used to only see 2)", () => {
+  const barbarian = extractClassFromHtml(BARBARIAN_HTML);
+  assert.equal(barbarian.classFeatures.length, 12);
+  assert.ok(barbarian.classFeatures.find((f) => f.slug === "rage" && f.name === "Rage (Ex)"));
+});
+
+test("Rogue: real 8 class features (the nested-tag bug used to only see 4)", () => {
+  const rogue = extractClassFromHtml(ROGUE_HTML);
+  assert.equal(rogue.classFeatures.length, 8);
+  assert.ok(rogue.classFeatures.find((f) => f.slug === "rogueEvasion" && f.name === "Evasion (Ex)"));
+});
+
+test("Monk: real 21 class features (the nested-tag bug used to only see 4)", () => {
+  const monk = extractClassFromHtml(MONK_HTML);
+  assert.equal(monk.classFeatures.length, 21);
+  assert.ok(monk.classFeatures.find((f) => f.slug === "kiStrike" && f.name === "Ki Strike (Su)"));
+});
+
+test("Cleric: real 8 class features (the nested-tag bug used to only see 6, silently dropping Aura and Turn or Rebuke Undead)", () => {
+  const cleric = extractClassFromHtml(CLERIC_HTML);
+  assert.equal(cleric.classFeatures.length, 8);
+  assert.ok(cleric.classFeatures.find((f) => f.slug === "aura" && f.name === "Aura (Ex)"));
+  assert.ok(cleric.classFeatures.find((f) => f.slug === "turnorRebukeUndead" && f.name === "Turn or Rebuke Undead (Su)"));
 });

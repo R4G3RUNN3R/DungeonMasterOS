@@ -31,6 +31,7 @@ const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/rogue.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/monk.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/cleric.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/druid.htm",
 ];
 
 async function runClassExtraction(sourcePageKey: string): Promise<void> {

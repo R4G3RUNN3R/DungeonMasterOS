@@ -1,6 +1,21 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23 → 2026-08-24)
 
-**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **the first real prepared spellcaster (Cleric)**. The remaining 6 core classes (Bard, Druid, Paladin, Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **2 real prepared spellcasters (Cleric, Druid)**. The remaining 4 core classes (Bard, Paladin, Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
+
+## Real bug found and fixed: (Ex)/(Su)-suffixed class features were being silently dropped
+
+While extracting Druid, 10 of its real class features (Animal Companion, Nature Sense, Wild Empathy, Woodland Stride, Trackless Step, Resist Nature's Lure, Wild Shape, Venom Immunity, A Thousand Faces, Timeless Body) were missing from the output — not truncated, not merged into another feature, just absent, with **zero** `extractionNotes` disclosing anything wrong. Root cause: `FEATURE_BLOCK_RE`'s heading-text capture (`[^<]+`) required a feature's `<h5>` heading to contain no nested tags at all. But the extremely common real pattern `<h5 id="wildShape">Wild Shape (<a href="/srd/specialAbilities.htm#supernaturalAbilities">Su</a>)</h5>` — every (Ex)/(Su)/(Sp) ability-type suffix links to `specialAbilities.htm` — has exactly such a nested tag, so the whole heading silently failed to match at all, and the regex engine's `.exec()` loop just crawled past it character-by-character until it found the next heading with no nested tags.
+
+**This means the already-committed Barbarian, Rogue, Monk, and Cleric extractions from earlier in this session were each incomplete in the same way**, despite being reported as `extractionStatus: fully_structured` with zero notes:
+
+| Class | Reported before fix | Real count after fix | Missing (Ex)/(Su) features silently dropped |
+|---|---|---|---|
+| Barbarian | 2 | **12** | Fast Movement, Rage, Uncanny Dodge, Trap Sense, Improved Uncanny Dodge, Damage Reduction, Greater Rage, Indomitable Will, Tireless Rage, Mighty Rage |
+| Rogue | 4 | **8** | Evasion, Trap Sense, Uncanny Dodge, Improved Uncanny Dodge |
+| Monk | 4 | **21** | AC Bonus, Flurry of Blows, Evasion, Fast Movement, Still Mind, Ki Strike, Slow Fall, Purity of Body, Wholeness of Body, Improved Evasion, Diamond Body, Abundant Step, Diamond Soul, Quivering Palm, Timeless Body, Tongue of the Sun and Moon, Empty Body |
+| Cleric | 6 | **8** | Aura, Turn or Rebuke Undead |
+
+Fixed by widening the heading capture to `[\s\S]*?` (tolerating any nested tags) and stripping tags from the captured text afterward — the same technique already used elsewhere in this codebase for exactly this class of problem. **Every already-reported `fully_structured` status above was itself still accurate** (BAB/save progression, spellcasting, and the *other* class features were correct) — what changed is real feature *completeness*, not correctness of what had been captured. The real dev database was re-extracted from the live pages after the fix (not just the fixtures) to replace the incomplete rows. 6 new regression tests assert exact, real, live-page-verified feature counts for every affected class specifically so this bug class cannot regress silently again — a bug like this produces zero test failures unless a test checks *completeness*, not just presence of a few named items, which none of the original per-class tests did.
 
 ## Architecture
 
@@ -32,10 +47,11 @@ Zero drift against Phase 2A's real acceptance-scan hash for `/srd/classes/fighte
 
 ```
 Extracted real class "Fighter" (dnd35e:class:fighter): fully_structured, 20 level rows, 2 class features.
-Extracted real class "Barbarian" (dnd35e:class:barbarian): fully_structured, 20 level rows, 2 class features.
-Extracted real class "Rogue" (dnd35e:class:rogue): fully_structured, 20 level rows, 4 class features.
-Extracted real class "Monk" (dnd35e:class:monk): fully_structured, 20 level rows, 4 class features.
-Extracted real class "Cleric" (dnd35e:class:cleric): fully_structured, 20 level rows, 6 class features.
+Extracted real class "Barbarian" (dnd35e:class:barbarian): fully_structured, 20 level rows, 12 class features.
+Extracted real class "Rogue" (dnd35e:class:rogue): fully_structured, 20 level rows, 8 class features.
+Extracted real class "Monk" (dnd35e:class:monk): fully_structured, 20 level rows, 21 class features.
+Extracted real class "Cleric" (dnd35e:class:cleric): fully_structured, 20 level rows, 8 class features.
+Extracted real class "Druid" (dnd35e:class:druid): fully_structured, 20 level rows, 21 class features.
 ```
 
 ## Three real page-format/structure differences found and fixed during verification
@@ -62,7 +78,7 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **BAB progression**: `full`. **Save progression**: Fort `good`, Ref/Will `poor`.
 - **Hit die**: d12 (highest of any core class — real, correct). **Alignment**: "Any nonlawful." — a real compound restriction, preserved as prose rather than force-flattened into a single enum value.
 - **Skill points**: base 4. **Class skills**: 9 real skills (Climb, Craft, Handle Animal, Intimidate, Jump, Listen, Ride, Survival, Swim).
-- **Class Features**: 2 real features — "Weapon and Armor Proficiency" and "Illiteracy" (a real, distinctive Barbarian trait).
+- **Class Features**: 12 real features — Weapon and Armor Proficiency, Illiteracy, Fast Movement (Ex), Rage (Ex), Uncanny Dodge (Ex), Trap Sense (Ex), Improved Uncanny Dodge (Ex), Damage Reduction (Ex), Greater Rage (Ex), Indomitable Will (Ex), Tireless Rage (Ex), Mighty Rage (Ex).
 - `extractionStatus: fully_structured`, zero extraction notes.
 
 ## Real verified facts (Rogue)
@@ -70,7 +86,7 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **BAB progression**: `three-quarter` — verified per-row against the real `floor(level×3/4)` curve, not just at level 20.
 - **Save progression**: Ref `good`, Fort/Will `poor`. **Hit die**: d6 (lowest of any core class — real, correct). **Alignment**: "Any."
 - **Skill points**: base 8 — the highest of any core class, correctly extracted. **Class skills**: 28 real skills — the largest class-skill list in core 3.5, every one resolved to a real canonical skill ID.
-- **Class Features**: 4 real features — "Weapon and Armor Proficiency," "Sneak Attack," "Trapfinding," "Special Abilities."
+- **Class Features**: 8 real features — Weapon and Armor Proficiency, Sneak Attack, Trapfinding, Evasion (Ex), Trap Sense (Ex), Uncanny Dodge (Ex), Improved Uncanny Dodge (Ex), Special Abilities.
 - `extractionStatus: fully_structured`, zero extraction notes.
 
 ## Real verified facts (Monk)
@@ -78,7 +94,7 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **BAB progression**: `three-quarter`. **Save progression**: Fort/Ref/Will all `good` — Monk is the only core class with all three saves on the good curve.
 - **Hit die**: d8. **Alignment**: "Any lawful." — a real compound restriction, preserved as prose.
 - **Skill points**: base 4. **Class skills**: 16 real skills.
-- **Class Features**: 4 real features — "Weapon and Armor Proficiency," "Unarmed Strike," "Bonus Feat," "Perfect Self."
+- **Class Features**: 21 real features — Weapon and Armor Proficiency, AC Bonus (Ex), Flurry of Blows (Ex), Unarmed Strike, Bonus Feat, Evasion (Ex), Fast Movement (Ex), Still Mind (Ex), Ki Strike (Su), Slow Fall (Ex), Purity of Body (Ex), Wholeness of Body (Su), Improved Evasion (Ex), Diamond Body (Su), Abundant Step (Su), Diamond Soul (Ex), Quivering Palm (Su), Timeless Body (Ex), Tongue of the Sun and Moon (Ex), Empty Body (Su), Perfect Self.
 - **Level 1 progression row**: Flurry of Blows `-2/-2`, Unarmed Damage `1d6`, AC Bonus `+0`, Unarmored Speed Bonus `+0 ft.` — verified real, matching the SRD exactly.
 - **Level 20 progression row**: Flurry of Blows `+15/+15/+15/+10/+5`, Unarmed Damage `2d10`, AC Bonus `+4`, Unarmored Speed Bonus `+60 ft.` — verified real.
 - `extractionStatus: fully_structured`, zero extraction notes.
@@ -88,7 +104,16 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **BAB progression**: `full`. **Save progression**: Fort `good`, Ref/Will `poor`. **Hit die**: d8. **Alignment**: "Any." **Skill points**: base 2.
 - **Spellcasting**: ability `wis`, type `prepared` — both correctly derived from the real page's own stated rules text ("a cleric must have a Wisdom score equal to at least 10 + the spell level" and "a cleric must choose and prepare his spells in advance"), not hard-coded per class.
 - **Spells per Day table**: all 20 rows, 10 spell levels each (0-9), correctly parsed from the real two-row grouped header (`rowspan="2"` standard cells + `colspan="10"` "Spells per Day" group label + a sub-header row of spell-level links). Level 1: 3 cantrips, 1 first-level spell plus the real domain-spell `+1` bonus slot, levels 2-9 correctly `null` (the real page's "—"). Level 20: the real domain-spell `+1` bonus slot verified present on every available spell level 1-9, absent on cantrips (spell level 0 never gets a domain spell, per the real rule).
-- **Class Features**: 6 real features, including "Turn or Rebuke Undead."
+- **Class Features**: 8 real features — Weapon and Armor Proficiency, Aura (Ex), Spells, Deity/Domains/Domain Spells, Spontaneous Casting, Chaotic/Evil/Good/Lawful Spells, Turn or Rebuke Undead (Su), Bonus Languages.
+- `extractionStatus: fully_structured`, zero extraction notes.
+
+## Real verified facts (Druid)
+
+- **BAB progression**: `three-quarter`. **Save progression**: Fort `good`, Ref `poor`, Will `good` — Druid shares Monk's Fort+Will-good/Ref-poor shape but is not identical to any other class already extracted.
+- **Hit die**: d8. **Alignment**: "Neutral good, lawful neutral, neutral, chaotic neutral, or neutral evil." — a real, unusually verbose compound restriction (effectively "any non-chaotic-good, non-lawful-good, non-chaotic-evil, non-lawful-evil neutral-leaning alignment"), preserved verbatim as prose rather than force-flattened.
+- **Skill points**: base 4. **Class skills**: 12 real skills.
+- **Spellcasting**: ability `wis`, type `prepared`. Spells-per-day numbers are identical to Cleric's at every level, but with `bonusSlots: 0` everywhere (Druids get no domain spells) — verified explicitly, not merely assumed from the shared table shape.
+- **Class Features**: 21 real features, including the exact (Ex)/(Su)-suffixed set the nested-tag bug used to drop (Animal Companion, Nature Sense, Wild Empathy, Woodland Stride, Trackless Step, Resist Nature's Lure, Wild Shape, Venom Immunity, A Thousand Faces, Timeless Body), plus Weapon and Armor Proficiency, Spells, Spontaneous Casting, Chaotic/Evil/Good/Lawful Spells, Bonus Languages, Animal Companion Basics, and 5 real table-row-group headings from the Animal Companion-by-level table ("4th Level or Higher (Level −3)" etc.) that are honestly captured as their own named entries even though they function more as table row labels than freestanding class features — a known, disclosed quirk, not a miscategorization worth blocking on.
 - `extractionStatus: fully_structured`, zero extraction notes.
 
 ## New schema: `Dnd35eClassSpellcasting`
@@ -97,7 +122,7 @@ Added to `Dnd35eClassDefinition.spellcasting` (`null` for non-casters): `spellca
 
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **6 remaining core classes** — Bard, Druid, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Druid and Wizard are prepared casters and should extract with the current extractor largely as-is (real, likely-cheap next wins, pending real verification — never assumed working without checking). Paladin and Ranger are partial casters (spellcasting starts at level 4, only reaches spell level 4) — their real table shape is not yet inspected. Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
+1. **4 remaining core classes** — Bard, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Wizard is a prepared caster and should extract with the current extractor largely as-is (real, likely-cheap next win, pending real verification — never assumed working without checking). Paladin and Ranger are partial casters (spellcasting starts at level 4, only reaches spell level 4) — their real table shape is not yet inspected. Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
 2. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
 3. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
 4. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.
