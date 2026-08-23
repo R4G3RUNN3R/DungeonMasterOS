@@ -21,29 +21,7 @@ import type {
   Dnd35eFeatPrerequisite,
   Dnd35eFeatType,
 } from "@shared/rules-registry/dnd35e/feats";
-
-// --- small text helpers -----------------------------------------------
-
-function stripTags(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Converts a real d20srd anchor id (camelCase, e.g. "armorProficiencyHeavy")
-// into a kebab-case canonical-id slug ("armor-proficiency-heavy"). Also
-// handles plain lowercase words ("acrobatic" -> "acrobatic") and skill/ability
-// display names with spaces ("Handle Animal" -> "handle-animal").
-function kebabCase(raw: string): string {
-  return raw
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/[\s_]+/g, "-")
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+import { stripTags, kebabCase } from "./html-utils";
 
 const FEAT_TYPE_MAP: Record<string, Dnd35eFeatType> = {
   general: "general",

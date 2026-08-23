@@ -71,6 +71,11 @@ import type {
   Dnd35eFeatPrerequisite,
   Dnd35eFeatEffect,
 } from "@shared/rules-registry/dnd35e/feats";
+import type {
+  Dnd35eRaceDefinition,
+  Dnd35eRacialLanguages,
+  Dnd35eRacialTrait,
+} from "@shared/rules-registry/dnd35e/races";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
@@ -601,6 +606,21 @@ export function runMigrations() {
     updated_at TEXT NOT NULL
   );`);
 
+  // Races/Racial Traits — same pattern as dnd35e_feat_definitions above:
+  // structured-content changes recorded via recordRevision(entityType:
+  // "race"), never a bespoke per-table revision mechanism.
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_race_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    languages_json TEXT NOT NULL DEFAULT 'null',
+    traits_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -823,6 +843,50 @@ function dnd35eFeatStructuredContentJson(feat: {
   });
 }
 
+// Races/Racial Traits — mirrors the feat-definition row/mapper/structured-
+// content pattern above field-for-field.
+export interface Dnd35eRaceDefinitionRow {
+  canonicalId: string;
+  name: string;
+  languages: Dnd35eRacialLanguages | null;
+  traits: Dnd35eRacialTrait[];
+  extractionStatus: Dnd35eRaceDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eRaceDefinitionRow(row: any): Dnd35eRaceDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    languages: JSON.parse(row.languages_json),
+    traits: JSON.parse(row.traits_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eRaceStructuredContentJson(race: {
+  name: string;
+  languages: Dnd35eRacialLanguages | null;
+  traits: Dnd35eRacialTrait[];
+  extractionStatus: Dnd35eRaceDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: race.name,
+    languages: race.languages,
+    traits: race.traits,
+    extractionStatus: race.extractionStatus,
+    extractionNotes: race.extractionNotes,
+  });
+}
+
 // ── Storage interface ──────────────────────────────────────────────────────
 export interface IStorage {
   // Users
@@ -1042,6 +1106,9 @@ export interface IStorage {
   upsertDnd35eFeatDefinition(feat: Dnd35eFeatDefinition, evidence: EvidenceCitation): Dnd35eFeatDefinitionRow;
   getDnd35eFeatDefinition(canonicalId: string): Dnd35eFeatDefinitionRow | undefined;
   listDnd35eFeatDefinitions(filter?: { extractionStatus?: Dnd35eFeatDefinition["extractionStatus"] }): Dnd35eFeatDefinitionRow[];
+  upsertDnd35eRaceDefinition(race: Dnd35eRaceDefinition, evidence: EvidenceCitation): Dnd35eRaceDefinitionRow;
+  getDnd35eRaceDefinition(canonicalId: string): Dnd35eRaceDefinitionRow | undefined;
+  listDnd35eRaceDefinitions(filter?: { extractionStatus?: Dnd35eRaceDefinition["extractionStatus"] }): Dnd35eRaceDefinitionRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -2367,6 +2434,111 @@ export class DatabaseStorage implements IStorage {
       ? sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
       : sqlite.prepare("SELECT * FROM dnd35e_feat_definitions").all();
     return (rows as any[]).map(mapDnd35eFeatDefinitionRow);
+  }
+
+  upsertDnd35eRaceDefinition(race: Dnd35eRaceDefinition, evidence: EvidenceCitation): Dnd35eRaceDefinitionRow {
+    if (!isValidCanonicalId(race.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${race.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(race.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "race") {
+      throw new Error(
+        `Invalid canonicalId "${race.canonicalId}" for upsertDnd35eRaceDefinition: expected ruleset "dnd35e" and entityType "race", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_race_definitions WHERE canonical_id = ?")
+      .get(race.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_race_definitions (
+            canonical_id, name, languages_json, traits_json,
+            extraction_status, extraction_notes_json, evidence_json,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          race.canonicalId,
+          race.name,
+          JSON.stringify(race.languages),
+          JSON.stringify(race.traits),
+          race.extractionStatus,
+          JSON.stringify(race.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eRaceDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE canonical_id = ?").get(race.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eRaceStructuredContentJson({
+      name: existing.name,
+      languages: JSON.parse(existing.languages_json),
+      traits: JSON.parse(existing.traits_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eRaceStructuredContentJson(race);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_race_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, race.canonicalId);
+      return mapDnd35eRaceDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE canonical_id = ?").get(race.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_race_definitions SET
+          name = ?, languages_json = ?, traits_json = ?,
+          extraction_status = ?, extraction_notes_json = ?,
+          evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        race.name,
+        JSON.stringify(race.languages),
+        JSON.stringify(race.traits),
+        race.extractionStatus,
+        JSON.stringify(race.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        race.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(race.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: race.canonicalId,
+      entityType: "race",
+      revision: nextRevision,
+      changeReason: "structured race content changed on re-extraction",
+      diffSummary: `structured content for ${race.canonicalId} changed`,
+    });
+
+    return mapDnd35eRaceDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE canonical_id = ?").get(race.canonicalId),
+    );
+  }
+
+  getDnd35eRaceDefinition(canonicalId: string): Dnd35eRaceDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eRaceDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eRaceDefinitions(filter?: { extractionStatus?: Dnd35eRaceDefinition["extractionStatus"] }): Dnd35eRaceDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_race_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_race_definitions").all();
+    return (rows as any[]).map(mapDnd35eRaceDefinitionRow);
   }
 }
 
