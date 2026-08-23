@@ -26,7 +26,7 @@ Those reports are normative evidence for this proposal. This specification does 
 
 ## Executive design
 
-`[INFERENCE]` DungeonMasterOS should expose three explicit selectable mechanics rulesets—existing `dnd35e`, new `dnd5e2014`, and new `dnd5e2024`—while retaining existing bare `dnd5e` as a **non-selectable legacy compatibility identity** for historical rows until each campaign is explicitly classified or converted.
+`[INFERENCE]` DungeonMasterOS should end with three explicit selectable mechanics rulesets—existing `dnd35e`, new `dnd5e2014`, and new `dnd5e2024`—while retaining existing bare `dnd5e` as a legacy compatibility identity for historical rows until each campaign is explicitly classified or converted. During rollout, bare `dnd5e` remains available for new campaigns under an unambiguous compatibility warning until `dnd5e2014` passes its fixed gate; one atomic server-owned selection transition then removes the legacy option and exposes `dnd5e2014`, so there is no period with no 5e creation choice.
 
 `[INFERENCE]` The two 5e generations must have independent canonical IDs, source manifests, canonical definitions, mechanics profiles, client projections, AI context, test fixtures, and immutable releases. Shared infrastructure may execute both, but no mutable record may change its meaning based on which campaign reads it.
 
@@ -565,9 +565,9 @@ type RulesetResolutionState =
 
 ### Legacy compatibility release
 
-`[INFERENCE]` Before changing 5e mechanics, capture a tested legacy compatibility release describing existing intended behavior and known defects. Existing campaigns continue resolving through `dnd5e` until explicitly classified. New campaigns cannot select it.
+`[INFERENCE]` Before changing 5e mechanics, capture a tested legacy compatibility release describing existing intended behavior and known defects. Existing campaigns continue resolving through `dnd5e` until explicitly classified. Until the first explicit `dnd5e2014` release passes its fixed gate, new campaigns may still select this captured legacy release only through a visibly labelled **D&D 5e (Legacy compatibility; generation not pinned)** option and an acknowledgement warning. Publishing the first selectable 2014 release atomically replaces that option with `dnd5e2014`; disabling or rolling back that release gate restores the warned legacy option without relabelling any campaign. After that transition, bare `dnd5e` is not ordinarily selectable.
 
-`[INFERENCE]` The first schema migration creates exactly one content-addressed legacy evaluator artifact, `dnd5e` semantic-corpus placeholder, ruleset release, evaluated-corpus manifest, and campaign snapshot for each current legacy policy/source combination. Backfill is additive and idempotent, stores its classification basis, and exposes `pending`, `complete`, and `repair_required` states. Rollback removes only unreferenced backfill links/new rows and restores prior nullable columns; it never deletes or rewrites campaign, character, item, effect, encounter, roll, or message payloads. Re-running after interruption must repair the same deterministic IDs rather than mint alternatives.
+`[INFERENCE]` The first schema migration creates exactly one content-addressed legacy evaluator artifact, `dnd5e` semantic-corpus placeholder, ruleset release, evaluated-corpus manifest, and campaign snapshot for each current legacy policy/source combination. Backfill is additive and idempotent, stores its classification basis, and exposes `pending`, `complete`, and `repair_required` states. Rollback is operational: disable new exact-context writers/read projections as necessary and restore the warned legacy creation selector, while retaining every backfill link, nullable column, evidence row, artifact byte, manifest, release, and snapshot for audit/re-entry. It never deletes or rewrites campaign, character, item, effect, encounter, roll, or message payloads. Re-running after interruption repairs the same deterministic IDs rather than minting alternatives.
 
 `[INFERENCE]` Known defects—3.5 client adapter fallback, aggregate attack bonus added to damage, generic natural-1/20 outcomes, incomplete source synchronization—must not be celebrated as sacred rules. Each needs separately authorized remediation, regression evidence, release notes, and a decision about whether behavior-changing fixes require campaign opt-in.
 
@@ -856,7 +856,7 @@ The future foundation satisfies this specification only when all are true:
 
 - The broad catalogue `RulesetId` and narrow `MechanicalRulesetId` are distinct; `dnd35e`, `dnd5e2014`, and `dnd5e2024` dispatch explicitly while catalogue-only/unknown IDs fail closed.
 - Existing bare `dnd5e` campaigns remain unchanged and identifiable as legacy/unresolved until explicit action.
-- New campaign UI never presents ambiguous bare `dnd5e`.
+- Before the first explicit 2014 release, new campaign UI labels bare `dnd5e` as legacy/unpinned and requires warning acknowledgement; the persisted fixed gate later replaces it atomically with `dnd5e2014`, and gate rollback restores the warned fallback without changing existing rows.
 - Same-slug 2014/revised canonical IDs and revisions coexist without collision or fallback.
 - Campaign rules snapshots pin a retained, content-addressed evaluated-corpus manifest containing exact semantic corpora, canonical/homebrew/policy revisions, hashes, and evaluator artifact.
 - Official artifacts, semantic corpora, claim-bearing web/license evidence, and derived transports have distinct provenance records, immutable hashes, and many-to-many segment/record lineage.

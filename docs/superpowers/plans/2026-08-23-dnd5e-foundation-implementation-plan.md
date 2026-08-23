@@ -14,7 +14,7 @@
 
 - **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** at the beginning of every phase. Read the landed Phase 2A interfaces and replace only provisional plan names by a reviewed documentation update before coding against them.
 - `RulesetId` remains the six-value catalogue/product type. `MechanicalRulesetId` is exactly `"dnd35e" | "dnd5e" | "dnd5e2014" | "dnd5e2024"`; catalogue settings require an explicit `baseMechanicalRulesetId` and cannot dispatch mechanics.
-- `dnd5e` is a non-selectable legacy mechanical identity. Existing rows retain it and receive captured legacy evidence; no campaign is silently relabelled 2014 or 2024.
+- `dnd5e` is the legacy mechanical identity. Existing rows retain it and receive captured legacy evidence; no campaign is silently relabelled 2014 or 2024. Until Task 15 publishes a gated 2014 replacement, new-campaign selection retains it behind an explicit legacy/unpinned compatibility warning; Task 15 atomically swaps that option for `dnd5e2014`, and gate rollback restores the warned fallback rather than leaving users with no 5e creation path.
 - Every state-changing command resolves a server-owned exact context; unknown/catalog-only/missing/quarantined/cross-ruleset input fails closed. No first-registry default, `non-dnd35e` fallback, or AI-supplied number/outcome survives on mechanics paths.
 - An immutable `SourceArtifactSnapshot` stores bytes/evidence. An immutable `SemanticCorpusRevision` stores normalized rules meaning. Their many-to-many bindings, source segment/record lineage, rights decisions, and obligation-set revisions are retained. A derived transport is never authoritative merely because it is reproducible.
 - A published release and every `CampaignRulesSnapshot` pin one immutable, retained `EvaluatedCorpusManifest`: sorted semantic-corpus, canonical, homebrew, source-policy, evaluator-artifact, and hash inputs. Old manifests, revisions, and artifacts are never overwritten or deleted for a newer release.
@@ -83,7 +83,6 @@
 - Modify: `shared/rulesets.ts`
 - Modify: `shared/schema.ts`
 - Modify: `server/routes.ts`
-- Modify: `client/src/pages/home.tsx`
 - Create: `shared/rulesets.test.ts`
 - Modify: `server/campaign-settings.test.ts`
 - Test: `shared/rulesets.test.ts`, `server/campaign-settings.test.ts`
@@ -94,15 +93,14 @@
 
   ```ts
   type MechanicalRulesetId = "dnd35e" | "dnd5e" | "dnd5e2014" | "dnd5e2024";
-  type NewCampaignMechanicalRulesetCandidateId = "dnd35e" | "dnd5e2014" | "dnd5e2024";
+  type ExplicitMechanicalRulesetCandidateId = "dnd35e" | "dnd5e2014" | "dnd5e2024";
   function isMechanicalRulesetId(value: string): value is MechanicalRulesetId;
   function getMechanicalRulesetOrThrow(value: string): MechanicalRulesetDefinition;
-  function listSelectableMechanicalRulesets(): readonly NewCampaignMechanicalRulesetCandidateId[];
   ```
 
 - [ ] **Step 1: Write failing identity tests.**
 
-  Assert each mechanical ID validates; `ravenloft`, `eberron`, `vampire-dark-fantasy`, `post-apocalyptic`, and arbitrary text reject; display catalogue lookup may work without evaluator lookup. Assert `dnd5e2014` and `dnd5e2024` are recognized candidates but remain absent from `listSelectableMechanicalRulesets()` until their persisted release gates pass; bare `dnd5e` is never returned.
+  Assert each mechanical ID validates; `ravenloft`, `eberron`, `vampire-dark-fantasy`, `post-apocalyptic`, and arbitrary text reject; display catalogue lookup may work without evaluator lookup. Assert `dnd5e2014` and `dnd5e2024` are recognized candidates but cannot be submitted. Snapshot the pre-task new-campaign selector/route behavior and prove this identity-only commit still accepts exactly the existing `dnd35e` and bare `dnd5e` choices—no release-backed descriptor is introduced before Tasks 3–4 can persist one.
 
 - [ ] **Step 2: Run red.**
 
@@ -112,17 +110,17 @@
 
 - [ ] **Step 3: Implement the boundary.**
 
-  Retain `RulesetId` for catalogue display. Add explicit `baseMechanicalRulesetId` for settings and reject its absence at context resolution. Make create validation/UI consume the dynamic server-owned selectable list, which initially contains only already-supported `dnd35e`; recognize the two 5e candidates without exposing them. Accept bare `dnd5e` only for existing persisted legacy rows.
+  Retain `RulesetId` for catalogue display. Add explicit `baseMechanicalRulesetId` for settings and reject its absence at context resolution. Recognize the two explicit 5e candidates without exposing them, but preserve the current selector and create-route choices unchanged in this commit. Release-backed selectable descriptors and the warned legacy label belong to Task 4, after their persistence exists.
 
 - [ ] **Step 4: Prove green.**
 
   Run: `node --import tsx --test shared/rulesets.test.ts server/campaign-settings.test.ts && npm run typecheck`
 
-  Expected: PASS; no catalogue ID or ungated 5e candidate can be submitted as mechanics, and a legacy campaign remains readable.
+  Expected: PASS; no catalogue ID or ungated explicit 5e candidate can be submitted as mechanics, while the existing two new-campaign choices and legacy reads remain unchanged.
 
 - [ ] **Step 5: Commit.**
 
-  Run: `git add shared/rulesets.ts shared/schema.ts server/routes.ts client/src/pages/home.tsx shared/rulesets.test.ts server/campaign-settings.test.ts && git commit -m "feat: separate mechanical ruleset identity"`
+  Run: `git add shared/rulesets.ts shared/schema.ts server/routes.ts shared/rulesets.test.ts server/campaign-settings.test.ts && git commit -m "feat: separate mechanical ruleset identity"`
 
   Expected: one identity-only commit. **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 3.
 
@@ -191,28 +189,44 @@
 **Files:**
 - Create: `server/legacy-rules-backfill.ts`
 - Create: `server/legacy-rules-backfill.test.ts`
+- Modify: `shared/rulesets.ts`
 - Modify: `shared/schema.ts`
 - Modify: `server/storage.ts`
+- Modify: `server/routes.ts`
+- Modify: `client/src/pages/home.tsx`
+- Modify: `client/src/pages/campaign.tsx`
+- Create: `client/src/lib/campaignRulesetOptions.ts`
+- Create: `client/src/lib/campaignRulesetOptions.test.ts`
 - Modify: `server/routes-combat.e2e.test.ts`
-- Test: `server/legacy-rules-backfill.test.ts`, `server/routes-combat.e2e.test.ts`
+- Modify: `server/campaign-settings.test.ts`
+- Test: `server/legacy-rules-backfill.test.ts`, `server/routes-combat.e2e.test.ts`, `server/campaign-settings.test.ts`
 
 **Interfaces:**
-- Consumes: Task 3 immutable release/manifest APIs and bare legacy campaign rows.
-- Produces: `backfillLegacyRulesState(): LegacyBackfillReport`, `historicalProvenanceStatus: "captured" | "unreplayable"`, and resolution states `pending | complete | repair_required`.
+- Consumes: Task 2 identity boundary, Task 3 immutable release/manifest APIs, and bare legacy campaign rows.
+- Produces: `backfillLegacyRulesState(): LegacyBackfillReport`, `historicalProvenanceStatus: "captured" | "unreplayable"`, resolution states `pending | complete | repair_required`, and—only after successful capture—the release-backed selection contract:
+
+  ```ts
+  interface RulesetSelectionGateSnapshot { legacyReleaseId: string; dnd35eReleaseId: string | null; dnd5e2014ReleaseId: string | null; dnd5e2024ReleaseId: string | null; }
+  type SelectableMechanicalRuleset =
+    | { id: "dnd35e"; mode: "existing"; releaseId: string | null }
+    | { id: "dnd5e"; mode: "legacy_compatibility"; warningKey: "legacy_generation_unpinned"; releaseId: string }
+    | { id: "dnd5e2014" | "dnd5e2024"; mode: "explicit"; releaseId: string };
+  function listSelectableMechanicalRulesets(gates: RulesetSelectionGateSnapshot): readonly SelectableMechanicalRuleset[];
+  ```
 
 - [ ] **Step 1: Write red legacy fixtures.**
 
-  Include bare `dnd5e` campaigns with character data, legacy inventory JSON, null/keyed item instances, effect, encounter participant, queued action, message, and roll log. Assert one deterministic legacy evaluator artifact, semantic-corpus placeholder, release, exact manifest, and snapshot per policy/source combination; assert historic rows without inputs get `unreplayable`.
+  Include bare `dnd5e` campaigns with character data, legacy inventory JSON, null/keyed item instances, effect, encounter participant, queued action, message, and roll log. Assert one deterministic legacy evaluator artifact, semantic-corpus placeholder, release, exact manifest, and snapshot per policy/source combination; assert historic rows without inputs get `unreplayable`. Before capture completes, the Task 2 selector remains unchanged. After an idempotent successful capture, one persisted activation switches both creation surfaces/routes to release-backed descriptors: warned bare `dnd5e` carries the exact captured release and a client-supplied alternative or missing acknowledgement rejects. Injected backfill/activation failure leaves the old selector intact, never an empty 5e choice.
 
 - [ ] **Step 2: Run red.**
 
-  Run: `node --import tsx --test server/legacy-rules-backfill.test.ts`
+  Run: `node --import tsx --test server/legacy-rules-backfill.test.ts client/src/lib/campaignRulesetOptions.test.ts server/campaign-settings.test.ts`
 
   Expected: FAIL because existing rows have no snapshot/provenance model.
 
 - [ ] **Step 3: Implement additive, idempotent capture.**
 
-  Backfill a captured legacy evaluator/version with explicit known-defect identifiers and classification basis, never a 2014/2024 assertion. Give every affected state row a snapshot/provenance link when evidence exists; otherwise persist exact `unreplayable` reason. Interrupted reruns repair the same deterministic IDs. Rollback removes only unreferenced links/new rows and restores nullable columns, never legacy payloads.
+  Backfill a captured legacy evaluator/version with explicit known-defect identifiers and classification basis, never a 2014/2024 assertion. Give every affected state row a snapshot/provenance link when evidence exists; otherwise persist exact `unreplayable` reason. After the capture transaction is complete, activate the server-owned descriptor route and both client renderers with the explicit legacy warning; do not make Task 2 depend on not-yet-created releases. Interrupted reruns repair the same deterministic IDs. Pre-activation rollback leaves the Task 2 selector; post-activation operational rollback disables new release-backed writes but retains capture rows and never rewrites legacy payloads.
 
 - [ ] **Step 4: Prove historical isolation.**
 
@@ -220,9 +234,9 @@
 
 - [ ] **Step 5: Run green and commit.**
 
-  Run: `node --import tsx --test server/legacy-rules-backfill.test.ts server/routes-combat.e2e.test.ts && npm run typecheck`
+  Run: `node --import tsx --test server/legacy-rules-backfill.test.ts server/routes-combat.e2e.test.ts server/campaign-settings.test.ts client/src/lib/campaignRulesetOptions.test.ts && npm run typecheck && npm run build`
 
-  Expected: PASS; legacy campaigns remain usable through captured behavior and uncertainty is recorded. Commit with `git add server/legacy-rules-backfill.ts server/legacy-rules-backfill.test.ts shared/schema.ts server/storage.ts server/routes-combat.e2e.test.ts && git commit -m "feat: preserve legacy rules provenance"`.
+  Expected: PASS; legacy campaigns and warned creation remain usable through the exact captured behavior, and uncertainty is recorded. Commit with `git add server/legacy-rules-backfill.ts server/legacy-rules-backfill.test.ts shared/rulesets.ts shared/schema.ts server/storage.ts server/routes.ts client/src/pages/home.tsx client/src/pages/campaign.tsx client/src/lib/campaignRulesetOptions.ts client/src/lib/campaignRulesetOptions.test.ts server/routes-combat.e2e.test.ts server/campaign-settings.test.ts && git commit -m "feat: preserve legacy rules provenance"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 5.
 
@@ -251,11 +265,19 @@
   interface RulesCommandResult<TResult> { result: TResult; eventId: string; campaignRulesSnapshotId: string; evaluatedCorpusManifestHash: string; previousCampaignStateVersion: number; campaignStateVersion: number; idempotentReplay: boolean; }
   interface RulesEventPayload { intentType: string; normalizedIntent: unknown; normalizedResult: unknown; rulesetReleaseId: string; semanticCorpusRevisionIds: readonly string[]; canonicalRevisionIds: readonly string[]; sourceArtifactSnapshotIds: readonly string[]; evaluatorBundleArtifactSha256: string; }
   interface EventCursor { campaignStateVersion: number; eventId: string | null; }
-  interface OutboxEvent { id: string; campaignId: number; eventId: string; campaignRulesSnapshotId: string; evaluatedCorpusManifestHash: string; campaignStateVersion: number; payloadSchemaVersion: string; payload: RulesEventPayload; payloadHash: string; committedAt: string; deliveryStatus: "pending" | "delivered"; }
+  interface OutboxEvent { id: string; campaignId: number; eventId: string; campaignRulesSnapshotId: string; evaluatedCorpusManifestHash: string; campaignStateVersion: number; payloadSchemaVersion: string; payload: RulesEventPayload; payloadHash: string; committedAt: string; deliveryStatus: "pending" | "leased" | "delivered"; }
   function resolveRulesContextForMutation(campaignId: number, assertion?: SnapshotAssertion): RulesContext;
   function executeRulesCommand<TIntent, TResult>(input: RulesCommandInput<TIntent>): Promise<RulesCommandResult<TResult>>;
   function listCommittedCampaignEventsAfter(campaignId: number, cursor: EventCursor): readonly OutboxEvent[];
   ```
+
+**Provisional additive migration contract — REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION:**
+
+- `campaign_state_versions`: `campaign_id INTEGER PRIMARY KEY REFERENCES campaigns(id) ON DELETE RESTRICT`, `state_version INTEGER NOT NULL CHECK (state_version >= 0)`, and `updated_at TEXT NOT NULL`. Backfill exactly one row per campaign at version 0; `UPDATE ... WHERE state_version = :asserted` is the compare-and-swap boundary.
+- `rules_command_idempotency`: `command_id TEXT PRIMARY KEY`, `campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT`, `actor_kind TEXT NOT NULL CHECK (actor_kind IN ('user','visitor','system_migration'))`, `actor_scope_key TEXT NOT NULL`, `idempotency_key TEXT NOT NULL`, `request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64)`, `intent_type TEXT NOT NULL`, `normalized_intent_json TEXT NOT NULL`, `result_json TEXT NOT NULL`, `result_sha256 TEXT NOT NULL CHECK (length(result_sha256) = 64)`, `asserted_snapshot_id TEXT NOT NULL REFERENCES campaign_rules_snapshots(id) ON DELETE RESTRICT`, `asserted_state_version INTEGER NOT NULL`, `resulting_state_version INTEGER NOT NULL CHECK (resulting_state_version = asserted_state_version + 1)`, and `created_at TEXT NOT NULL`; `UNIQUE(campaign_id, actor_kind, actor_scope_key, idempotency_key)`. The actor scope uses `user:<id>`, a keyed digest of a visitor credential, or `migration:<id>`—never an unscoped client key. Reuse with a different request hash rejects rather than replaying the first result.
+- `rules_events`: `event_id TEXT PRIMARY KEY`, `command_id TEXT NOT NULL UNIQUE REFERENCES rules_command_idempotency(command_id) ON DELETE RESTRICT`, `campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT`, `previous_state_version INTEGER NOT NULL`, `state_version INTEGER NOT NULL CHECK (state_version = previous_state_version + 1)`, `campaign_rules_snapshot_id TEXT NOT NULL REFERENCES campaign_rules_snapshots(id) ON DELETE RESTRICT`, `evaluated_manifest_id TEXT NOT NULL REFERENCES evaluated_corpus_manifests(id) ON DELETE RESTRICT`, `evaluated_manifest_sha256 TEXT NOT NULL CHECK (length(evaluated_manifest_sha256) = 64)`, `payload_schema_version TEXT NOT NULL`, `payload_json TEXT NOT NULL`, `payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64)`, and `committed_at TEXT NOT NULL`; `UNIQUE(campaign_id, state_version)` establishes the replay order.
+- `rules_outbox`: `outbox_id TEXT PRIMARY KEY`, `event_id TEXT NOT NULL UNIQUE REFERENCES rules_events(event_id) ON DELETE RESTRICT`, `campaign_id INTEGER NOT NULL`, `state_version INTEGER NOT NULL`, `campaign_rules_snapshot_id TEXT NOT NULL`, `evaluated_manifest_sha256 TEXT NOT NULL CHECK (length(evaluated_manifest_sha256) = 64)`, `payload_schema_version TEXT NOT NULL`, `payload_json TEXT NOT NULL`, `payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64)`, `committed_at TEXT NOT NULL`, `delivery_status TEXT NOT NULL CHECK (delivery_status IN ('pending','leased','delivered'))`, `attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0)`, `lease_owner TEXT`, `lease_expires_at TEXT`, `next_attempt_at TEXT`, `delivered_at TEXT`, and `last_error TEXT`; composite foreign key `(campaign_id, state_version) REFERENCES rules_events(campaign_id, state_version) ON DELETE RESTRICT`, plus indexes `(delivery_status, next_attempt_at, committed_at)` and `(campaign_id, state_version, outbox_id)`.
+- Insert the command, rules event, state-version advance, and outbox payload in the same SQLite transaction. Add `BEFORE UPDATE`/`BEFORE DELETE` guards for immutable command/event columns and outbox identity/payload columns; only outbox lease/delivery fields may update through a compare-and-swap storage method. Retain command/event/outbox rows for at least as long as any campaign snapshot or replay evidence references them; this foundation defines no pruning job. Migration rollback is operational: disable new writers/publishers while retaining tables and readers, never `DROP`, delete, or decrement state versions.
 
 - [ ] **Step 1: Write red transaction tests.**
 
@@ -269,7 +291,7 @@
 
 - [ ] **Step 3: Implement resolver, transaction, and outbox.**
 
-  Add additive state-version, idempotency, resolution-event, and outbox tables. Reload campaign/ownership/context in one transaction; verify version; mutate; append normalized inputs/outputs/canonical/source/release provenance; advance state; enqueue outbox. Send only committed outbox rows, retain failures for retry, mark delivery idempotently, and expose ordered cursor-based reconnect catch-up. Move one existing deterministic roll/attack route through the service.
+  Add the exact provisional state-version, idempotency, resolution-event, and outbox schema above through `runMigrations()`/idempotent table-and-index creation. Reload campaign/ownership/context in one transaction; verify version; mutate; append normalized inputs/outputs/canonical/source/release provenance; advance state; enqueue outbox. Send only committed outbox rows, retain failures for retry, mark delivery idempotently, and expose ordered cursor-based reconnect catch-up. Move one existing deterministic roll/attack route through the service.
 
 - [ ] **Step 4: Prove forward-only migration rollback.**
 
@@ -597,9 +619,14 @@
 - Create: `server/dnd5e2014/character-policy.ts`
 - Create: `server/dnd5e2014/character-policy.test.ts`
 - Modify: `server/character-stats.ts`
+- Modify: `server/leveling.ts`
+- Modify: `server/routes.ts`
 - Modify: `server/rules-command-service.ts`
+- Modify: `client/src/pages/campaign.tsx`
 - Modify: `server/character-stats.test.ts`
-- Test: `server/dnd5e2014/character-policy.test.ts`, `server/character-stats.test.ts`
+- Create: `server/dnd5e-creation-advancement-routes.test.ts`
+- Create: `client/src/pages/campaign.test.tsx`
+- Test: `server/dnd5e2014/character-policy.test.ts`, `server/character-stats.test.ts`, `server/dnd5e-creation-advancement-routes.test.ts`, `client/src/pages/campaign.test.tsx`
 
 **Interfaces:**
 - Consumes: Task 10 origin/class/progression revisions, `RulesContext`, and Task 5 command service.
@@ -607,7 +634,7 @@
 
 - [ ] **Step 1: Write red creation/advancement tests.**
 
-  Require server validation of six abilities and their recorded generation method, 2014 race-owned ASIs/languages, background/class/subclass choices, starting equipment, HP/AC/proficiency/saves/initiative, level/XP grants, ownership, and exact canonical/source/snapshot provenance. Reject revised species, background ASIs, Origin feats, Mastery, cross-generation IDs, and client/AI-supplied derived totals.
+  Require server validation of six abilities and their recorded generation method, 2014 race-owned ASIs/languages, background/class/subclass choices, starting equipment, HP/AC/proficiency/saves/initiative, level/XP grants, ownership, and exact canonical/source/snapshot provenance. Reject revised species, background ASIs, Origin feats, Mastery, cross-generation IDs, and client/AI-supplied derived totals. Exercise the current campaign creation form plus every creation/level-up handler in `server/routes.ts` and `server/leveling.ts`: crafted HTTP bodies and stale client projections cannot bypass the policy, while a bare legacy fixture retains its captured form and progression behavior.
 
 - [ ] **Step 2: Run red.**
 
@@ -617,13 +644,13 @@
 
 - [ ] **Step 3: Implement the two policies.**
 
-  Read exact 2014 revisions through the evaluated manifest, validate all choices server-side, compute derived values from stored source choices, and commit through Task 5. Preserve bare-legacy behavior on its captured evaluator; do not repair it incidentally.
+  Read exact 2014 revisions through the evaluated manifest, validate all choices server-side, compute derived values from stored source choices, and commit through Task 5. Replace the current non-3.5 fallback in `server/leveling.ts`; make every relevant `server/routes.ts` handler resolve `RulesContext` and call the policy; make `client/src/pages/campaign.tsx` render server-supplied choices and submit intent only. Preserve bare-legacy behavior on its captured evaluator; do not repair it incidentally.
 
 - [ ] **Step 4: Run green and commit.**
 
-  Run: `node --import tsx --test server/dnd5e2014/character-policy.test.ts server/character-stats.test.ts && npm run typecheck`
+  Run: `node --import tsx --test server/dnd5e2014/character-policy.test.ts server/character-stats.test.ts server/dnd5e-creation-advancement-routes.test.ts client/src/pages/campaign.test.tsx && npm run typecheck && npm run build`
 
-  Expected: PASS with no 2024/3.5 lookup. Commit with `git add server/dnd5e2014/character-policy.ts server/dnd5e2014/character-policy.test.ts server/character-stats.ts server/rules-command-service.ts server/character-stats.test.ts && git commit -m "feat: add dnd5e2014 character policies"`.
+  Expected: PASS with no 2024/3.5 lookup and no creation/advancement bypass. Commit with `git add server/dnd5e2014/character-policy.ts server/dnd5e2014/character-policy.test.ts server/character-stats.ts server/leveling.ts server/routes.ts server/rules-command-service.ts client/src/pages/campaign.tsx server/character-stats.test.ts server/dnd5e-creation-advancement-routes.test.ts client/src/pages/campaign.test.tsx && git commit -m "feat: add dnd5e2014 character policies"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 14B.
 
@@ -674,7 +701,13 @@
 - Create: `server/dnd5e2014/release-gate.ts`
 - Create: `server/dnd5e2014/release-gate.test.ts`
 - Modify: `server/rules-command-service.ts`
-- Test: `server/dnd5e2014/rest-spell-equipment-policy.test.ts`, `server/dnd5e2014/release-gate.test.ts`
+- Modify: `server/routes.ts`
+- Modify: `client/src/components/SpellSheet.tsx`
+- Modify: `client/src/lib/spellMath.ts`
+- Modify: `client/src/lib/spellMath.test.ts`
+- Create: `server/dnd5e-rest-spell-routes.test.ts`
+- Create: `client/src/components/SpellSheet.test.tsx`
+- Test: `server/dnd5e2014/rest-spell-equipment-policy.test.ts`, `server/dnd5e2014/release-gate.test.ts`, `server/dnd5e-rest-spell-routes.test.ts`, `client/src/components/SpellSheet.test.tsx`, `client/src/lib/spellMath.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 11–13 equipment/spell/rest definitions and Tasks 14A–14B capability evidence.
@@ -682,7 +715,7 @@
 
 - [ ] **Step 1: Write red rest/spell/equipment tests.**
 
-  Require 2014 Short Rest duration/eligibility and minimum-0 Hit Die healing; Long Rest 24-hour cadence, half-spent-Hit-Dice recovery, HP restoration, legacy reduced-ability/HP-maximum behavior, Exhaustion prerequisites, and interruption/restart procedure; known/prepared eligibility, slots, rituals, action restriction, concentration start/check/end, targets and casting transaction; equip/unequip, armor/shield eligibility, weapon properties, attunement, activation and consumable action cost. Every unimplemented feature/spell/item/monster effect must return source-linked `requires_adjudication` without mutation.
+  Require 2014 Short Rest duration/eligibility and minimum-0 Hit Die healing; Long Rest 24-hour cadence, half-spent-Hit-Dice recovery, HP restoration, legacy reduced-ability/HP-maximum behavior, Exhaustion prerequisites, and interruption/restart procedure; known/prepared eligibility, slots, rituals, action restriction, concentration start/check/end, targets and casting transaction; equip/unequip, armor/shield eligibility, weapon properties, attunement, activation and consumable action cost. Drive every current rest/resource/spell route and `SpellSheet` action: direct PATCH attempts, client-computed save DC/attack/slots, and stale resource payloads cannot mutate explicit 2014 state; `SpellSheet` renders the server projection and sends intent only. Keep `spellMath` generation-explicit and prove its 3.5/legacy callers cannot become a hidden 2014 authority. Every unimplemented feature/spell/item/monster effect must return source-linked `requires_adjudication` without mutation.
 
 - [ ] **Step 2: Run red.**
 
@@ -692,13 +725,13 @@
 
 - [ ] **Step 3: Implement policies and aggregate evidence.**
 
-  Execute only typed, tested fields from the 2014 manifest through Task 5. Build a machine-readable release report requiring Tasks 9–14C, exact evaluator hash, source/right/lineage coverage, every fixed-gate capability, and explicit adjudication dispositions; do not expose the ruleset yet.
+  Execute only typed, tested fields from the 2014 manifest through Task 5. Route all current rest, resource, spell preparation/casting, equip/use, and rest-button entry points through the server policy; remove direct `SpellSheet` state patches for explicit-generation campaigns while retaining the captured bare-legacy UI path. Build a machine-readable release report requiring Tasks 9–14C, exact evaluator hash, source/right/lineage coverage, every fixed-gate capability, route/UI non-bypass evidence, and explicit adjudication dispositions; do not expose the ruleset yet.
 
 - [ ] **Step 4: Run green and commit.**
 
-  Run: `node --import tsx --test server/dnd5e2014/rest-spell-equipment-policy.test.ts server/dnd5e2014/release-gate.test.ts && npm run typecheck`
+  Run: `node --import tsx --test server/dnd5e2014/rest-spell-equipment-policy.test.ts server/dnd5e2014/release-gate.test.ts server/dnd5e-rest-spell-routes.test.ts client/src/components/SpellSheet.test.tsx client/src/lib/spellMath.test.ts && npm run typecheck && npm run build`
 
-  Expected: PASS only with a complete fixed-gate evidence report. Commit with `git add server/dnd5e2014/rest-spell-equipment-policy.ts server/dnd5e2014/rest-spell-equipment-policy.test.ts server/dnd5e2014/capabilities.ts server/dnd5e2014/release-gate.ts server/dnd5e2014/release-gate.test.ts server/rules-command-service.ts && git commit -m "feat: complete dnd5e2014 release gate"`.
+  Expected: PASS only with a complete fixed-gate evidence report and no client/route bypass. Commit with `git add server/dnd5e2014/rest-spell-equipment-policy.ts server/dnd5e2014/rest-spell-equipment-policy.test.ts server/dnd5e2014/capabilities.ts server/dnd5e2014/release-gate.ts server/dnd5e2014/release-gate.test.ts server/rules-command-service.ts server/routes.ts client/src/components/SpellSheet.tsx client/src/components/SpellSheet.test.tsx client/src/lib/spellMath.ts client/src/lib/spellMath.test.ts server/dnd5e-rest-spell-routes.test.ts && git commit -m "feat: complete dnd5e2014 release gate"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 15.
 
@@ -709,6 +742,10 @@
 - Modify: `client/src/lib/rulesAdapters/index.ts`
 - Modify: `client/src/components/game/CampaignGameShell.tsx`
 - Modify: `client/src/pages/CharacterSheetPage.tsx`
+- Modify: `client/src/pages/campaign.tsx`
+- Modify: `client/src/lib/campaignRulesetOptions.ts`
+- Modify: `client/src/lib/campaignRulesetOptions.test.ts`
+- Modify: `shared/rulesets.ts`
 - Modify: `server/dm-engine.ts`
 - Modify: `server/routes.ts`
 - Modify: `server/compendium-routes.ts`
@@ -727,7 +764,7 @@
 
 - [ ] **Step 1: Write red projection tests.**
 
-  Assert all HUD/sheet callers pass resolved mechanical ID; 2014 never uses 3.5 adapter; unknown/catalog IDs reject; prompt receives exact release/snapshot/manifest/capabilities/source summaries and only same-manifest facts; AI cannot override numbers/source precedence/outcomes; no rules infrastructure changes billing/turn counters; committed outbox payload is versioned. Assert crafted campaign creation rejects 2014 before the gate and succeeds only with the exact published release report. For a new 2014 campaign, Library lookup, inventory add, equip/use, and action resolution reject every legacy inline `dnd5e-2014:*`, `dnd5e-2024:*`, or `dmos:*` definition unless an exact target canonical revision is present in the campaign's evaluated manifest; same-slug and optional request filters cannot bypass this. A bare legacy `dnd5e` fixture retains its captured compatibility path unchanged.
+  Assert all HUD/sheet callers pass resolved mechanical ID; 2014 never uses 3.5 adapter; unknown/catalog IDs reject; prompt receives exact release/snapshot/manifest/capabilities/source summaries and only same-manifest facts; AI cannot override numbers/source precedence/outcomes; no rules infrastructure changes billing/turn counters; committed outbox payload is versioned. Assert crafted campaign creation rejects 2014 before the gate and succeeds only with the exact published release report. Before that gate, the server/UI list contains warned bare `dnd5e` but not 2014; in the same persisted gate transition, it removes bare `dnd5e` and adds 2014, never exposing both or neither. Disabling the gate restores the warned legacy option for new creation, removes 2014 from new selection, and leaves already-created 2014 and legacy campaigns pinned/readable. For a new 2014 campaign, Library lookup, inventory add, equip/use, and action resolution reject every legacy inline `dnd5e-2014:*`, `dnd5e-2024:*`, or `dmos:*` definition unless an exact target canonical revision is present in the campaign's evaluated manifest; same-slug and optional request filters cannot bypass this. A bare legacy `dnd5e` fixture retains its captured compatibility path unchanged.
 
 - [ ] **Step 2: Run red.**
 
@@ -737,13 +774,13 @@
 
 - [ ] **Step 3: Implement exact projections.**
 
-  Pass context-derived mechanics ID everywhere, add the 2014 adapter, and build prompt facts from the server resolver. Make server creation validation and the picker consume the persisted dynamic release gate; never rely on a client-hidden option. For explicit-generation campaigns, make Library/compendium and item-use routes resolve only exact canonical revisions in the evaluated manifest; preserve the legacy inline route solely for bare captured `dnd5e` campaigns until Task 23 supplies reviewed crosswalks. Preserve non-rules prompt context such as party/inventory/world state, but never let it replace rules authority.
+  Pass context-derived mechanics ID everywhere, add the 2014 adapter, and build prompt facts from the server resolver. Make server creation validation and both creation pickers consume one persisted dynamic release-gate snapshot; publishing 2014 atomically changes the server-owned selection set from warned bare `dnd5e` to `dnd5e2014`, while disabling that gate produces the inverse transition without rewriting campaigns. Never rely on a client-hidden option. For explicit-generation campaigns, make Library/compendium and item-use routes resolve only exact canonical revisions in the evaluated manifest; preserve the legacy inline route solely for bare captured `dnd5e` campaigns until Task 23 supplies reviewed crosswalks. Preserve non-rules prompt context such as party/inventory/world state, but never let it replace rules authority.
 
 - [ ] **Step 4: Run the selectable 2014 gate and commit.**
 
-  Run: `node --import tsx --test client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e2014/release-gate.test.ts server/dnd5e-compendium-isolation.test.ts server/campaign-settings.test.ts server/items-use-auth.test.ts && npm run test && npm run typecheck`
+  Run: `node --import tsx --test client/src/lib/rulesAdapters/index.test.ts client/src/lib/campaignRulesetOptions.test.ts server/dm-engine-rules-context.test.ts server/dnd5e2014/release-gate.test.ts server/dnd5e-compendium-isolation.test.ts server/campaign-settings.test.ts server/items-use-auth.test.ts && npm run test && npm run typecheck && npm run build`
 
-  Expected: PASS; new 2014 campaign selection enables only after full fixed gate, exact source scope, manifest-only compendium/item resolution, offline runtime, outbox, and no-billing proofs. Commit with `git add client/src/lib/rulesAdapters/dnd5e2014.ts client/src/lib/rulesAdapters/index.ts client/src/components/game/CampaignGameShell.tsx client/src/pages/CharacterSheetPage.tsx client/src/pages/home.tsx server/dm-engine.ts server/routes.ts server/compendium-routes.ts client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e2014/release-gate.test.ts server/dnd5e-compendium-isolation.test.ts server/campaign-settings.test.ts server/items-use-auth.test.ts && git commit -m "feat: expose gated dnd5e2014 campaigns"`.
+  Expected: PASS; new 2014 campaign selection atomically replaces the warned legacy option only after the full fixed gate, with exact source scope, manifest-only compendium/item resolution, offline runtime, outbox, no-billing, and rollback-transition proofs. Commit with `git add client/src/lib/rulesAdapters/dnd5e2014.ts client/src/lib/rulesAdapters/index.ts client/src/components/game/CampaignGameShell.tsx client/src/pages/CharacterSheetPage.tsx client/src/pages/campaign.tsx client/src/lib/campaignRulesetOptions.ts client/src/lib/campaignRulesetOptions.test.ts client/src/pages/home.tsx shared/rulesets.ts server/dm-engine.ts server/routes.ts server/compendium-routes.ts client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e2014/release-gate.test.ts server/dnd5e-compendium-isolation.test.ts server/campaign-settings.test.ts server/items-use-auth.test.ts && git commit -m "feat: expose gated dnd5e2014 campaigns"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Phase 4. Do not start 2024 work unless Task 15 is green.
 
@@ -927,8 +964,13 @@
 - Create: `server/dnd5e2024/character-policy.test.ts`
 - Create: `server/dnd5e-difference-matrix.test.ts`
 - Modify: `server/character-stats.ts`
+- Modify: `server/leveling.ts`
+- Modify: `server/routes.ts`
 - Modify: `server/rules-command-service.ts`
-- Test: `server/dnd5e2024/character-policy.test.ts`, `server/dnd5e-difference-matrix.test.ts`
+- Modify: `client/src/pages/campaign.tsx`
+- Modify: `server/dnd5e-creation-advancement-routes.test.ts`
+- Modify: `client/src/pages/campaign.test.tsx`
+- Test: `server/dnd5e2024/character-policy.test.ts`, `server/dnd5e-difference-matrix.test.ts`, `server/dnd5e-creation-advancement-routes.test.ts`, `client/src/pages/campaign.test.tsx`
 
 **Interfaces:**
 - Consumes: Task 17 canonical origin/class/progression revisions, 2014 Task 14A policy, and Task 5 commands.
@@ -936,7 +978,7 @@
 
 - [ ] **Step 1: Write red revised-character pairs.**
 
-  Pair race versus species ownership, background ability allocation/Origin feat/tool/equipment, languages, feat categories/prerequisites, class/subclass level-three timing, progression/resources, and post-20 behavior. Require exact 2024 IDs and server-calculated HP/AC/proficiency/saves/initiative; reject 2014 race ASIs and client/AI totals.
+  Pair race versus species ownership, background ability allocation/Origin feat/tool/equipment, languages, feat categories/prerequisites, class/subclass level-three timing, progression/resources, and post-20 behavior. Require exact 2024 IDs and server-calculated HP/AC/proficiency/saves/initiative; reject 2014 race ASIs and client/AI totals. Re-run the current campaign creation form and every creation/level-up route against both explicit generations: 2024 dispatches only to the revised policy, 2014 remains unchanged, and crafted cross-generation or stale projections fail closed.
 
 - [ ] **Step 2: Run red.**
 
@@ -946,13 +988,13 @@
 
 - [ ] **Step 3: Implement from the independent 5.2.1 manifest.**
 
-  Resolve revised choices and derived state only through the 2024 evaluated manifest and Task 5. Share storage/choice orchestration where neutral, never source definitions or fallback results.
+  Resolve revised choices and derived state only through the 2024 evaluated manifest and Task 5. Update `server/leveling.ts`, every relevant `server/routes.ts` handler, and `client/src/pages/campaign.tsx` to use exact context/policy dispatch and server-supplied choices; share storage/choice orchestration where neutral, never source definitions or fallback results.
 
 - [ ] **Step 4: Run green and commit.**
 
-  Run: `node --import tsx --test server/dnd5e2024/character-policy.test.ts server/dnd5e-difference-matrix.test.ts server/dnd5e2014/character-policy.test.ts && npm run typecheck`
+  Run: `node --import tsx --test server/dnd5e2024/character-policy.test.ts server/dnd5e-difference-matrix.test.ts server/dnd5e2014/character-policy.test.ts server/dnd5e-creation-advancement-routes.test.ts client/src/pages/campaign.test.tsx && npm run typecheck && npm run build`
 
-  Expected: PASS with paired provenance. Commit with `git add server/dnd5e2024/character-policy.ts server/dnd5e2024/character-policy.test.ts server/dnd5e-difference-matrix.test.ts server/character-stats.ts server/rules-command-service.ts && git commit -m "feat: add paired dnd5e2024 character policies"`.
+  Expected: PASS with paired provenance and no creation/advancement bypass. Commit with `git add server/dnd5e2024/character-policy.ts server/dnd5e2024/character-policy.test.ts server/dnd5e-difference-matrix.test.ts server/character-stats.ts server/leveling.ts server/routes.ts server/rules-command-service.ts client/src/pages/campaign.tsx server/dnd5e-creation-advancement-routes.test.ts client/src/pages/campaign.test.tsx && git commit -m "feat: add paired dnd5e2024 character policies"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 21B.
 
@@ -1001,7 +1043,13 @@
 - Create: `server/dnd5e2024/capabilities.ts`
 - Modify: `server/dnd5e-difference-matrix.test.ts`
 - Modify: `server/rules-command-service.ts`
-- Test: `server/dnd5e2024/rest-spell-equipment-policy.test.ts`, `server/dnd5e-difference-matrix.test.ts`
+- Modify: `server/routes.ts`
+- Modify: `client/src/components/SpellSheet.tsx`
+- Modify: `client/src/components/SpellSheet.test.tsx`
+- Modify: `client/src/lib/spellMath.ts`
+- Modify: `client/src/lib/spellMath.test.ts`
+- Modify: `server/dnd5e-rest-spell-routes.test.ts`
+- Test: `server/dnd5e2024/rest-spell-equipment-policy.test.ts`, `server/dnd5e-difference-matrix.test.ts`, `server/dnd5e-rest-spell-routes.test.ts`, `client/src/components/SpellSheet.test.tsx`, `client/src/lib/spellMath.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 18–20 revised rules/equipment/spell/magic-item records, 2014 Task 14C policies, and Task 5 commands.
@@ -1009,7 +1057,7 @@
 
 - [ ] **Step 1: Write red revised rest/spell/equipment pairs.**
 
-  Pair Bonus Action spell versus one-slot-per-turn restriction, ritual eligibility, concentration damage DC cap, Short Rest minimum-1-HP eligibility and per-die healing floor, Long Rest 24-hour-versus-16-hour cadence, half-versus-all Hit Dice, reduced-ability/HP-maximum restoration, Exhaustion recovery, and exact legacy interruption/restart versus revised triggers/Short-Rest-fallback/resumption/additional-time behavior. Also pair known/prepared/list membership, spell changes, Emanation mobile origin/inclusion, Mastery/Heavy/Light/Thrown properties, Armor Training versus shield, potion action cost, crafting, attunement, and changed item definitions. Require every non-executable feature/spell/item/monster action to have an explicit adjudication disposition.
+  Pair Bonus Action spell versus one-slot-per-turn restriction, ritual eligibility, concentration damage DC cap, Short Rest minimum-1-HP eligibility and per-die healing floor, Long Rest 24-hour-versus-16-hour cadence, half-versus-all Hit Dice, reduced-ability/HP-maximum restoration, Exhaustion recovery, and exact legacy interruption/restart versus revised triggers/Short-Rest-fallback/resumption/additional-time behavior. Also pair known/prepared/list membership, spell changes, Emanation mobile origin/inclusion, Mastery/Heavy/Light/Thrown properties, Armor Training versus shield, potion action cost, crafting, attunement, and changed item definitions. Re-run every rest/resource/spell route and `SpellSheet` action for both generations; 2024 uses only revised server projections, direct PATCH/client math cannot mutate authoritative state, and the already-green 2014 path stays identical. Require every non-executable feature/spell/item/monster action to have an explicit adjudication disposition.
 
 - [ ] **Step 2: Run red.**
 
@@ -1019,13 +1067,13 @@
 
 - [ ] **Step 3: Implement and aggregate capability evidence.**
 
-  Execute only typed 2024 revisions from the evaluated manifest. Preserve exact area origin/movement, slots/concentration/resources, action costs, equipped state, and item-definition revisions in events. Aggregate Tasks 21A–21C without claiming automation for reference-only corpus entries.
+  Execute only typed 2024 revisions from the evaluated manifest. Make the existing route and `SpellSheet` entry points dispatch through revised server policy just as Task 14C did for 2014; keep `spellMath` limited to explicitly scoped presentation/legacy helpers. Preserve exact area origin/movement, slots/concentration/resources, action costs, equipped state, and item-definition revisions in events. Aggregate Tasks 21A–21C without claiming automation for reference-only corpus entries.
 
 - [ ] **Step 4: Run green and commit.**
 
-  Run: `node --import tsx --test server/dnd5e2024/rest-spell-equipment-policy.test.ts server/dnd5e-difference-matrix.test.ts server/dnd5e2014/rest-spell-equipment-policy.test.ts && npm run typecheck`
+  Run: `node --import tsx --test server/dnd5e2024/rest-spell-equipment-policy.test.ts server/dnd5e-difference-matrix.test.ts server/dnd5e2014/rest-spell-equipment-policy.test.ts server/dnd5e-rest-spell-routes.test.ts client/src/components/SpellSheet.test.tsx client/src/lib/spellMath.test.ts && npm run typecheck && npm run build`
 
-  Expected: PASS; every companion-matrix row has paired executable evidence or explicit reference/adjudication status. Commit with `git add server/dnd5e2024/rest-spell-equipment-policy.ts server/dnd5e2024/rest-spell-equipment-policy.test.ts server/dnd5e2024/capabilities.ts server/dnd5e-difference-matrix.test.ts server/rules-command-service.ts && git commit -m "feat: complete paired dnd5e2024 policies"`.
+  Expected: PASS; every companion-matrix row has paired executable evidence or explicit reference/adjudication status, with no route/UI bypass. Commit with `git add server/dnd5e2024/rest-spell-equipment-policy.ts server/dnd5e2024/rest-spell-equipment-policy.test.ts server/dnd5e2024/capabilities.ts server/dnd5e-difference-matrix.test.ts server/rules-command-service.ts server/routes.ts server/dnd5e-rest-spell-routes.test.ts client/src/components/SpellSheet.tsx client/src/components/SpellSheet.test.tsx client/src/lib/spellMath.ts client/src/lib/spellMath.test.ts && git commit -m "feat: complete paired dnd5e2024 policies"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 22.
 
@@ -1040,6 +1088,9 @@
 - Modify: `server/dm-engine-rules-context.test.ts`
 - Modify: `server/dnd5e-compendium-isolation.test.ts`
 - Modify: `client/src/pages/home.tsx`
+- Modify: `client/src/pages/campaign.tsx`
+- Modify: `client/src/lib/campaignRulesetOptions.ts`
+- Modify: `client/src/lib/campaignRulesetOptions.test.ts`
 - Modify: `client/src/lib/rulesAdapters/index.test.ts`
 - Modify: `server/routes-combat.e2e.test.ts`
 - Test: `server/dnd5e2024/release-gate.test.ts`, `client/src/lib/rulesAdapters/index.test.ts`, `server/dm-engine-rules-context.test.ts`, `server/dnd5e-compendium-isolation.test.ts`, `server/routes-combat.e2e.test.ts`
@@ -1050,7 +1101,7 @@
 
 - [ ] **Step 1: Write red independence tests.**
 
-  Assert a green 2014 release cannot satisfy the 2024 gate. Require 2024 complete verified-open corpus, all exact fixed-gate capability evidence, paired difference suite, exact adapter/prompt/source/outbox/billing/offline tests, and dnd35/legacy regression. The prompt test must prove it carries 2024 release/manifest/capabilities and cannot retrieve 2014 same-slug facts. Re-run the Task 15 manifest-only Library/item-use contract for 2024 and reject legacy `dnd5e-2014:*`, `dnd5e-2024:*`, and `dmos:*` keys unless the campaign manifest contains an exact reviewed target revision.
+  Assert a green 2014 release cannot satisfy the 2024 gate. Require 2024 complete verified-open corpus, all exact fixed-gate capability evidence, paired difference suite, exact adapter/prompt/source/outbox/billing/offline tests, and dnd35/legacy regression. The prompt test must prove it carries 2024 release/manifest/capabilities and cannot retrieve 2014 same-slug facts. Re-run the Task 15 manifest-only Library/item-use contract for 2024 and reject legacy `dnd5e-2014:*`, `dnd5e-2024:*`, and `dmos:*` keys unless the campaign manifest contains an exact reviewed target revision. Both creation surfaces must derive the same 2024 option from the persisted gate while keeping the already-selectable 2014 option unchanged.
 
 - [ ] **Step 2: Run red.**
 
@@ -1060,13 +1111,13 @@
 
 - [ ] **Step 3: Implement gate/UI.**
 
-  Add 2024 adapter and server-enforced selection; reject crafted creation while any gate assertion is missing. Do not change the selectable status of 2014, dnd35e, or bare legacy campaigns.
+  Add 2024 adapter and server-enforced selection; reject crafted creation while any gate assertion is missing. Do not change the selectable status of 2014 or dnd35e, do not alter existing bare legacy campaigns, and keep bare `dnd5e` absent from new-campaign selection after the Task 15 swap.
 
 - [ ] **Step 4: Run green and commit.**
 
-  Run: `node --import tsx --test server/dnd5e2024/release-gate.test.ts client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e-compendium-isolation.test.ts server/routes-combat.e2e.test.ts && npm run test && npm run typecheck`
+  Run: `node --import tsx --test server/dnd5e2024/release-gate.test.ts client/src/lib/rulesAdapters/index.test.ts client/src/lib/campaignRulesetOptions.test.ts server/dm-engine-rules-context.test.ts server/dnd5e-compendium-isolation.test.ts server/routes-combat.e2e.test.ts && npm run test && npm run typecheck && npm run build`
 
-  Expected: PASS; revised campaigns are independently selectable only after full proof. Commit with `git add client/src/lib/rulesAdapters/dnd5e2024.ts server/dnd5e2024/release-gate.ts server/dnd5e2024/release-gate.test.ts client/src/lib/rulesAdapters/index.ts server/routes.ts client/src/pages/home.tsx client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e-compendium-isolation.test.ts server/routes-combat.e2e.test.ts && git commit -m "feat: expose gated dnd5e2024 campaigns"`.
+  Expected: PASS; revised campaigns are independently selectable only after full proof. Commit with `git add client/src/lib/rulesAdapters/dnd5e2024.ts server/dnd5e2024/release-gate.ts server/dnd5e2024/release-gate.test.ts client/src/lib/rulesAdapters/index.ts client/src/lib/campaignRulesetOptions.ts client/src/lib/campaignRulesetOptions.test.ts server/routes.ts client/src/pages/home.tsx client/src/pages/campaign.tsx client/src/lib/rulesAdapters/index.test.ts server/dm-engine-rules-context.test.ts server/dnd5e-compendium-isolation.test.ts server/routes-combat.e2e.test.ts && git commit -m "feat: expose gated dnd5e2024 campaigns"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Phase 5.
 
@@ -1087,6 +1138,13 @@
 - Consumes: Tasks 3, 9–13, and 16–20 revision/evidence rows.
 - Produces: `auditLegacyDefinitionKeys(): LegacyKeyAuditReport`, `InventoryTargetDisposition = "mapped_replacement" | "retained_inert_reference" | "authorized_target_homebrew" | "removed_from_target_draft_but_preserved_in_legacy_snapshot"`.
 
+**Provisional additive migration contract — REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION:**
+
+- `legacy_definition_evidence`: `evidence_id TEXT PRIMARY KEY`, `legacy_ruleset_release_id TEXT NOT NULL REFERENCES ruleset_releases(id) ON DELETE RESTRICT`, `owner_kind TEXT NOT NULL CHECK (owner_kind IN ('item','shop_item','inventory_instance','character_data'))`, `owner_row_id TEXT NOT NULL`, `source_locator_json TEXT NOT NULL`, `source_locator_sha256 TEXT NOT NULL CHECK (length(source_locator_sha256) = 64)`, `definition_key TEXT`, `payload_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64)`, and `captured_at TEXT NOT NULL`; `UNIQUE(legacy_ruleset_release_id, owner_kind, owner_row_id, source_locator_sha256, payload_sha256)`. `source_locator_json` is canonical JSON that includes an inventory-instance ordinal when no row ID exists; the BLOB retains exact original UTF-8 bytes.
+- `legacy_definition_crosswalk_revisions`: `crosswalk_revision_id TEXT PRIMARY KEY`, `evidence_id TEXT NOT NULL REFERENCES legacy_definition_evidence(evidence_id) ON DELETE RESTRICT`, `target_mechanical_ruleset_id TEXT NOT NULL CHECK (target_mechanical_ruleset_id IN ('dnd5e2014','dnd5e2024'))`, `revision_number INTEGER NOT NULL CHECK (revision_number > 0)`, `status TEXT NOT NULL CHECK (status IN ('mapped','ambiguous','unmapped','invalid','cross_generation'))`, `target_canonical_revision_id INTEGER REFERENCES canonical_revisions(id) ON DELETE RESTRICT`, `review_evidence_json TEXT NOT NULL`, `review_evidence_sha256 TEXT NOT NULL CHECK (length(review_evidence_sha256) = 64)`, `reviewer_actor_scope_key TEXT NOT NULL`, `supersedes_crosswalk_revision_id TEXT REFERENCES legacy_definition_crosswalk_revisions(crosswalk_revision_id) ON DELETE RESTRICT`, and `created_at TEXT NOT NULL`; `UNIQUE(evidence_id, target_mechanical_ruleset_id, revision_number)` and `CHECK ((status = 'mapped' AND target_canonical_revision_id IS NOT NULL) OR (status <> 'mapped' AND target_canonical_revision_id IS NULL))`.
+- `legacy_definition_crosswalk_candidates`: `crosswalk_revision_id TEXT NOT NULL REFERENCES legacy_definition_crosswalk_revisions(crosswalk_revision_id) ON DELETE RESTRICT`, `candidate_canonical_revision_id INTEGER NOT NULL REFERENCES canonical_revisions(id) ON DELETE RESTRICT`, `candidate_evidence_json TEXT NOT NULL`, and `candidate_evidence_sha256 TEXT NOT NULL CHECK (length(candidate_evidence_sha256) = 64)`; primary key `(crosswalk_revision_id, candidate_canonical_revision_id)`. Index crosswalk revisions by `(evidence_id, target_mechanical_ruleset_id, revision_number DESC)` and candidates by `candidate_canonical_revision_id`.
+- All three tables are append-only through `BEFORE UPDATE`/`BEFORE DELETE` guards. A correction inserts the next numbered revision; it never mutates a prior mapping. Operational rollback disables target use but retains evidence, candidates, and revisions. It never updates `items.definition_key`, `shop_items.definition_key`, character JSON, or inventory JSON.
+
 - [ ] **Step 1: Write red crosswalk/disposition fixtures.**
 
   Cover 2014/2024 keys, `dmos:*`, null/malformed/deleted target/duplicate/custom/homebrew/cross-generation keys. Assert audit statuses `mapped | ambiguous | unmapped | invalid | cross_generation`; conversion draft requires exactly one reviewed target disposition per inventory instance; strict target rules never execute source-generation definition by legacy key.
@@ -1099,7 +1157,7 @@
 
 - [ ] **Step 3: Implement append-only crosswalks.**
 
-  Add immutable original-key/payload, evidence, target revision, status, and reviewer fields; do not update `items.definition_key`, `shop_items.definition_key`, or inventory JSON. Scope campaign resolution to its pinned evaluated manifest.
+  Add the exact provisional evidence/crosswalk/candidate tables above via the repository migration runner. Capture immutable original-key/payload evidence, target revision, status, and reviewer revision; do not update `items.definition_key`, `shop_items.definition_key`, or inventory JSON. Scope campaign resolution to its pinned evaluated manifest.
 
 - [ ] **Step 4: Run green and commit.**
 
@@ -1125,9 +1183,18 @@
 - Consumes: Tasks 4–5 legacy snapshots/events, Task 23 dispositions, and visitor/user identities.
 - Produces: `resolveCharacterConversionOwner`, `createConversionDraft`, and `reviewConversionDraft`. Commit and reconciliation commands are deliberately deferred to Task 25.
 
+**Provisional additive migration contract — REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION:**
+
+- `character_ownership_revisions`: `ownership_revision_id TEXT PRIMARY KEY`, `character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE RESTRICT`, `revision_number INTEGER NOT NULL CHECK (revision_number > 0)`, `state TEXT NOT NULL CHECK (state IN ('resolved_user','resolved_visitor','orphaned','conflicting','transfer_pending','merged'))`, `owner_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT`, `owner_visitor_key_digest TEXT`, `candidate_evidence_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `candidate_evidence_sha256 TEXT NOT NULL CHECK (length(candidate_evidence_sha256) = 64)`, `supersedes_ownership_revision_id TEXT REFERENCES character_ownership_revisions(ownership_revision_id) ON DELETE RESTRICT`, `recorded_by_actor_scope_key TEXT NOT NULL`, and `created_at TEXT NOT NULL`; `UNIQUE(character_id, revision_number)`. Add checks requiring user-only for `resolved_user`, visitor-only for `resolved_visitor`, neither for `orphaned`, and both for `merged`; `conflicting`/`transfer_pending` derive candidates from the retained evidence blob and cannot authorize review.
+- `campaign_conversion_drafts`: `draft_id TEXT PRIMARY KEY`, `campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT`, `source_campaign_rules_snapshot_id TEXT NOT NULL REFERENCES campaign_rules_snapshots(id) ON DELETE RESTRICT`, `source_campaign_state_version INTEGER NOT NULL`, `target_ruleset_release_id TEXT NOT NULL REFERENCES ruleset_releases(id) ON DELETE RESTRICT`, `target_evaluated_manifest_id TEXT NOT NULL REFERENCES evaluated_corpus_manifests(id) ON DELETE RESTRICT`, `complete_state_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `complete_state_sha256 TEXT NOT NULL CHECK (length(complete_state_sha256) = 64)`, `proposal_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `proposal_sha256 TEXT NOT NULL CHECK (length(proposal_sha256) = 64)`, `created_by_actor_scope_key TEXT NOT NULL`, and `created_at TEXT NOT NULL`; `UNIQUE(campaign_id, source_campaign_state_version, target_ruleset_release_id, proposal_sha256)`. The two content hashes cover canonical JSON bytes; every referenced source/canonical/manifest ID is included in those bytes.
+- `campaign_conversion_draft_status_events`: `status_event_id TEXT PRIMARY KEY`, `draft_id TEXT NOT NULL REFERENCES campaign_conversion_drafts(draft_id) ON DELETE RESTRICT`, `sequence INTEGER NOT NULL CHECK (sequence > 0)`, `status TEXT NOT NULL CHECK (status IN ('draft','awaiting_review','approved','committed','cancelled','superseded'))`, `actor_scope_key TEXT NOT NULL`, `review_set_sha256 TEXT CHECK (review_set_sha256 IS NULL OR length(review_set_sha256) = 64)`, and `created_at TEXT NOT NULL`; `UNIQUE(draft_id, sequence)`. A named insert trigger permits only initial `draft`; `draft -> awaiting_review|cancelled|superseded`; `awaiting_review -> approved|cancelled|superseded`; and `approved -> committed|cancelled|superseded`. Terminal states reject later status events.
+- `campaign_conversion_character_reviews`: `review_revision_id TEXT PRIMARY KEY`, `draft_id TEXT NOT NULL REFERENCES campaign_conversion_drafts(draft_id) ON DELETE RESTRICT`, `character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE RESTRICT`, `ownership_revision_id TEXT NOT NULL REFERENCES character_ownership_revisions(ownership_revision_id) ON DELETE RESTRICT`, `revision_number INTEGER NOT NULL CHECK (revision_number > 0)`, `review_state TEXT NOT NULL CHECK (review_state IN ('pending','approved','rejected'))`, `target_projection_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `target_projection_sha256 TEXT NOT NULL CHECK (length(target_projection_sha256) = 64)`, `reviewer_actor_scope_key TEXT NOT NULL`, and `created_at TEXT NOT NULL`; `UNIQUE(draft_id, character_id, revision_number)`.
+- `campaign_conversion_inventory_dispositions`: `disposition_revision_id TEXT PRIMARY KEY`, `draft_id TEXT NOT NULL REFERENCES campaign_conversion_drafts(draft_id) ON DELETE RESTRICT`, `source_locator_sha256 TEXT NOT NULL CHECK (length(source_locator_sha256) = 64)`, `revision_number INTEGER NOT NULL CHECK (revision_number > 0)`, `disposition TEXT NOT NULL CHECK (disposition IN ('mapped_replacement','retained_inert_reference','authorized_target_homebrew','removed_from_target_draft_but_preserved_in_legacy_snapshot'))`, `target_canonical_revision_id INTEGER REFERENCES canonical_revisions(id) ON DELETE RESTRICT`, `target_homebrew_blob_sha256 TEXT REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `reviewer_actor_scope_key TEXT NOT NULL`, and `created_at TEXT NOT NULL`; `UNIQUE(draft_id, source_locator_sha256, revision_number)`. Checks require a canonical target only for `mapped_replacement`, a homebrew blob only for `authorized_target_homebrew`, and neither for the two preservation/removal dispositions.
+- Add current-revision indexes on `(character_id, revision_number DESC)`, `(draft_id, character_id, revision_number DESC)`, and `(draft_id, source_locator_sha256, revision_number DESC)`, plus `(campaign_id, source_campaign_state_version)` on drafts. All payload/draft/review/disposition rows are append-only; edits create a new draft or review revision. Rollback disables conversion commands and retains every row/blob.
+
 - [ ] **Step 1: Write red ownership/draft tests.**
 
-  Cover user owner, visitor-only owner, null user ID, merged user/visitor identity, pending ownership transfer, completed ownership transfer, host who is not character owner, mismatch, orphan claim, active encounter/turn/reaction/cast/rest/death-save, missing/quarantined source, stale version, unresolved mapping/disposition, and unreviewed owner. Assert complete pre-conversion snapshot includes campaign, characters, items/inventory, effects, encounters/participants, queued/pending actions, rests, death state, spell preparation/concentration/resources, roll/event links, and source/policy context.
+  Cover user owner, visitor-only owner, null user ID, merged user/visitor identity, pending ownership transfer, completed ownership transfer, host who is not character owner, mismatch, orphan claim, active encounter/turn/reaction/cast/rest/death-save, missing/quarantined source, stale version, unresolved mapping/disposition, and unreviewed owner. Assert complete pre-conversion snapshot includes campaign, characters, items/inventory, effects, encounters/participants, queued/pending actions, rests, death state, spell preparation/concentration/resources, roll/event links, and source/policy context. In a migration fixture with `PRAGMA foreign_keys = ON`, insert a valid `users.id` ownership revision successfully, reject a nonexistent user ID, and prove an attempted parent-key update/delete is restricted.
 
 - [ ] **Step 2: Run red.**
 
@@ -1137,7 +1204,7 @@
 
 - [ ] **Step 3: Implement authority and immutable draft.**
 
-  Resolve user/visitor ownership with an immutable evidence history; Campaign Owner cannot override another Character Owner. Store source XP/level as immutable original evidence and target level/progression as reviewed proposal. Remove legacy species ASI automatically only when per-score provenance proves it is separable from base, later ASIs, effects, tomes, and manual edits; otherwise leave all six target scores unresolved. Require owner selection for class/subclass/background/feat/species/spells/Mastery and every inventory disposition.
+  Create the exact provisional ownership/draft/status/review/disposition tables above through the migration runner. Resolve user/visitor ownership with an immutable evidence history; Campaign Owner cannot override another Character Owner. Store source XP/level as immutable original evidence and target level/progression as reviewed proposal. Remove legacy species ASI automatically only when per-score provenance proves it is separable from base, later ASIs, effects, tomes, and manual edits; otherwise leave all six target scores unresolved. Require owner selection for class/subclass/background/feat/species/spells/Mastery and every inventory disposition.
 
 - [ ] **Step 4: Run green and commit.**
 
@@ -1150,6 +1217,8 @@
 ### Task 25: Commit, rollback, or reconcile conversion lineage safely
 
 **Files:**
+- Modify: `shared/schema.ts`
+- Modify: `server/storage.ts`
 - Modify: `server/campaign-conversion-service.ts`
 - Modify: `server/campaign-conversion-service.test.ts`
 - Modify: `server/rules-command-service.ts`
@@ -1159,6 +1228,11 @@
 **Interfaces:**
 - Consumes: Task 24 approved complete draft and Task 5 atomic commands.
 - Produces: `commitConversion(draftId, assertion)`, `rollbackConversion(lineageId, assertion)`, and `createForwardReconciliation(lineageId, draftInput)`.
+
+**Provisional additive migration contract — REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION:**
+
+- `campaign_conversion_lineage`: `lineage_id TEXT PRIMARY KEY`, `campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE RESTRICT`, `draft_id TEXT REFERENCES campaign_conversion_drafts(draft_id) ON DELETE RESTRICT`, `lineage_kind TEXT NOT NULL CHECK (lineage_kind IN ('conversion','rollback','forward_reconciliation'))`, `related_lineage_id TEXT REFERENCES campaign_conversion_lineage(lineage_id) ON DELETE RESTRICT`, `source_campaign_rules_snapshot_id TEXT NOT NULL REFERENCES campaign_rules_snapshots(id) ON DELETE RESTRICT`, `target_campaign_rules_snapshot_id TEXT NOT NULL REFERENCES campaign_rules_snapshots(id) ON DELETE RESTRICT`, `commit_event_id TEXT NOT NULL UNIQUE REFERENCES rules_events(event_id) ON DELETE RESTRICT`, `commit_state_version INTEGER NOT NULL`, `lineage_payload_blob_sha256 TEXT NOT NULL REFERENCES source_artifact_blobs(sha256) ON DELETE RESTRICT`, `lineage_payload_sha256 TEXT NOT NULL CHECK (length(lineage_payload_sha256) = 64)`, and `committed_at TEXT NOT NULL`; checks require distinct source/target snapshots, require a non-null draft and null related lineage for `conversion`, require a non-null draft and related lineage for `forward_reconciliation`, and require a null draft plus related lineage for `rollback`. A partial unique index on `draft_id WHERE draft_id IS NOT NULL` prevents draft reuse; a partial unique index on `related_lineage_id WHERE lineage_kind = 'rollback'` permits at most one direct rollback of a lineage; index `(campaign_id, commit_state_version, lineage_id)` supports later-event detection.
+- Lineage and referenced snapshots/events/blobs are append-only with update/delete guards. Conversion commit inserts the lineage row, Task 24 `committed` status event, new campaign snapshot, mutation event, outbox row, and state-version advance in the same Task 5 transaction. Rollback may insert a new `rollback` lineage only when the locked current campaign state version equals the related lineage's `commit_state_version`; any later state-changing event forces a new draft and `forward_reconciliation` lineage. Operational rollback disables new conversion commands and retains every schema object and row; no reverse migration restores state or deletes history.
 
 - [ ] **Step 1: Write red lineage tests.**
 
@@ -1172,13 +1246,13 @@
 
 - [ ] **Step 3: Implement commit and constrained reversal.**
 
-  Commit approved target projections, snapshot, and lineage in a Task 5 transaction. Rollback creates a new audited event/snapshot and atomically restores the complete retained pre-conversion campaign, character, item/inventory, effect, encounter/action, rest/death, spell/resource, and source-policy state only when lineage has no later state-changing event. Otherwise build a forward reconciliation draft over current state; never delete or overwrite old snapshots/events/drafts.
+  Add the exact provisional lineage table and constraints above through the migration runner. Commit approved target projections, snapshot, and lineage in a Task 5 transaction. Rollback creates a new audited event/snapshot and atomically restores the complete retained pre-conversion campaign, character, item/inventory, effect, encounter/action, rest/death, spell/resource, and source-policy state only when lineage has no later state-changing event. Otherwise build a forward reconciliation draft over current state; never delete or overwrite old snapshots/events/drafts.
 
 - [ ] **Step 4: Run green and commit.**
 
   Run: `node --import tsx --test server/campaign-conversion-service.test.ts server/rules-command-service.test.ts && npm run typecheck`
 
-  Expected: PASS; no later play is erased by a one-click reversal. Commit with `git add server/campaign-conversion-service.ts server/campaign-conversion-service.test.ts server/rules-command-service.ts server/rules-command-service.test.ts && git commit -m "feat: reconcile conversion rollback lineage"`.
+  Expected: PASS; no later play is erased by a one-click reversal. Commit with `git add shared/schema.ts server/storage.ts server/campaign-conversion-service.ts server/campaign-conversion-service.test.ts server/rules-command-service.ts server/rules-command-service.test.ts && git commit -m "feat: reconcile conversion rollback lineage"`.
 
   **REVALIDATE AGAINST LATEST production-live-base BEFORE IMPLEMENTATION** of Task 26.
 

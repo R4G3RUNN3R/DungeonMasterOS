@@ -43,7 +43,7 @@ npm run typecheck passed
 git status        clean
 ```
 
-`[REPOSITORY FACT]` The checked-in `data.db` had no tables or records to inspect. This report describes repository behavior and migration risk; it does not claim to describe production database contents.
+`[REPOSITORY FACT]` `*.db` is ignored and the frozen commit contains no tracked `data.db`; database contents are therefore not frozen-repository evidence. `[LOCAL AUDIT OBSERVATION]` The ignored local `data.db` inspected during this audit had no tables or records. This report describes repository behavior and migration risk; it does not claim to describe production database contents.
 
 ## Classification summary
 
