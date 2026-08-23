@@ -65,6 +65,13 @@ import {
   type RecordRevisionInput,
 } from "@shared/rules-registry/revisions";
 import { isValidCanonicalId } from "@shared/rules-registry/canonical-id";
+import type {
+  Dnd35eFeatDefinition,
+  Dnd35eFeatType,
+  Dnd35eFeatPrerequisite,
+  Dnd35eFeatEffect,
+} from "@shared/rules-registry/dnd35e/feats";
+import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
   srdSourcePageRevisions,
@@ -573,6 +580,27 @@ export function runMigrations() {
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_canonical_revisions_canonical_id
     ON canonical_revisions(canonical_id);`);
 
+  // Task 4: canonical feat-definition storage — the first real consumer of
+  // canonical_revisions above. Structured-content changes (name, featType,
+  // prerequisites, benefitSummary, mechanicalEffects, extractionStatus,
+  // extractionNotes) are recorded via recordRevision(entityType: "feat"),
+  // never a bespoke per-table revision mechanism (that's Phase 2A's
+  // srd_source_page_revisions, which is page-scoped, not entity-scoped, and
+  // does not apply here).
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_feat_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    feat_type TEXT NOT NULL,
+    prerequisites_json TEXT NOT NULL DEFAULT 'null',
+    benefit_summary TEXT NOT NULL DEFAULT '',
+    mechanical_effects_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -733,6 +761,66 @@ function mapCharacterTitleRow(row: any): CharacterTitleRow {
     established: !!row.established,
     establishedAt: row.established_at,
   };
+}
+
+// Task 4: canonical feat-definition row shape. Mirrors Dnd35eFeatDefinition
+// (shared/rules-registry/dnd35e/feats.ts) field-for-field, plus the evidence
+// citation this table stores alongside it and the created/updated stamps —
+// never a partial or renamed projection, so callers can round-trip a
+// Dnd35eFeatDefinition through storage without a translation layer.
+export interface Dnd35eFeatDefinitionRow {
+  canonicalId: string;
+  name: string;
+  featType: Dnd35eFeatType;
+  prerequisites: Dnd35eFeatPrerequisite | null;
+  benefitSummary: string;
+  mechanicalEffects: Dnd35eFeatEffect[];
+  extractionStatus: Dnd35eFeatDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eFeatDefinitionRow(row: any): Dnd35eFeatDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    featType: row.feat_type,
+    prerequisites: JSON.parse(row.prerequisites_json),
+    benefitSummary: row.benefit_summary,
+    mechanicalEffects: JSON.parse(row.mechanical_effects_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// The structured-content fields whose change is what triggers a real
+// revision — deliberately excludes evidence, which is provenance metadata
+// about the claim, not the claim itself (mirrors upsertSrdManifestEntry's
+// metadataPatch: reconciled on every call, never itself a change-detection
+// signal).
+function dnd35eFeatStructuredContentJson(feat: {
+  name: string;
+  featType: Dnd35eFeatType;
+  prerequisites: Dnd35eFeatPrerequisite | null;
+  benefitSummary: string;
+  mechanicalEffects: Dnd35eFeatEffect[];
+  extractionStatus: Dnd35eFeatDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: feat.name,
+    featType: feat.featType,
+    prerequisites: feat.prerequisites,
+    benefitSummary: feat.benefitSummary,
+    mechanicalEffects: feat.mechanicalEffects,
+    extractionStatus: feat.extractionStatus,
+    extractionNotes: feat.extractionNotes,
+  });
 }
 
 // ── Storage interface ──────────────────────────────────────────────────────
@@ -941,6 +1029,19 @@ export interface IStorage {
   // deletes prior revision rows.
   recordRevision(entry: RecordRevisionInput): CanonicalRevision;
   getRevisionHistory(canonicalId: string): CanonicalRevision[];
+
+  // Canonical feat definitions (Task 4) — the first real consumer of
+  // recordRevision/canonical_revisions above. upsertDnd35eFeatDefinition
+  // follows a three-way discipline mirroring Phase 2A's
+  // upsertSrdManifestEntry: no existing row -> insert; identical structured
+  // content -> no-op that still stamps updatedAt (and reconciles evidence,
+  // which is provenance metadata, not structured content); genuinely
+  // changed structured content -> update + recordRevision(entityType:
+  // "feat"), with the next revision number derived from this canonical ID's
+  // own getRevisionHistory, never an unrelated counter.
+  upsertDnd35eFeatDefinition(feat: Dnd35eFeatDefinition, evidence: EvidenceCitation): Dnd35eFeatDefinitionRow;
+  getDnd35eFeatDefinition(canonicalId: string): Dnd35eFeatDefinitionRow | undefined;
+  listDnd35eFeatDefinitions(filter?: { extractionStatus?: Dnd35eFeatDefinition["extractionStatus"] }): Dnd35eFeatDefinitionRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -2139,6 +2240,122 @@ export class DatabaseStorage implements IStorage {
       .where(eq(canonicalRevisions.canonicalId, canonicalId))
       .orderBy(desc(canonicalRevisions.revision))
       .all();
+  }
+
+  // Canonical feat definitions (Task 4)
+  upsertDnd35eFeatDefinition(feat: Dnd35eFeatDefinition, evidence: EvidenceCitation): Dnd35eFeatDefinitionRow {
+    if (!isValidCanonicalId(feat.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${feat.canonicalId}": must match ruleset:entityType:slug`);
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_feat_definitions WHERE canonical_id = ?")
+      .get(feat.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_feat_definitions (
+            canonical_id, name, feat_type, prerequisites_json, benefit_summary,
+            mechanical_effects_json, extraction_status, extraction_notes_json,
+            evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          feat.canonicalId,
+          feat.name,
+          feat.featType,
+          JSON.stringify(feat.prerequisites),
+          feat.benefitSummary,
+          JSON.stringify(feat.mechanicalEffects),
+          feat.extractionStatus,
+          JSON.stringify(feat.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eFeatDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE canonical_id = ?").get(feat.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eFeatStructuredContentJson({
+      name: existing.name,
+      featType: existing.feat_type,
+      prerequisites: JSON.parse(existing.prerequisites_json),
+      benefitSummary: existing.benefit_summary,
+      mechanicalEffects: JSON.parse(existing.mechanical_effects_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eFeatStructuredContentJson(feat);
+
+    if (existingStructuredJson === newStructuredJson) {
+      // True no-op on CONTENT. Evidence is provenance metadata, not
+      // structured content, so it's reconciled here unconditionally — same
+      // as upsertSrdManifestEntry's metadataPatch never itself triggering a
+      // revision. updatedAt still always advances: this is a real
+      // successful upsert call, not nothing happening.
+      sqlite
+        .prepare("UPDATE dnd35e_feat_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, feat.canonicalId);
+      return mapDnd35eFeatDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE canonical_id = ?").get(feat.canonicalId),
+      );
+    }
+
+    // Genuine structured-content change: update the row and record a real
+    // revision via Phase 0/1's recordRevision/canonical_revisions — never a
+    // bespoke per-table mechanism. The next revision number is derived from
+    // this canonical ID's own getRevisionHistory (newest-first), never an
+    // unrelated counter.
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_feat_definitions SET
+          name = ?, feat_type = ?, prerequisites_json = ?, benefit_summary = ?,
+          mechanical_effects_json = ?, extraction_status = ?, extraction_notes_json = ?,
+          evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        feat.name,
+        feat.featType,
+        JSON.stringify(feat.prerequisites),
+        feat.benefitSummary,
+        JSON.stringify(feat.mechanicalEffects),
+        feat.extractionStatus,
+        JSON.stringify(feat.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        feat.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(feat.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: feat.canonicalId,
+      entityType: "feat",
+      revision: nextRevision,
+      changeReason: "structured feat content changed on re-extraction",
+      diffSummary: `structured content for ${feat.canonicalId} changed`,
+    });
+
+    return mapDnd35eFeatDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE canonical_id = ?").get(feat.canonicalId),
+    );
+  }
+
+  getDnd35eFeatDefinition(canonicalId: string): Dnd35eFeatDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eFeatDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eFeatDefinitions(filter?: { extractionStatus?: Dnd35eFeatDefinition["extractionStatus"] }): Dnd35eFeatDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_feat_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_feat_definitions").all();
+    return (rows as any[]).map(mapDnd35eFeatDefinitionRow);
   }
 }
 
