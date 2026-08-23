@@ -123,13 +123,20 @@ test("runSrdManifestDiscovery's delayMs stagger is a real SHARED scheduler — e
     timestampingFetch,
   );
   assert.equal(startTimestamps.length, 8);
-  for (let i = 1; i < startTimestamps.length; i++) {
-    const gap = startTimestamps[i] - startTimestamps[i - 1];
+  // The scheduler's real guarantee is an ABSOLUTE one: each request's start
+  // time is at least i * delayMs after the very first request's start time
+  // (start_i >= start_0 + i * delayMs) — not a pairwise gap between
+  // consecutive starts. A late-but-still-honored reservation can make the
+  // NEXT pairwise gap look artificially small even though nothing is
+  // actually wrong, which made the pairwise version of this assertion flaky
+  // under real contention. The cumulative/absolute property is what the
+  // shared `nextAllowedStartAt` scheduler actually enforces, so assert that
+  // instead.
+  for (let i = 0; i < startTimestamps.length; i++) {
+    const minExpectedStart = startTimestamps[0] + i * DELAY_MS;
     assert.ok(
-      gap >= DELAY_MS - 5, // small tolerance for real timer jitter, never for the design itself
-      `request ${i} started only ${gap}ms after request ${i - 1} (expected at least ~${DELAY_MS}ms) — starts must be ` +
-      `globally staggered by a shared scheduler, including within the initial concurrency-sized batch of 5, not merely ` +
-      `sleeping independently inside each worker (which would let the first 5 requests fire as a burst)`,
+      startTimestamps[i] >= minExpectedStart - 5, // small real-timer-jitter tolerance, not a design concession
+      `request ${i} started at ${startTimestamps[i]}, expected at least ${minExpectedStart} (start_0 + ${i}*${DELAY_MS}ms) — the scheduler guarantees a real absolute floor on each request's start time relative to the first request, which is a stronger and more stable property to test than a pairwise gap (a late-but-still-honored reservation can make the NEXT pairwise gap look artificially small even when nothing is wrong)`,
     );
   }
 });

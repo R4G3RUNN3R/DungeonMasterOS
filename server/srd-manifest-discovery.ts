@@ -19,6 +19,8 @@ import type { CorpusArea, SrdManifestEntry } from "@shared/rules-registry/srd-ma
  * if the header is absent or doesn't parse as either legal form — callers
  * fall back to their own backoff schedule in that case, never to zero.
  */
+const HTTP_DATE_RE = /^[A-Za-z]{3},\s\d{2}\s[A-Za-z]{3}\s\d{4}\s\d{2}:\d{2}:\d{2}\sGMT$/;
+
 function parseRetryAfterMs(header: string | null): number | null {
   if (!header) return null;
   const trimmed = header.trim();
@@ -26,6 +28,14 @@ function parseRetryAfterMs(header: string | null): number | null {
     const seconds = Number(trimmed);
     return seconds >= 0 ? seconds * 1000 : null;
   }
+  // Only trust Date.parse on a string that actually has the RFC 7231
+  // IMF-fixdate shape ("Wed, 21 Oct 2015 07:28:00 GMT"). Date.parse itself
+  // is far more lenient than the HTTP spec and will happily "parse" garbage
+  // like "-5", "+5", "1.5", or "1 2 3" as some past date, which would
+  // otherwise silently produce a deltaMs <= 0 and return 0 — zero backoff
+  // against a server that is actively asking us to slow down. Reject
+  // anything that isn't shaped like a real HTTP-date up front instead.
+  if (!HTTP_DATE_RE.test(trimmed)) return null;
   const parsedDateMs = Date.parse(trimmed);
   if (Number.isNaN(parsedDateMs)) return null;
   const deltaMs = parsedDateMs - Date.now();
@@ -41,6 +51,17 @@ function parseRetryAfterMs(header: string | null): number | null {
  * is politeness against rate-limiting, not a general retry-everything
  * policy.
  */
+// Cap on how long any single retry wait is allowed to sleep for, regardless
+// of source (Retry-After or exponential fallback). 30s is long enough to be
+// genuinely polite to a rate-limiting server, but short enough that one
+// page's retry loop can't stall a whole concurrency slot — and by extension
+// a real 1,560-page crawl — for an unreasonable amount of time. This also
+// guards against a malicious/malformed Retry-After like
+// "99999999999999999999": without a clamp that value would overflow
+// setTimeout's 32-bit signed delay argument and fire almost immediately,
+// which is the exact opposite of the intended backoff.
+const MAX_RETRY_WAIT_MS = 30_000;
+
 async function fetchWithBackoff(url: string, fetchImpl: typeof fetch, maxRetries = 3): Promise<Response> {
   let lastResponse: Response | undefined;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -49,7 +70,8 @@ async function fetchWithBackoff(url: string, fetchImpl: typeof fetch, maxRetries
     lastResponse = res;
     if (attempt === maxRetries) break;
     const retryAfterMs = parseRetryAfterMs(res.headers.get("Retry-After"));
-    const waitMs = retryAfterMs !== null ? retryAfterMs : 2 ** attempt * 500;
+    const rawWaitMs = retryAfterMs !== null ? retryAfterMs : 2 ** attempt * 500;
+    const waitMs = Math.min(Math.max(rawWaitMs, 0), MAX_RETRY_WAIT_MS);
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   return lastResponse!;
