@@ -8,6 +8,8 @@
 
 **Revision note 3 (this document supersedes the version pushed as `91b3a49`):** that version's one-level crawl (fetch the 44 roots, classify their direct links) is an excellent seed-generation strategy but does not itself prove literal "ALL rules-bearing d20srd.org material" — it only proves every root's *direct* links are accounted for, not that a leaf page's own further links are. It also let `/indexes/*.htm` cross-links between roots (a real pattern — e.g. Feats links to the Skills index) leak into the leaf-page manifest as if they were rules content, had a real revision-numbering bug (`existing.attemptCount + 1` is a retry counter, not a revision counter, and could collide across two separate content changes), had a real missing-field bug (`discoveredFromPath` was dropped on a leaf's very first fetch failure), treated a stale `d20srd.org` snapshot-vs-live-crawl disagreement as merely informational at the mandatory acceptance gate, and didn't guard against two roots silently disagreeing on one leaf page's corpus area. This revision corrects all six: the classifier now excludes `/indexes/*.htm` unconditionally; `crawlD20srdClosure` (Task 6) performs a real transitive closure — fetching every newly-discovered leaf page too, in rounds, until nothing new is found — with the same closure function reused verbatim by Task 9's mandatory acceptance gate, which is now a hard blocking check (investigate → regenerate → re-run, never "log and continue"); revision numbers are now derived from each page's own real revision history; `discoveredFromPath` is preserved on every insert path including first-fetch failures; and a same-path, different-corpus-area classification conflict now fails generation loudly rather than letting whichever root was processed first silently win.
 
+**Revision note 4 (this document supersedes the version pushed as `bfbe8a3`):** that version's classification-conflict guard (round 3's fix) treated the symptom rather than the cause — `classifyD20srdLink` still inherited `corpusArea` from whichever root's traversal reached a page, meaning a real transitive chain (e.g. the "monsters" root's `monsterFeats.htm` linking to `/srd/epic/feats.htm`) could still silently mislabel a page whenever only one root ever reached it, and could only *throw* (never self-correct) on the narrower case of two roots reaching it with different results. It also let a closure crawl with real fetch failures still produce a snapshot or pass an acceptance gate (failures were tallied informationally, never gated on); let `upsertSrdManifestEntry` conflate "first real content after only-failed attempts" with "genuine content change" (both went through the same code path, meaning a page's first successful fetch could spuriously record a revision, and — the deeper problem — a genuine content change never reset the four verification fields, leaving stale `source_verified` metadata attached to content that had actually changed); had a `discoverSourcePage` regression risk where a routine re-fetch could force a manually-advanced `processingStatus` back down to `"hashed"`; used `/indexes/...` root paths (not real `/srd/...` leaf pages) in Task 8's lifecycle-sample fixtures, itself violating the root/leaf invariant this very document established in revision note 3; and made an unsubstantiated "considerate citizen" pacing claim backed only by a bare concurrency cap, with no actual minimum gap between requests over a run and no handling for a real `429`/`503` rate-limit response. This revision corrects all six: corpus-area classification is now a separate, deterministic, path-only pure function (`classifyD20srdCorpusArea`, new file `server/srd-d20srd-corpus-classification.ts`) that structurally cannot depend on traversal order, eliminating the conflict scenario rather than merely detecting it; `crawlD20srdClosure`'s `ClosureCrawlResult` now carries a real `failures` list plus a new `assertClosureExhaustive` gate that both generation and Task 9's acceptance re-crawl must call before trusting completeness; `upsertSrdManifestEntry` is now a real three-branch function (true no-op / first-real-acquisition / genuine-change) that only resets verification fields and records a revision on a genuine change, while clearing stale failure state on every successful branch; `discoverSourcePage` now only advances `processingStatus` to `"hashed"` from `"discovered"`, never regressing a further-advanced row; Task 8's fixtures now use real `/srd/feats.htm` and `/srd/spells/fireball.htm`; and the discovery pipeline gained a real `delayMs` request stagger plus a `fetchWithBackoff` helper that honors `429`/`503` responses and a real `Retry-After` header.
+
 **Architecture:** Three `rule_sources` rows separate authoritative provenance from ingestion transport: the original Wizards 3.5e SRD (an identity/citation row — no live fetchable URL), and two independently pinned *derived* transports that are actually fetched — a GitHub-hosted HTML mirror (`olimot/srd-v3.5`, pinned to an exact commit SHA) and the Hypertext d20 SRD (`d20srd.org`, a live site with documented errata integration and, critically, the open-content Unearthed Arcana Variant Rules section neither olimot nor a "core SRD only" scope would otherwise cover). Underneath those sit `srd_manifest_entries` — one row per discovered *source page*, identified by a `sourcePageKey` that is deliberately **not** a canonical entity ID. For olimot, every leaf page is directly enumerated from the pinned commit tree (no crawl needed — the mirror is already flat). For `d20srd.org`, 44 real index pages are **discovery roots**, not the corpus itself: a real transitive-closure crawl (fetch each root, extract every `href`, normalize, classify as included-with-corpus-area or excluded-with-reason, dedupe — then repeat against every newly-discovered leaf page's own links, until a round finds nothing new) turns those 44 roots into the real, exhaustive leaf-page manifest. `/indexes/*.htm` pages are always excluded from that manifest as navigation, never treated as leaf content even when cross-linked from another root. Page-processing status uses its own vocabulary (`discovered → fetched → hashed → parsed → source_verified`) — never Phase 0/1's `IngestionStatus`. A separate, dedicated `srd_source_page_revisions` table tracks page-level change history — `canonical_revisions` stays reserved for actual canonical rules entities, which don't exist until Phase 2B.
 
 **Tech Stack:** Drizzle ORM (SQLite dialect), the existing `runMigrations()` mechanism in `server/storage.ts`, Node's built-in `crypto.createHash("sha256")`, `fetch()` (jsDelivr for the GitHub-hosted mirror, direct HTTPS for `d20srd.org` — verified working, see below), `node --import tsx --test` + `node:assert/strict`.
@@ -22,7 +24,7 @@
 - **Both sources' leaf-page lists are generated artifacts, not hand-transcribed.** Olimot's from a script parsing the pinned tree API's raw response (Task 5). `d20srd.org`'s from a script that crawls the 44 real, hand-verified index-page *roots* and extracts+classifies+dedupes their real links (Task 6) — the 44 roots themselves are the one list in this plan that is necessarily hand-verified (no tree API exists for a live website), and this plan has already demonstrated, twice, on two different sources, that a hand-count is exactly the kind of number that needs a generation step checking it (see "Real Source Structure").
 - **The full approved "ALL rules-bearing d20srd.org material" scope is real leaf-page discovery, not root-page discovery.** Treating the 44 index pages as the manifest (the prior revision's approach) under-satisfies this requirement; treating them as crawl roots whose real internal links are extracted, classified, and persisted satisfies it.
 - **The fetch strategy is verified, not assumed.** `WebFetch` (a different tool/client) returned HTTP 403 against `d20srd.org`; Node's own `fetch()` — the actual API `server/srd-manifest-discovery.ts` uses — was tested directly against the live site during planning and returned `200` with real content. This plan does not build a mandatory acceptance gate around a fetch method already known to fail; see "Fetch Strategy Verification."
-- **A real crawl against a small, volunteer-run site must be a considerate citizen.** The d20srd.org leaf-page fetch step (Task 7) caps concurrency and paces requests — not because the site is known to rate-limit, but because sending ~1,560+ simultaneous requests to a non-CDN-fronted site is inconsiderate regardless, and is exactly the kind of behavior that could turn a currently-working fetch strategy into a blocked one. `crawlD20srdClosure`'s own closure crawl (Task 6, and reused by Task 9's gate) fetches every root and every newly-discovered leaf page too — it does this strictly sequentially (one `await fetch` at a time within each round, never a concurrent batch), the same politeness discipline applied by different means, since a one-time generation/verification step can afford to be slower than the bulk discovery pass in exchange for never needing its own concurrency parameter.
+- **A real crawl against a small, volunteer-run site must be a considerate citizen — a bare concurrency cap is not by itself real pacing.** The d20srd.org leaf-page fetch step (Task 7) caps concurrency (default 5), staggers every request beyond the initial concurrency-sized batch by a real `delayMs` (default 50ms, configurable per source group), and wraps every fetch in `fetchWithBackoff`, which retries a `429`/`503` response honoring a real `Retry-After` header when present, else exponential backoff, before giving up. This is not because the site is known to rate-limit, but because sending ~1,560+ requests to a non-CDN-fronted site with no minimum gap between them is inconsiderate regardless of the concurrency width, and is exactly the kind of behavior that could turn a currently-working fetch strategy into a blocked one. `crawlD20srdClosure`'s own closure crawl (Task 6, and reused by Task 9's gate) fetches every root and every newly-discovered leaf page too — it does this strictly sequentially (one `await fetch` at a time within each round, never a concurrent batch), the same politeness discipline applied by different means, since a one-time generation/verification step can afford to be slower than the bulk discovery pass in exchange for never needing its own concurrency parameter.
 - **Verification write paths are storage-layer only, never client-reachable.** `recordRuleSourceVerification` and `recordSourcePageVerification` have no HTTP route anywhere in this plan. If a future admin surface needs one, it must be gated by this codebase's existing admin-authority pattern (`role === "dungeon_master"` / `isAdmin`) — never a bare authenticated-user route. This plan adds zero routes.
 - **`canonical_revisions` (Phase 0/1 Task 6) is not touched by this plan.** Page-level change history uses its own dedicated table, `srd_source_page_revisions`.
 - **Phase 2A is not complete until a real network run has produced real coverage evidence.** Task 9's execution is isolated from the TDD unit-test suite but is not optional or deferrable as a whole task.
@@ -111,15 +113,21 @@ Variant Rules (6)        "open content from Unearthed Arcana" — variantRaces.h
 
 **9. Leaf pages preserve a pointer back to their discovery root.** `srd_manifest_entries.discoveredFromPath` (nullable — set for every `d20srd.org` leaf page discovered via link extraction, null for olimot's directly-enumerated pages, which have no crawl-root concept) records which of the 44 real index pages a leaf was found from, for auditability — not a many-to-many relationship (a page found via more than one root in this phase simply records its first-seen root; re-establishing full multi-root provenance is a reasonable Phase 2B refinement if it ever matters, not required here).
 
-**10. Every real link extracted from every real crawled page — root or leaf — is accounted for: included with a corpus area, or excluded with a real reason.** No link is silently dropped. `classifyD20srdLink()` (Task 5) returns one of exactly those two outcomes for every input, and Task 5's tests assert this against the complete real `href` list from a real captured root page, not a curated subset. This now extends through the transitive closure (see point 12 below), not just the 44 roots' direct links — a leaf page's own links are classified with the exact same function and the exact same "no silent drop" guarantee.
+**10. Every real link extracted from every real crawled page — root or leaf — is accounted for: included, or excluded with a real reason.** No link is silently dropped. `classifyD20srdLink()` (Task 5) returns one of exactly those two outcomes for every input, and Task 5's tests assert this against the complete real `href` list from a real captured root page, not a curated subset. This now extends through the transitive closure (see point 12 below), not just the 44 roots' direct links — a leaf page's own links are classified with the exact same function and the exact same "no silent drop" guarantee. **Corrected in this document's fourth revision: inclusion/exclusion is now the entirety of what this function decides** — it no longer also carries a `corpusArea` opinion (see point 13 below, rewritten).
 
 **11. `/indexes/*.htm` pages are never leaf entries, even when linked from another root.** Corrected in this revision: the classifier previously allowed `/indexes/` alongside `/srd/` as an inclusion namespace, which meant a root cross-linking to another root (a common, real pattern — e.g. Feats links to the Skills index) would misclassify a navigation page as a rules-bearing leaf. `classifyD20srdLink` now excludes every `/indexes/*.htm` path with reason `"navigation/discovery-root page"`, unconditionally — the 44 roots are tracked exclusively in `SRD_MANIFEST_ROOTS_D20SRD`, never duplicated into `SRD_MANIFEST_SOURCE_D20SRD`.
 
 **12. Discovery is a real transitive closure, not a one-level fetch of the 44 roots.** Corrected in this revision: a one-level crawl only proves every root's *direct* links are accounted for, not that every real rules-bearing page is discovered — a leaf page can link to further in-scope pages no root directly references (verified as a real pattern during this revision: base classes link to the prestige-classes index page, which links to individual prestige classes — a real two-hop chain from a root). `crawlD20srdClosure` (Task 6) fetches every newly-discovered leaf page and repeats extraction/classification against its own links, in rounds, until a round finds zero new in-scope paths — a real fixed-point closure. This is still page/URL discovery only: it classifies by corpus area and computes nothing about a page's game-rule content, so it remains Phase 2A work, never Phase 2B entity extraction.
 
-**13. A same-path classification conflict fails generation loudly; ordering never silently decides a winner.** Corrected in this revision: the original design deduplicated leaf pages by `if (!seen.has(path))`, so if two roots (or two points in the closure) reached the same page with two different `corpusArea` classifications, whichever was processed first would silently win and the disagreement would vanish. `crawlD20srdClosure` now throws immediately on a genuine classification conflict, naming the path and both conflicting classifications, and writes no snapshot until a human resolves it. A repeat of the *same* page with the *same* classification remains an ordinary, silent dedup — only a real disagreement is an error.
+**13. Corpus-area classification is a deterministic, path-only pure function — never inherited through the traversal graph.** Superseded in this document's fourth revision: the third revision's fix (a same-path conflict throws loudly) treated the symptom, not the cause — `classifyD20srdLink` still inherited `corpusArea` from whichever root's traversal reached a page, so a page reached by only ONE root (the common case) could still be silently mislabeled whenever that root's own area didn't match the page's real topic (the real discovered case: the "monsters" root's `monsterFeats.htm` links to `/srd/epic/feats.htm`, which is genuinely "epic"). The fix is now structural, not detective: `classifyD20srdCorpusArea(sourcePath, overrides?)` (new file `server/srd-d20srd-corpus-classification.ts`) takes only a page's own path and returns its area from real, individually-verified path-family and exact-path rule tables, throwing on a genuinely unresolvable path rather than silently defaulting. Because classification no longer depends on which root or which intermediate leaf reached a page, two different discovery paths to the same page can no longer disagree — the third revision's conflict-detection code is removed as dead weight, not kept alongside the new design. `classifyD20srdLink` itself now does inclusion/exclusion/normalization only.
 
-**14. The `d20srd.org` completeness gate (Task 9) is blocking, not informational.** Corrected in this revision: the original acceptance-gate design logged a fresh-crawl-vs-committed-snapshot diff as informational, on the reasoning that a live site can legitimately drift. That reasoning is true but doesn't license accepting an *unreconciled* disagreement as "complete" — Task 9 now throws on any non-empty diff and requires investigate → regenerate → re-run-discovery → re-run-both-gates before the acceptance report can be written. Site drift itself is not an error; declaring completion while the accepted snapshot and a live crawl still disagree is.
+**14. The `d20srd.org` completeness gate (Task 9) is blocking, not informational — and now also fail-closed against an incomplete re-crawl, and compares more than just paths.** Corrected across two revisions: the second revision's acceptance-gate design logged a fresh-crawl-vs-committed-snapshot diff as informational, on the reasoning that a live site can legitimately drift; the third revision made that diff blocking. **This document's fourth revision adds two further corrections**: the fresh re-crawl used for this gate must itself pass `assertClosureExhaustive` (point 15 below) before its result is trusted for diffing at all — a re-crawl with its own fetch failures cannot certify completeness; and the diff itself now compares `corpusArea` (blocking — a mismatch would mean deterministic classification disagreed with itself between generation and acceptance) and `discoveredFromPath` (informational only — a page reachable from more than one root can legitimately have its recorded originating root shift between two real crawl runs) in addition to the path-set comparison. Site drift itself is not an error; declaring completion while the accepted snapshot and a live crawl still disagree on paths or classification is.
+
+**15. A closure crawl with any fetch failure cannot be trusted as exhaustive — enforced by a dedicated, explicit gate.** New in this document's fourth revision: `crawlD20srdClosure` (Task 6) collects every fetch failure (root or leaf) into `ClosureCrawlResult.failures` and keeps crawling the rest of the frontier — one broken page never masks the real state of every other page — but a separate function, `assertClosureExhaustive(result)`, throws if `failures.length > 0`. Both real call sites (the generation script, before writing a snapshot; and Task 9's acceptance re-crawl, before diffing) must call it explicitly. Task 7's ongoing per-page discovery pipeline is a different concern (retrying an already-generated manifest over time) and is untouched by this gate — it may still record per-page failures without aborting siblings.
+
+**16. `upsertSrdManifestEntry` distinguishes three real cases, not two.** New in this document's fourth revision: the prior "same hash = no-op, different hash = changed" binary conflated "a page's first real content after only-failed prior attempts" with "content that genuinely changed" — both went through the same reset-and-record-a-revision path, meaning a page's very first successful fetch could spuriously record a revision with no real prior content to have changed from. The corrected function has three branches: true no-op, first-real-acquisition (no revision recorded — nothing about real content changed), and genuine-change (revision recorded, `processingStatus` reset to `"discovered"`, and — the other real gap this revision closes — all four verification fields reset to `null`, since a verification record describes the old content snapshot and must never silently survive attached to genuinely different content). Every branch that represents a successful fetch also clears any stale `lastError` and stamps `lastAttemptAt`, so a previously-failed page's error can never outlive a later successful fetch of it.
+
+**17. Pipeline pacing against `d20srd.org` is real, not just a concurrency ceiling.** New in this document's fourth revision: a bare concurrency cap still fires a new request the instant any slot frees up, maintaining zero real gap between requests over a long run. `runWithConcurrencyLimit` (Task 7) now takes a `delayMs` parameter (default 50ms) that staggers every request launched beyond the initial concurrency-sized batch, and every fetch goes through `fetchWithBackoff`, which retries a `429`/`503` response honoring a real `Retry-After` header when present, else exponential backoff, before falling through to the normal failure-recording path.
 
 ## File Structure
 
@@ -142,10 +150,19 @@ server/storage.ts                Modified: runMigrations() gains the new columns
 
 server/srd-link-extraction.ts                       New: extractLinks()/classifyD20srdLink() — pure,
                                                       tested against real captured href data, no
-                                                      network (Task 5).
+                                                      network. classifyD20srdLink does inclusion/
+                                                      exclusion/normalization ONLY — no corpusArea
+                                                      (Task 5).
 server/srd-link-extraction.test.ts                  New: tests proving every real link from a real
-                                                      captured root is included-with-area or
-                                                      excluded-with-reason (Task 5).
+                                                      captured root is included or excluded-with-reason
+                                                      (Task 5).
+server/srd-d20srd-corpus-classification.ts          New: classifyD20srdCorpusArea() — deterministic,
+                                                      path-only corpus-area classification, real
+                                                      path-family/exact-path rule tables, throws on an
+                                                      unresolvable path (Task 5).
+server/srd-d20srd-corpus-classification.test.ts     New: tests including the real monsterFeats-root ->
+                                                      /srd/epic/feats.htm case and a class -> prestige-
+                                                      class transitive-chain case (Task 5).
 
 server/srd-manifest-snapshot-olimot.generated.ts    New: generated frozen leaf-page list for the
                                                       pinned olimot commit (Task 6).
@@ -156,13 +173,16 @@ server/srd-manifest-roots-d20srd.ts                 New: the 44 real, hand-verif
 server/srd-d20srd-closure-crawl.ts                  New: crawlD20srdClosure() — the reusable
                                                       transitive-closure crawl (fetches roots, then
                                                       every newly-discovered leaf, repeating until a
-                                                      round finds nothing new; fails loudly on a
-                                                      same-path conflicting corpus-area classification).
+                                                      round finds nothing new; classifies each leaf via
+                                                      classifyD20srdCorpusArea, deterministic by path) —
+                                                      plus assertClosureExhaustive(), the fail-closed
+                                                      completeness gate over ClosureCrawlResult.failures.
                                                       Exported so Task 9 reuses this exact
-                                                      implementation for its real completeness gate
-                                                      (Task 6).
-server/srd-d20srd-closure-crawl.test.ts             New: closure/conflict-detection tests against
-                                                      injected fake fetchers (Task 6).
+                                                      implementation and the same gate for its real
+                                                      completeness gate (Task 6).
+server/srd-d20srd-closure-crawl.test.ts             New: closure-discovery, deterministic-classification,
+                                                      and fail-closed-gate tests against injected fake
+                                                      fetchers (Task 6).
 server/srd-manifest-snapshot-d20srd.generated.ts    New: generated frozen leaf-page list for
                                                       d20srd.org, produced by crawlD20srdClosure()
                                                       against the 44 roots (Task 6).
@@ -176,9 +196,11 @@ server/srd-manifest-snapshot.test.ts                New: sanity tests on both ge
 
 server/srd-manifest-discovery.ts                    New: discoverSourcePage()/runSrdManifestDiscovery()
                                                       for both sources' full leaf-page lists,
-                                                      injectable fetcher, loud failures, concurrency
-                                                      cap for the d20srd.org leg, srd_source_page_
-                                                      revisions wiring (Task 7).
+                                                      injectable fetcher, loud failures, concurrency cap
+                                                      + real delayMs stagger + fetchWithBackoff (429/503,
+                                                      Retry-After-aware) for the d20srd.org leg, never
+                                                      regresses an already-advanced processingStatus,
+                                                      srd_source_page_revisions wiring (Task 7).
 
 server/rules-registry.test.ts                       Modified: Task 1's recordRuleSourceVerification
                                                        tests appended to the existing Phase 0/1 file.
@@ -624,7 +646,7 @@ git commit -m "feat: add page-scoped SRD manifest schema (sourcePageKey, PagePro
 - Consumes: `srdManifestEntries`, `srdSourcePageRevisions`, `SrdManifestEntry`, `SrdSourcePageRevision`, `CreateSrdManifestEntryInput`, `RecordSourcePageRevisionInput`, `CorpusArea`, `PageProcessingStatus`, `buildSourcePageKey` (Task 2).
 - Produces: `storage.createSrdManifestEntry(input): SrdManifestEntry`, `storage.upsertSrdManifestEntry(input & {contentHash: string}): SrdManifestEntry` (idempotent — same hash on re-scan is a no-op; different hash resets `processingStatus` to `"discovered"` and records a `srd_source_page_revisions` row), `storage.updateSrdManifestEntryProcessingStatus(sourcePageKey, status): void`, `storage.recordSrdManifestDiscoveryFailure(input, errorMessage): SrdManifestEntry`, `storage.getSrdManifestEntry(sourcePageKey): SrdManifestEntry | undefined`, `storage.listSrdManifestEntries(filter?: {corpusArea?, sourceId?}): SrdManifestEntry[]`, `storage.recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision`, `storage.getSourcePageRevisionHistory(sourcePageKey): SrdSourcePageRevision[]`.
 
-**Expected behavior:** `createSrdManifestEntry` always writes `ruleset: "dnd35e"` literally. `upsertSrdManifestEntry` matches by `sourcePageKey` (built from `input.sourceId`'s owning source's `sourceKey` + `input.sourcePath` — the method looks up the source row to get its `sourceKey`, since callers only supply `sourceId`): no existing row → insert at `"discovered"`; identical `contentHash` → no-op (no false "changed" signal); different `contentHash` → update the hash, reset to `"discovered"`, and call `recordSourcePageRevision` (never `canonical_revisions`).
+**Expected behavior:** `createSrdManifestEntry` always writes `ruleset: "dnd35e"` literally. `upsertSrdManifestEntry` matches by `sourcePageKey` (built from `input.sourceId`'s owning source's `sourceKey` + `input.sourcePath` — the method looks up the source row to get its `sourceKey`, since callers only supply `sourceId`). Corrected this round: a real successful fetch is not just "hash differs" vs. "hash same" — it is one of three distinct cases, each with different, precise side effects: (1) **no existing row** → ordinary insert at `"discovered"`; (2) **first real acquisition** (`existing.contentHash === null`, meaning every prior attempt for this row only ever failed) → the hash is set for the first time; this is NOT a "content changed" event, so no revision is recorded and no verification fields are reset (they're already at their creation defaults — there is nothing to reset); (3) **genuine content change** (`existing.contentHash` was already a real, non-null value and the new hash differs from it) → `processingStatus` resets to `"discovered"` **and** all four verification fields (`verificationMethod`/`verifiedBy`/`verifiedAt`/`verificationNotes`) reset to `null`, and a `srd_source_page_revisions` row is recorded (never `canonical_revisions`) — a verification record describes the *old* content snapshot and must never silently survive attached to genuinely different content. Independently of which of these three cases applies, **any successful call clears stale failure state**: `lastError` is cleared and `lastAttemptAt` is stamped to now, even in the true no-op case (identical hash, no real acquisition, no change) — a successful fetch must never leave a previous failed attempt's error sitting on the row. The true no-op case (same hash, `existing.contentHash` was already non-null and equal, and there was no stale error to clear) is the only branch that returns the row completely unchanged.
 
 **Migration risk:** Low — two new `CREATE TABLE IF NOT EXISTS` additions, no existing table touched.
 
@@ -806,6 +828,64 @@ test("upsertSrdManifestEntry: successive real hash changes (v1 -> v2 -> v3) prod
   assert.equal(history[0].newContentHash, "hash-v3");
 });
 
+test("upsertSrdManifestEntry clears a stale lastError on a successful re-fetch even when the content hash is unchanged (success -> failure -> success-same-hash)", () => {
+  const first = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "monsters",
+    sourceUrl: "https://www.d20srd.org/srd/monsters/flaky-then-fine.htm",
+    sourcePath: "/srd/monsters/flaky-then-fine.htm",
+    contentHash: "stable-hash",
+  });
+  assert.equal(first.lastError, null);
+
+  storage.recordSrdManifestDiscoveryFailure(
+    {
+      sourceId,
+      corpusArea: "monsters",
+      sourceUrl: "https://www.d20srd.org/srd/monsters/flaky-then-fine.htm",
+      sourcePath: "/srd/monsters/flaky-then-fine.htm",
+    },
+    "HTTP 503",
+  );
+  const afterFailure = storage.getSrdManifestEntry(first.sourcePageKey);
+  assert.equal(afterFailure?.lastError, "HTTP 503");
+
+  const afterRecovery = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "monsters",
+    sourceUrl: "https://www.d20srd.org/srd/monsters/flaky-then-fine.htm",
+    sourcePath: "/srd/monsters/flaky-then-fine.htm",
+    contentHash: "stable-hash",
+  });
+  assert.equal(afterRecovery.lastError, null, "a successful fetch — even one with an identical, unchanged hash — must clear a stale lastError from an earlier failed attempt");
+});
+
+test("upsertSrdManifestEntry's first real content acquisition after prior fetch failures is NOT a content-changed event — no revision recorded", () => {
+  const failedFirst = storage.recordSrdManifestDiscoveryFailure(
+    {
+      sourceId,
+      corpusArea: "skills",
+      sourceUrl: "https://www.d20srd.org/srd/skills/fails-first-then-succeeds.htm",
+      sourcePath: "/srd/skills/fails-first-then-succeeds.htm",
+    },
+    "HTTP 500",
+  );
+  assert.equal(failedFirst.contentHash, null);
+
+  const recovered = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "skills",
+    sourceUrl: "https://www.d20srd.org/srd/skills/fails-first-then-succeeds.htm",
+    sourcePath: "/srd/skills/fails-first-then-succeeds.htm",
+    contentHash: "first-real-hash",
+  });
+  assert.equal(recovered.contentHash, "first-real-hash");
+  assert.equal(recovered.lastError, null);
+
+  const history = storage.getSourcePageRevisionHistory(failedFirst.sourcePageKey);
+  assert.equal(history.length, 0, "filling in the first-ever real hash after only-failed prior attempts must not record a revision — nothing about real content changed, since there was never a prior real hash to change from");
+});
+
 test("recordSrdManifestDiscoveryFailure creates a row even though no content was ever fetched", () => {
   const entry = storage.recordSrdManifestDiscoveryFailure(
     {
@@ -928,11 +1008,11 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
   const source = this.getRuleSourceById(input.sourceId);
   if (!source) throw new Error(`Rule source ${input.sourceId} not found`);
   const sourcePageKey = buildSourcePageKey(source.sourceKey, input.sourcePath);
+  const now = new Date().toISOString();
   const existing = db.select().from(srdManifestEntries)
     .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get();
 
   if (!existing) {
-    const now = new Date().toISOString();
     return db.insert(srdManifestEntries).values({
       sourcePageKey,
       ruleset: "dnd35e",
@@ -943,18 +1023,62 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
       discoveredFromPath: input.discoveredFromPath ?? null,
       contentHash: input.contentHash,
       processingStatus: "discovered",
+      lastError: null,
+      lastAttemptAt: now,
       attemptCount: 0,
       discoveredAt: now,
       updatedAt: now,
     }).returning().get();
   }
 
-  if (existing.contentHash === input.contentHash) {
-    return existing;
+  const isFirstRealAcquisition = existing.contentHash === null;
+  const hashChanged = !isFirstRealAcquisition && existing.contentHash !== input.contentHash;
+
+  if (!isFirstRealAcquisition && !hashChanged) {
+    // True no-op: identical content to what's already recorded. Still
+    // clear any stale failure state left over from an earlier failed
+    // attempt that preceded this successful (re-)fetch — a fetch
+    // succeeding must never leave a previous fetch's error on the row.
+    if (existing.lastError === null) return existing;
+    db.update(srdManifestEntries)
+      .set({ lastError: null, lastAttemptAt: now, updatedAt: now })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
+    return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
   }
 
+  if (isFirstRealAcquisition) {
+    // Every prior attempt for this row only ever failed (contentHash was
+    // never set) — this is the FIRST real content acquisition, not a
+    // "content changed" event. No revision recorded; verification fields
+    // are already at their creation defaults (null), so there's nothing
+    // to reset — resetting them here would be a no-op, but recording a
+    // revision here would be dishonest: nothing about real content changed,
+    // real content simply arrived for the first time.
+    db.update(srdManifestEntries)
+      .set({ contentHash: input.contentHash, lastError: null, lastAttemptAt: now, updatedAt: now })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
+    return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
+  }
+
+  // Genuine content change: existing.contentHash was already a real,
+  // non-null value, and the new hash differs from it. processingStatus
+  // resets to "discovered" AND all four verification fields reset to
+  // null — a verification record describes the OLD content snapshot and
+  // must never silently survive attached to genuinely different content.
   db.update(srdManifestEntries)
-    .set({ contentHash: input.contentHash, processingStatus: "discovered", updatedAt: new Date().toISOString() })
+    .set({
+      contentHash: input.contentHash,
+      processingStatus: "discovered",
+      verificationMethod: null,
+      verifiedBy: null,
+      verifiedAt: null,
+      verificationNotes: null,
+      lastError: null,
+      lastAttemptAt: now,
+      updatedAt: now,
+    })
     .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
     .run();
 
@@ -970,7 +1094,7 @@ upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: strin
   this.recordSourcePageRevision({
     sourcePageKey,
     revision: nextRevision,
-    changeReason: "content hash changed on re-scan, processingStatus reset to discovered",
+    changeReason: "content hash changed on re-scan, processingStatus and verification metadata reset",
     changedBy: "srd-manifest-discovery",
     oldContentHash: existing.contentHash ?? undefined,
     newContentHash: input.contentHash,
@@ -1054,7 +1178,7 @@ Add imports for `srdManifestEntries`, `srdSourcePageRevisions`, types, `buildSou
 
 - [ ] **Step 5: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/srd-manifest-storage.test.ts` — expect 10/10 (8 original + 2 added by this revision's regression tests for the revision-numbering and discoveredFromPath-on-failure fixes).
+Run: `node --import tsx --test server/srd-manifest-storage.test.ts` — expect 12/12 (8 from the original task + 2 from a prior review round's regression tests for revision-numbering and discoveredFromPath-on-failure + 2 added this round for stale-error-clearing and first-real-acquisition-is-not-a-revision).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
@@ -1062,10 +1186,10 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add server/storage.ts server/srd-manifest-storage.test.ts
-git commit -m "feat: add srd_manifest_entries + srd_source_page_revisions CRUD (page-scoped, not canonical-entity-scoped)"
+git commit -m "feat: add srd_manifest_entries + srd_source_page_revisions CRUD (page-scoped, not canonical-entity-scoped, three-way upsert: insert/first-acquisition/genuine-change)"
 ```
 
-**Independent verification before Task 4 begins:** re-run tests fresh; confirm `upsertSrdManifestEntry`'s hash-change branch genuinely calls `this.recordSourcePageRevision` (not `this.recordRevision`, Phase 0/1's canonical-entity method) by reading the code, not just trusting a passing test; confirm `createSrdManifestEntry`'s `ruleset: "dnd35e"` literal is truly unconditional by reading the full method body.
+**Independent verification before Task 4 begins:** re-run tests fresh; confirm `upsertSrdManifestEntry`'s hash-change branch genuinely calls `this.recordSourcePageRevision` (not `this.recordRevision`, Phase 0/1's canonical-entity method) by reading the code, not just trusting a passing test; confirm `createSrdManifestEntry`'s `ruleset: "dnd35e"` literal is truly unconditional by reading the full method body; confirm by reading the code (not just the passing tests) that all three branches — true no-op, first-real-acquisition, genuine-change — set `lastError: null` and stamp `lastAttemptAt`, and that only the genuine-change branch touches the four verification fields.
 
 ---
 
@@ -1232,34 +1356,41 @@ git commit -m "feat: add scope-labeled source-page coverage report and duplicate
 
 ---
 
-### Task 5: Link extraction and classification module (pure, no network)
+### Task 5: Link extraction, and — as a genuinely separate concern — deterministic corpus classification (pure, no network)
+
+**Corrected this round: inclusion/exclusion/normalization and corpus-area classification are now two separate functions in two separate files, not one function that blindly inherited whatever `corpusArea` its caller happened to pass.** Under the prior revision's design, a page's `corpusArea` was whatever the discovery root that linked to it declared — which is wrong under transitive traversal: a real discovered chain is `classes root → /srd/classes/barbarian.htm → /srd/prestigeClasses/prestigeClasses.htm → /srd/prestigeClasses/archmage.htm`, and `archmage.htm` must classify as `prestige-classes`, never `classes`, regardless of which root's traversal reached it first. Confirmed as a real, not hypothetical, case during this revision's research: `/srd/monsterFeats.htm` (a "monsters"-rooted page) links to `/srd/epic/feats.htm` — a real page that must classify as `epic` even though a "monsters" root reached it.
 
 **Files:**
 - Create: `server/srd-link-extraction.ts`
 - Create: `server/srd-link-extraction.test.ts`
+- Create: `server/srd-d20srd-corpus-classification.ts`
+- Create: `server/srd-d20srd-corpus-classification.test.ts`
 
 **Interfaces:**
 - Consumes: `CorpusArea` (Task 2).
-- Produces: `extractLinks(html: string): string[]` (every raw `href` attribute value found in a fetched page), `classifyD20srdLink(rawHref: string, baseUrl: string, discoveryRootCorpusArea: CorpusArea): {included: true; url: string; corpusArea: CorpusArea} | {included: false; reason: string}`.
+- Produces: `extractLinks(html: string): string[]`, `classifyD20srdLink(rawHref: string, baseUrl: string): {included: true; url: string} | {included: false; reason: string}` (inclusion/exclusion/normalization ONLY — no `corpusArea` in its signature or return value anymore), `classifyD20srdCorpusArea(sourcePath: string, overrides?: Record<string, CorpusArea>): CorpusArea` (throws if `sourcePath` matches no known rule and no override is supplied for it).
 
-**Expected behavior:** `classifyD20srdLink` returns exactly one of the two outcomes for every possible input — never throws, never silently returns `undefined`. `included: true` only for a same-host (`d20srd.org`/`www.d20srd.org`) `.htm`/`.html` path under `/srd/` — **never `/indexes/`**, with the URL fragment (`#...`) stripped so anchor-only links collapse to their real page. `/indexes/*.htm` paths are always excluded with reason `"navigation/discovery-root page"`, even when they appear as a real, in-scope, same-host link on another root's page (the 44 roots frequently cross-link to each other) — they are tracked separately as `SRD_MANIFEST_ROOTS_D20SRD` (Task 6), never as leaf manifest entries, per the review's explicit correction that a discovery root is not itself a rules-bearing leaf page. Every real exclusion category found while researching this plan gets a real, specific reason string: `javascript:` pseudo-links, bare `#` fragments, external hosts (including `5e.d20srd.org` — same family, **wrong ruleset**), site tooling (`/styles/`, `/extras/`, `/d20/`, `/fantasy/`), administrative/legal pages (`/`, `/index.htm`, `/about.htm`, `/faq.htm`, `/changes.htm`, `/ogl.htm`, `/landing.php`), and navigation/index pages (`/indexes/*`). `corpusArea` for an included link is inherited directly from the discovery root that linked to it — the classifier does not independently re-guess a leaf page's topic from its URL shape.
+**Expected behavior:** `classifyD20srdLink` is unchanged in its inclusion logic from the prior revision (same-host, `/srd/...` only, `/indexes/*` always excluded as navigation, same real exclusion categories) — the only change is dropping the `discoveryRootCorpusArea` parameter and the `corpusArea` field from its return type, since corpus classification is no longer this function's job at all.
+
+`classifyD20srdCorpusArea` is a pure, path-only function: given a real leaf `sourcePath` (already normalized/fragment-stripped by `classifyD20srdLink`), it returns the one `CorpusArea` that path deterministically belongs to — **the same answer every time, for every caller, regardless of which root or which intermediate leaf page linked to it.** It checks, in order: (1) an explicit `overrides` map (for a genuinely ambiguous path a human has deliberately pinned — expected to be empty or near-empty in practice, not a routine fallback mechanism); (2) a real, path-family-prefix rule table (`/srd/spells/`, `/srd/spellLists/` → `spells`; `/srd/monsters/` → `monsters`; `/srd/classes/`, `/srd/npcClasses/` → `classes`; `/srd/prestigeClasses/` → `prestige-classes`; `/srd/skills/` → `skills`; `/srd/magicItems/`, `/srd/equipment/` → `items-equipment`; `/srd/combat/` → `combat-rules`; `/srd/divine/` → `divine`; `/srd/epic/` → `epic`; `/srd/psionic/` → `psionics`; `/srd/variant/` → `open-variants` — every prefix here verified against real fetched pages during this revision's research, e.g. `/srd/epic/monsters/abomination.htm`, `/srd/psionic/monsters/overview.htm`, `/srd/divine/spells/blacklight.htm`, `/srd/variant/classes/gestaltCharacters.htm`); (3) a real exact-path rule table for single-file leaf pages with no subdirectory (`/srd/feats.htm` → `feats`; `/srd/conditionSummary.htm` → `conditions`; `/srd/monsterFeats.htm` → `monsters`; `/srd/typesSubtypes.htm` → `monsters`; `/srd/races.htm` → `races`; `/srd/specialMaterials.htm`, `/srd/treasure.htm` → `items-equipment`; `/srd/theBasics.htm`, `/srd/description.htm`, `/srd/traps.htm`, `/srd/planes.htm` → `core` — also real, but a smaller, less exhaustively-verified set than the prefix table; **Task 6's real generation run is the actual completeness proof, and any path it discovers matching neither table will make `classifyD20srdCorpusArea` throw, which is the intended fail-loud behavior, not a bug to route around**). If no rule matches and no override was supplied, it throws a clear error naming the unclassifiable path and instructing the resolution: add a real rule to one of the two tables, or (only for a genuinely one-off, ambiguous case) supply an explicit override — never silently default to a caller-supplied fallback.
 
 **Migration risk:** None — pure functions, no DB, no network.
 
-**Rollback consideration:** None; nothing outside this file and its own test consumes these exports until Task 6.
+**Rollback consideration:** None; nothing outside these two files and their own tests consumes these exports until Task 6.
 
 - [ ] **Step 1: Write `server/srd-link-extraction.ts`**
 
 ```ts
 // server/srd-link-extraction.ts
 //
-// Pure link extraction and classification for d20srd.org's discovery-root
-// crawl (Phase 2A, corrected per review: the 44 index pages are crawl
-// roots, not the manifest itself). No network call in this file — it
-// operates on already-fetched HTML strings, so it is fully unit-testable
-// against real captured href data with zero network dependency.
-
-import type { CorpusArea } from "@shared/rules-registry/srd-manifest";
+// Pure link extraction and inclusion/exclusion/normalization for
+// d20srd.org's discovery-root crawl. Deliberately does NOT decide corpus
+// area — see server/srd-d20srd-corpus-classification.ts for that, a
+// genuinely separate concern (a page's topic is a property of its own URL,
+// never of whichever root happened to link to it first). No network call
+// in this file — it operates on already-fetched HTML strings, so it is
+// fully unit-testable against real captured href data with zero network
+// dependency.
 
 const HREF_PATTERN = /href\s*=\s*["']([^"']+)["']/gi;
 
@@ -1284,8 +1415,7 @@ const EXCLUDED_PATH_PREFIXES = ["/styles/", "/extras/", "/d20/", "/fantasy/"];
 export function classifyD20srdLink(
   rawHref: string,
   baseUrl: string,
-  discoveryRootCorpusArea: CorpusArea,
-): { included: true; url: string; corpusArea: CorpusArea } | { included: false; reason: string } {
+): { included: true; url: string } | { included: false; reason: string } {
   if (rawHref.startsWith("javascript:")) {
     return { included: false, reason: "javascript pseudo-link" };
   }
@@ -1329,7 +1459,7 @@ export function classifyD20srdLink(
     return { included: false, reason: "not an HTML page" };
   }
 
-  return { included: true, url: `${url.origin}${path}`, corpusArea: discoveryRootCorpusArea };
+  return { included: true, url: `${url.origin}${path}` };
 }
 ```
 
@@ -1371,10 +1501,10 @@ test("extractLinks pulls every href out of a real captured page fixture", () => 
   assert.equal(links.length, 16);
 });
 
-test("every real extracted link is either included with a corpus area, or excluded with a real reason — none silently dropped", () => {
+test("every real extracted link is either included, or excluded with a real reason — none silently dropped", () => {
   const links = extractLinks(REAL_FEATS_PAGE_FIXTURE_HTML);
   for (const href of links) {
-    const result = classifyD20srdLink(href, BASE_URL, "feats");
+    const result = classifyD20srdLink(href, BASE_URL);
     assert.ok(
       result.included === true || (result.included === false && typeof result.reason === "string" && result.reason.length > 0),
       `link "${href}" must be classified with a real reason, not silently unaccounted for`,
@@ -1384,7 +1514,7 @@ test("every real extracted link is either included with a corpus area, or exclud
 
 test("real anchor-only feats links collapse to the one real leaf page after fragment stripping", () => {
   const results = ["/srd/feats.htm#acrobatic", "/srd/feats.htm#agile", "/srd/feats.htm#dodge"]
-    .map((href) => classifyD20srdLink(href, BASE_URL, "feats"));
+    .map((href) => classifyD20srdLink(href, BASE_URL));
   for (const r of results) {
     assert.equal(r.included, true);
     if (r.included) assert.equal(r.url, "https://www.d20srd.org/srd/feats.htm");
@@ -1392,19 +1522,19 @@ test("real anchor-only feats links collapse to the one real leaf page after frag
 });
 
 test("a real index-page cross-link (Feats root -> /indexes/skills.htm) is excluded as navigation, never treated as a leaf rules page", () => {
-  const result = classifyD20srdLink("/indexes/skills.htm", BASE_URL, "feats");
+  const result = classifyD20srdLink("/indexes/skills.htm", BASE_URL);
   assert.equal(result.included, false, "/indexes/*.htm pages are discovery roots, not leaf content, even when linked from another root");
   if (!result.included) assert.match(result.reason, /navigation|discovery-root/);
 });
 
-test("a real leaf rules page under /srd/ is included and inherits the calling root's corpus area, not a re-guessed one", () => {
-  const result = classifyD20srdLink("/srd/skills.htm", BASE_URL, "feats");
+test("a real leaf rules page under /srd/ is included — inclusion carries no corpus-area opinion at all", () => {
+  const result = classifyD20srdLink("/srd/skills/appraise.htm", BASE_URL);
   assert.equal(result.included, true);
-  if (result.included) assert.equal(result.corpusArea, "feats", "corpusArea is inherited from the discovery root, not re-derived from the linked path");
+  if (result.included) assert.equal(result.url, "https://www.d20srd.org/srd/skills/appraise.htm");
 });
 
 test("5e.d20srd.org is excluded as wrong-ruleset, not silently treated as same-family content", () => {
-  const result = classifyD20srdLink("http://5e.d20srd.org", BASE_URL, "feats");
+  const result = classifyD20srdLink("http://5e.d20srd.org", BASE_URL);
   assert.equal(result.included, false);
   if (!result.included) assert.match(result.reason, /5e\.d20srd\.org/);
 });
@@ -1421,7 +1551,7 @@ test("real site-tooling and administrative links are excluded with distinct, rea
     ["#", /fragment/],
   ];
   for (const [href, reasonPattern] of cases) {
-    const result = classifyD20srdLink(href, BASE_URL, "feats");
+    const result = classifyD20srdLink(href, BASE_URL);
     assert.equal(result.included, false, `"${href}" must be excluded`);
     if (!result.included) assert.match(result.reason, reasonPattern, `"${href}"'s exclusion reason must be specific`);
   }
@@ -1429,31 +1559,200 @@ test("real site-tooling and administrative links are excluded with distinct, rea
 
 test("external non-d20srd hosts (forum, facebook) are excluded as external, not silently included", () => {
   for (const href of ["http://www.lounge.belloflostsouls.net/forumdisplay.php?175", "https://www.facebook.com/d20srd/"]) {
-    const result = classifyD20srdLink(href, BASE_URL, "feats");
+    const result = classifyD20srdLink(href, BASE_URL);
     assert.equal(result.included, false);
     if (!result.included) assert.match(result.reason, /external host/);
   }
 });
 ```
 
-- [ ] **Step 3: Run the tests**
+- [ ] **Step 3: Write `server/srd-d20srd-corpus-classification.ts`**
 
-Run: `node --import tsx --test server/srd-link-extraction.test.ts`
-Expected: all 8 tests PASS (the index-cross-link test was split into an "excluded as navigation" test plus a separate real-leaf-page inclusion test, per this revision's correction — net +1 from the prior revision's 7).
+```ts
+// server/srd-d20srd-corpus-classification.ts
+//
+// Deterministic corpus-area classification for d20srd.org leaf pages —
+// genuinely separate from server/srd-link-extraction.ts's inclusion
+// decision. A page's topic is a property of ITS OWN URL, never of
+// whichever discovery root or intermediate leaf page happened to link to
+// it — see the Phase 2A plan's "Resolved Design Decisions" for the real
+// discovered case (monsterFeats root -> /srd/epic/feats.htm, which must
+// classify as "epic", never "monsters") that makes this a genuine bug
+// class, not a hypothetical one.
+//
+// Every prefix/exact-path rule below was verified against a real fetched
+// page during this revision's research — this is not a guessed mapping.
+// A path matching neither table is NOT silently defaulted to a caller's
+// context; classifyD20srdCorpusArea throws, and the resolution is a real
+// rule addition (or, for a genuinely one-off ambiguous case, an explicit
+// override), never a fallback.
 
-- [ ] **Step 4: Run full suite + typecheck**
+import type { CorpusArea } from "@shared/rules-registry/srd-manifest";
+
+// Path-family prefixes — checked longest-meaningful-match style by
+// insertion order below (all current prefixes are mutually exclusive by
+// construction, so order does not currently matter, but new prefixes added
+// later should be checked for accidental overlap with an existing one).
+const PATH_PREFIX_RULES: Array<[string, CorpusArea]> = [
+  ["/srd/spellLists/", "spells"],
+  ["/srd/spells/", "spells"],
+  ["/srd/monsters/", "monsters"],
+  ["/srd/prestigeClasses/", "prestige-classes"],
+  ["/srd/npcClasses/", "classes"],
+  ["/srd/classes/", "classes"],
+  ["/srd/skills/", "skills"],
+  ["/srd/magicItems/", "items-equipment"],
+  ["/srd/equipment/", "items-equipment"],
+  ["/srd/combat/", "combat-rules"],
+  ["/srd/divine/", "divine"],
+  ["/srd/epic/", "epic"],
+  ["/srd/psionic/", "psionics"],
+  ["/srd/variant/", "open-variants"],
+];
+
+// Single-file leaf pages with no subdirectory — each individually verified
+// against a real fetch during this revision's research.
+const EXACT_PATH_RULES: Record<string, CorpusArea> = {
+  "/srd/feats.htm": "feats",
+  "/srd/conditionSummary.htm": "conditions",
+  "/srd/monsterFeats.htm": "monsters",
+  "/srd/typesSubtypes.htm": "monsters",
+  "/srd/races.htm": "races",
+  "/srd/specialMaterials.htm": "items-equipment",
+  "/srd/treasure.htm": "items-equipment",
+  "/srd/theBasics.htm": "core",
+  "/srd/description.htm": "core",
+  "/srd/traps.htm": "core",
+  "/srd/planes.htm": "core",
+};
+
+export function classifyD20srdCorpusArea(
+  sourcePath: string,
+  overrides: Record<string, CorpusArea> = {},
+): CorpusArea {
+  if (overrides[sourcePath]) return overrides[sourcePath];
+  if (EXACT_PATH_RULES[sourcePath]) return EXACT_PATH_RULES[sourcePath];
+  for (const [prefix, area] of PATH_PREFIX_RULES) {
+    if (sourcePath.startsWith(prefix)) return area;
+  }
+  throw new Error(
+    `Cannot deterministically classify corpus area for "${sourcePath}" — no known path-family prefix or ` +
+    `exact-path rule matches, and no override was supplied. Add a real rule to PATH_PREFIX_RULES or ` +
+    `EXACT_PATH_RULES in server/srd-d20srd-corpus-classification.ts (verify the real page first), or, for a ` +
+    `genuinely one-off ambiguous case, pass an explicit { "${sourcePath}": <area> } override — never fall back ` +
+    `to whichever root happened to discover this path.`,
+  );
+}
+```
+
+- [ ] **Step 4: Write `server/srd-d20srd-corpus-classification.test.ts`**
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { classifyD20srdCorpusArea } from "./srd-d20srd-corpus-classification";
+
+test("real path-family prefixes classify correctly (each verified against a real fetch during this revision's research)", () => {
+  const cases: Array<[string, string]> = [
+    ["/srd/spells/fireball.htm", "spells"],
+    ["/srd/spellLists/clericSpells.htm", "spells"],
+    ["/srd/monsters/aboleth.htm", "monsters"],
+    ["/srd/classes/barbarian.htm", "classes"],
+    ["/srd/npcClasses/adept.htm", "classes"],
+    ["/srd/prestigeClasses/archmage.htm", "prestige-classes"],
+    ["/srd/skills/appraise.htm", "skills"],
+    ["/srd/magicItems/rings.htm", "items-equipment"],
+    ["/srd/equipment/armor.htm", "items-equipment"],
+    ["/srd/combat/initiative.htm", "combat-rules"],
+    ["/srd/divine/spells/blacklight.htm", "divine"],
+    ["/srd/divine/domains.htm", "divine"],
+    ["/srd/epic/monsters/abomination.htm", "epic"],
+    ["/srd/psionic/monsters/overview.htm", "psionics"],
+    ["/srd/psionic/psionicFeats.htm", "psionics"],
+    ["/srd/variant/classes/gestaltCharacters.htm", "open-variants"],
+  ];
+  for (const [path, expected] of cases) {
+    assert.equal(classifyD20srdCorpusArea(path), expected, `"${path}" must classify as "${expected}"`);
+  }
+});
+
+test("real exact-path rules classify correctly", () => {
+  const cases: Array<[string, string]> = [
+    ["/srd/feats.htm", "feats"],
+    ["/srd/conditionSummary.htm", "conditions"],
+    ["/srd/monsterFeats.htm", "monsters"],
+    ["/srd/typesSubtypes.htm", "monsters"],
+    ["/srd/races.htm", "races"],
+  ];
+  for (const [path, expected] of cases) {
+    assert.equal(classifyD20srdCorpusArea(path), expected, `"${path}" must classify as "${expected}"`);
+  }
+});
+
+test("the real discovered conflict case: /srd/epic/feats.htm classifies as epic, never monsters, even though a real monsters-rooted page (monsterFeats.htm) links to it", () => {
+  // server/srd-manifest-roots-d20srd.ts's "monsters" root (monsterFeats) and
+  // "epic" root (epicFeats) both really link to this exact page during a
+  // live crawl — verified directly during this revision's research. Under
+  // the OLD blind-inheritance design, reaching it via the monsters root
+  // would have produced "monsters"; classifyD20srdCorpusArea must produce
+  // "epic" regardless of which root asks.
+  assert.equal(classifyD20srdCorpusArea("/srd/epic/feats.htm"), "epic");
+});
+
+test("a class page linking to a prestige-class page classifies as prestige-classes, not classes — the exact transitive-closure case this correction targets", () => {
+  // Real chain: classes root -> /srd/classes/barbarian.htm -> /srd/prestigeClasses/prestigeClasses.htm
+  // -> /srd/prestigeClasses/archmage.htm. Regardless of how many hops deep
+  // the closure crawl found this page, its classification depends only on
+  // its own path.
+  assert.equal(classifyD20srdCorpusArea("/srd/prestigeClasses/archmage.htm"), "prestige-classes");
+});
+
+test("a Feats-rooted discovery of /srd/skills/appraise.htm still classifies as skills, never feats", () => {
+  // The path alone determines the area; there is no "discoveryRootCorpusArea"
+  // parameter anymore for a caller to (mis)supply.
+  assert.equal(classifyD20srdCorpusArea("/srd/skills/appraise.htm"), "skills");
+});
+
+test("the same real path classified twice (simulating two unrelated roots reaching it) is identical both times — classification cannot depend on traversal order", () => {
+  const first = classifyD20srdCorpusArea("/srd/epic/feats.htm");
+  const second = classifyD20srdCorpusArea("/srd/epic/feats.htm");
+  assert.equal(first, second);
+  assert.equal(first, "epic");
+});
+
+test("a genuinely unresolved path fails loudly rather than defaulting to anything", () => {
+  assert.throws(
+    () => classifyD20srdCorpusArea("/srd/totallyUnknownFamily/mysteryPage.htm"),
+    /Cannot deterministically classify/,
+  );
+});
+
+test("an explicit override resolves a path the tables don't cover, without changing the tables", () => {
+  assert.equal(
+    classifyD20srdCorpusArea("/srd/totallyUnknownFamily/mysteryPage.htm", { "/srd/totallyUnknownFamily/mysteryPage.htm": "core" }),
+    "core",
+  );
+});
+```
+
+- [ ] **Step 5: Run the tests**
+
+Run: `node --import tsx --test server/srd-link-extraction.test.ts server/srd-d20srd-corpus-classification.test.ts`
+Expected: 8 tests pass in the link-extraction file, 7 in the corpus-classification file — 15 total.
+
+- [ ] **Step 6: Run full suite + typecheck**
 
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add server/srd-link-extraction.ts server/srd-link-extraction.test.ts
-git commit -m "feat: add d20srd.org link extraction/classification (real fixture-tested, every link included-or-excluded-with-reason)"
+git add server/srd-link-extraction.ts server/srd-link-extraction.test.ts server/srd-d20srd-corpus-classification.ts server/srd-d20srd-corpus-classification.test.ts
+git commit -m "feat: split d20srd.org link inclusion from deterministic corpus classification (fixes traversal-order-dependent misclassification)"
 ```
 
-**Independent verification before Task 6 begins:** re-run tests fresh; manually re-fetch `https://www.d20srd.org/indexes/feats.htm` for real (`node -e "fetch(...)..."`) and confirm the fixture's 16-link sample is still representative of the real page's actual structure — a live spot-check that the fixture wasnraft from real data, not invented after the fact.
+**Independent verification before Task 6 begins:** re-run tests fresh; manually re-fetch `https://www.d20srd.org/indexes/feats.htm` for real (`node -e "fetch(...)..."`) and confirm the fixture's 16-link sample is still representative of the real page's actual structure; manually re-fetch 2-3 real pages under path families not exhaustively covered by this task's rule tables (this revision's research did not verify every single one of the 44 roots' full leaf sets) and confirm `classifyD20srdCorpusArea` either classifies them correctly or throws — if it silently returns a wrong answer for a real path, that is a rule-table gap to close before Task 6 runs the real generation.
 
 ---
 
@@ -1468,16 +1767,18 @@ git commit -m "feat: add d20srd.org link extraction/classification (real fixture
 - Create: `server/srd-manifest-snapshot.test.ts`
 
 **Interfaces:**
-- Consumes: `extractLinks`, `classifyD20srdLink` (Task 5), `CorpusArea` (Task 2).
-- Produces: `SRD_MANIFEST_SOURCE_OLIMOT: Array<{ corpusArea: CorpusArea; sourcePath: string }>` (generated, unchanged mechanism from the prior revision), `SRD_MANIFEST_ROOTS_D20SRD: Array<{ corpusArea: CorpusArea; sourcePath: string }>` (the 44 real roots, hand-verified — this is the one list in this plan that cannot be generated, since no tree API exists for a live website), `crawlD20srdClosure(roots: Array<{corpusArea, sourcePath}>, fetchImpl?): Promise<Map<string, {corpusArea: CorpusArea; sourcePath: string; discoveredFromPath: string}>>` (the reusable transitive-closure crawl — exported so Task 9's real acceptance gate calls the *same* implementation rather than a second, parallel one), `SRD_MANIFEST_SOURCE_D20SRD: Array<{ corpusArea: CorpusArea; sourcePath: string; discoveredFromPath: string }>` (generated by running `crawlD20srdClosure` against the 44 roots — the real, exhaustive leaf-page list, consumed by Task 7).
+- Consumes: `extractLinks`, `classifyD20srdLink` (Task 5, now corpusArea-free), `classifyD20srdCorpusArea` (Task 5's new corpus-classification module), `CorpusArea` (Task 2).
+- Produces: `SRD_MANIFEST_SOURCE_OLIMOT: Array<{ corpusArea: CorpusArea; sourcePath: string }>` (generated, unchanged mechanism from the prior revision), `SRD_MANIFEST_ROOTS_D20SRD: Array<{ corpusArea: CorpusArea; sourcePath: string }>` (the 44 real roots, hand-verified — this is the one list in this plan that cannot be generated, since no tree API exists for a live website; each root's own `corpusArea` is metadata about the root itself, no longer propagated to the leaves it discovers), `crawlD20srdClosure(roots, baseUrl, fetchImpl?, corpusAreaOverrides?): Promise<ClosureCrawlResult>` (the reusable transitive-closure crawl — exported so Task 9's real acceptance gate calls the *same* implementation rather than a second, parallel one), `ClosureCrawlResult` (`{entries: Map<string, {corpusArea, sourcePath, discoveredFromPath}>, totalLinksExamined, totalExcluded, failures: Array<{url, reason}>, rounds}` — **`failures` replaces the prior revision's bare `totalFetchFailures` counter**, per this round's fail-closed correction), `assertClosureExhaustive(result: ClosureCrawlResult): void` (throws if `result.failures.length > 0` — the real fail-closed completeness gate, called by both the generation script below and Task 9's acceptance gate), `SRD_MANIFEST_SOURCE_D20SRD: Array<{ corpusArea: CorpusArea; sourcePath: string; discoveredFromPath: string }>` (generated by running `crawlD20srdClosure` against the 44 roots — the real, exhaustive leaf-page list, consumed by Task 7).
 
 **Expected behavior:** `scripts/generate-olimot-srd-snapshot.ts` is unchanged from the prior revision — a real, re-runnable script that fetches the pinned tree API directly, parses the raw JSON with no summarizing intermediary, filters/classifies by filename, and writes `server/srd-manifest-snapshot-olimot.generated.ts`. Running it twice against the same pinned SHA must produce byte-identical output.
 
 `server/srd-manifest-roots-d20srd.ts` is hand-written — the one list in this plan that is, because no tree API exists for a live website to generate it from. It is the 44 real index-page root paths, verified via the Claude Browser tool.
 
-**`crawlD20srdClosure` is a real transitive-closure crawl, not a one-level fetch of the 44 roots.** Per the review's correction: a one-level crawl only proves every root's *direct* links are accounted for — it does not prove every real rules-bearing page is discovered, since a leaf page can itself link to further in-scope pages the roots never directly reference. `crawlD20srdClosure` fetches the 44 roots, extracts and classifies their links via Task 5's module, and for every newly-included leaf page **also fetches that page and repeats the same extraction/classification** against its own links — continuing in rounds until a round discovers zero new in-scope paths (a real fixed-point/closure algorithm, capped at a generous round limit as a safety valve against a pathological cycle, not expected to ever trigger against real content). This still only ever discovers URLs and classifies them by corpus area — it never parses a page's content into game-rule data, so it remains Phase 2A discovery work, not Phase 2B entity extraction. Each discovered page's `discoveredFromPath` records the *originating* one of the 44 real roots (propagated through however many closure rounds it took to reach that page), not the intermediate leaf that happened to link to it — so every `discoveredFromPath` value is always one of the 44 real, known roots, auditable and stable regardless of how deep the closure went.
+**`crawlD20srdClosure` is a real transitive-closure crawl, not a one-level fetch of the 44 roots.** Per a prior review round's correction: a one-level crawl only proves every root's *direct* links are accounted for — it does not prove every real rules-bearing page is discovered, since a leaf page can itself link to further in-scope pages the roots never directly reference. `crawlD20srdClosure` fetches the 44 roots, extracts and classifies-for-inclusion their links via Task 5's `classifyD20srdLink` (inclusion/exclusion only — no corpus opinion), and for every newly-included leaf page **also fetches that page and repeats the same extraction/inclusion-classification** against its own links — continuing in rounds until a round discovers zero new in-scope paths (a real fixed-point/closure algorithm, capped at a generous round limit as a safety valve against a pathological cycle, not expected to ever trigger against real content). This still only ever discovers URLs and classifies them by corpus area — it never parses a page's content into game-rule data, so it remains Phase 2A discovery work, not Phase 2B entity extraction. Each discovered page's `discoveredFromPath` records the *originating* one of the 44 real roots (propagated through however many closure rounds it took to reach that page), not the intermediate leaf that happened to link to it — so every `discoveredFromPath` value is always one of the 44 real, known roots, auditable and stable regardless of how deep the closure went.
 
-**Same-path classification conflicts fail generation loudly, never silently pick a winner.** If two different discovery paths reach the same normalized page with two *different* `corpusArea` classifications, `crawlD20srdClosure` throws immediately, naming the path and both conflicting classifications — generation does not complete, and no snapshot is written, until a human resolves which classification is correct (most likely by adjusting one of the 44 roots' own declared `corpusArea` in `srd-manifest-roots-d20srd.ts`). The same page reached twice with the *same* classification is an ordinary, silent deduplication — only a genuine conflict is an error.
+**Corpus-area classification is now deterministic and traversal-order-independent, not inherited from whichever root reached a page first.** This round's correction: every newly-discovered leaf page's `corpusArea` is computed once, immediately, by calling `classifyD20srdCorpusArea(path, corpusAreaOverrides)` (Task 5) — a pure function of the page's own path. Because two different discovery paths reaching the same normalized page now always produce the *same* classification (the function is deterministic in its input), the prior revision's "same-path classification conflict" error path is structurally eliminated for correctly-classified paths — there is no longer a first-root-wins race to guard against, because there is no per-traversal classification decision left to race. The one remaining failure mode is a path `classifyD20srdCorpusArea` cannot resolve at all (no matching rule, no override): that throw propagates directly out of `crawlD20srdClosure`, stopping generation immediately, exactly as intended — the resolution is a real rule addition to Task 5's classification tables (or, for a genuinely one-off case, a `corpusAreaOverrides` entry), never a fallback to the discovering root's own area.
+
+**A closure crawl with ANY fetch failure — root or leaf — cannot be considered complete, and `assertClosureExhaustive` enforces this before generation trusts the result.** This round's correction: the prior revision silently `continue`d past a failed fetch and only tallied it in an informational `totalFetchFailures` counter, meaning a failed page (which might have linked to real, undiscovered content) could still produce a snapshot that looked complete. `crawlD20srdClosure` itself still does not abort mid-crawl on an individual fetch failure — it collects every failure into `result.failures` and keeps crawling the rest of the frontier, so one broken page can't mask the real state of every other page. The blocking behavior lives in the separate `assertClosureExhaustive` gate, called explicitly by both the generation script (before writing a snapshot file) and Task 9's real acceptance re-crawl (before diffing) — either call site throws immediately, naming every failed URL and its reason, if `failures.length > 0`. Task 7's normal day-to-day discovery pipeline (a different concern — ongoing per-page fetch/retry against an already-generated manifest) is untouched by this: it already records per-page failures without aborting siblings, which remains correct there.
 
 **Migration risk:** None — no schema, no DB.
 
@@ -1662,31 +1963,43 @@ Exported from its own module (not inlined in the generation script) specifically
 ```ts
 // server/srd-d20srd-closure-crawl.ts
 //
-// Transitive-closure crawl for d20srd.org (Phase 2A, corrected per review):
-// a one-level fetch of the 44 real roots only proves every root's DIRECT
-// links are accounted for — it does not prove every real rules-bearing page
-// is discovered, since a leaf page can itself link to further in-scope
-// pages no root directly references. This crawls the 44 roots, then
-// repeats extraction/classification against every newly-discovered leaf
-// page's own links, in rounds, until a round finds zero new in-scope
-// paths — a real fixed-point closure, still only discovering URLs and
-// classifying them by corpus area, never parsing page content into game
-// rules (Phase 2B remains untouched).
+// Transitive-closure crawl for d20srd.org. A one-level fetch of the 44 real
+// roots only proves every root's DIRECT links are accounted for — it does
+// not prove every real rules-bearing page is discovered, since a leaf page
+// can itself link to further in-scope pages no root directly references.
+// This crawls the 44 roots, then repeats extraction/inclusion-checking
+// against every newly-discovered leaf page's own links, in rounds, until a
+// round finds zero new in-scope paths — a real fixed-point closure, still
+// only discovering URLs and classifying them by corpus area, never parsing
+// page content into game rules (Phase 2B remains untouched).
+//
+// Corpus-area classification is deterministic and path-only (see
+// srd-d20srd-corpus-classification.ts) — a page's area no longer depends on
+// which root's traversal reached it first, closing the misclassification
+// bug where a "monsters"-rooted page like monsterFeats.htm could leak its
+// area onto a genuinely "epic" page (/srd/epic/feats.htm) it happens to
+// link to.
+//
+// Fetch failures (root or leaf) are collected in `failures`, never silently
+// dropped and never aborting the rest of the crawl — a broken page can't
+// mask the real state of every other page. Completeness is a SEPARATE,
+// explicit gate: assertClosureExhaustive() below, which callers must invoke
+// before trusting a result as exhaustive.
 
 import { extractLinks, classifyD20srdLink } from "./srd-link-extraction";
+import { classifyD20srdCorpusArea } from "./srd-d20srd-corpus-classification";
 import type { CorpusArea } from "@shared/rules-registry/srd-manifest";
 
 export interface ClosureCrawlResult {
   entries: Map<string, { corpusArea: CorpusArea; sourcePath: string; discoveredFromPath: string }>;
   totalLinksExamined: number;
   totalExcluded: number;
-  totalFetchFailures: number;
+  failures: Array<{ url: string; reason: string }>;
   rounds: number;
 }
 
 interface FrontierItem {
   url: string;
-  corpusArea: CorpusArea;
   originRootPath: string;
 }
 
@@ -1697,67 +2010,82 @@ export async function crawlD20srdClosure(
   roots: Array<{ corpusArea: CorpusArea; sourcePath: string }>,
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
+  corpusAreaOverrides: Record<string, CorpusArea> = {},
 ): Promise<ClosureCrawlResult> {
   const seen = new Map<string, { corpusArea: CorpusArea; sourcePath: string; discoveredFromPath: string }>();
+  const failures: Array<{ url: string; reason: string }> = [];
   let frontier: FrontierItem[] = roots.map((root) => ({
     url: `${baseUrl}${root.sourcePath}`,
-    corpusArea: root.corpusArea,
     originRootPath: root.sourcePath,
   }));
   let totalLinksExamined = 0;
   let totalExcluded = 0;
-  let totalFetchFailures = 0;
   let round = 0;
 
   while (frontier.length > 0) {
     round++;
     if (round > MAX_ROUNDS) {
       throw new Error(
-        `d20srd.org closure crawl did not converge within ${MAX_ROUNDS} rounds — this almost certainly indicates a bug (e.g. classification producing an ever-growing set) rather than genuine real content depth. Investigate before trusting this run.`,
+        `d20srd.org closure crawl did not converge within ${MAX_ROUNDS} rounds — this almost certainly indicates a bug (e.g. a cyclic-link mishandling) rather than genuine real content depth. Investigate before trusting this run.`,
       );
     }
 
     const nextFrontier: FrontierItem[] = [];
     for (const item of frontier) {
-      const res = await fetchImpl(item.url);
+      let res: Response;
+      try {
+        res = await fetchImpl(item.url);
+      } catch (err) {
+        failures.push({ url: item.url, reason: err instanceof Error ? err.message : String(err) });
+        continue;
+      }
       if (!res.ok) {
-        totalFetchFailures++;
-        continue; // Task 7's real discovery pass records this properly per-page;
-                  // the generation-time closure crawl just skips it for link purposes.
+        failures.push({ url: item.url, reason: `HTTP ${res.status}` });
+        continue;
       }
       const html = await res.text();
       const links = extractLinks(html);
       totalLinksExamined += links.length;
 
       for (const href of links) {
-        const result = classifyD20srdLink(href, item.url, item.corpusArea);
+        const result = classifyD20srdLink(href, item.url);
         if (!result.included) {
           totalExcluded++;
           continue;
         }
         const path = new URL(result.url).pathname;
-        const existing = seen.get(path);
-        if (existing) {
-          if (existing.corpusArea !== result.corpusArea) {
-            throw new Error(
-              `Conflicting corpus-area classification for "${path}": first seen as "${existing.corpusArea}" ` +
-              `(originating root "${existing.discoveredFromPath}"), now reached as "${result.corpusArea}" ` +
-              `(originating root "${item.originRootPath}"). Generation stops here — this must be resolved by a ` +
-              `human deciding the correct classification (most likely by adjusting one of the 44 roots' declared ` +
-              `corpusArea in server/srd-manifest-roots-d20srd.ts) before regenerating. A same-path/same-area ` +
-              `repeat is an ordinary dedup, never an error; only a genuine conflicting classification is.`,
-            );
-          }
-          continue; // same page, same area, already recorded — ordinary dedup, not a new discovery.
-        }
-        seen.set(path, { corpusArea: result.corpusArea, sourcePath: path, discoveredFromPath: item.originRootPath });
-        nextFrontier.push({ url: result.url, corpusArea: result.corpusArea, originRootPath: item.originRootPath });
+        if (seen.has(path)) continue; // same page reached again — ordinary dedup.
+                                       // Classification is a pure function of
+                                       // path, so a repeat can never conflict.
+
+        const corpusArea = classifyD20srdCorpusArea(path, corpusAreaOverrides);
+        seen.set(path, { corpusArea, sourcePath: path, discoveredFromPath: item.originRootPath });
+        nextFrontier.push({ url: result.url, originRootPath: item.originRootPath });
       }
     }
     frontier = nextFrontier;
   }
 
-  return { entries: seen, totalLinksExamined, totalExcluded, totalFetchFailures, rounds: round };
+  return { entries: seen, totalLinksExamined, totalExcluded, failures, rounds: round };
+}
+
+/**
+ * Fail-closed completeness gate: a closure crawl with ANY fetch failure
+ * cannot be considered exhaustive — a failed root or leaf page might have
+ * linked to real content nothing else reaches. Both generation
+ * (scripts/generate-d20srd-srd-snapshot.ts) and Task 9's real acceptance
+ * gate must call this before trusting a crawl result's completeness.
+ */
+export function assertClosureExhaustive(result: ClosureCrawlResult): void {
+  if (result.failures.length > 0) {
+    const list = result.failures.map((f) => `  - ${f.url}: ${f.reason}`).join("\n");
+    throw new Error(
+      `d20srd.org closure crawl had ${result.failures.length} fetch failure(s) — cannot be considered exhaustive, ` +
+      `since a failed page might have linked to real content nothing else reaches. Re-run the crawl (transient ` +
+      `network/site issues are the common cause) until it completes with zero failures before trusting this ` +
+      `result for generation or the acceptance gate:\n${list}`,
+    );
+  }
 }
 ```
 
@@ -1769,17 +2097,22 @@ export async function crawlD20srdClosure(
 // Generates server/srd-manifest-snapshot-d20srd.generated.ts by running the
 // real transitive-closure crawl (server/srd-d20srd-closure-crawl.ts) against
 // the 44 real roots — not a one-level fetch. This is the real, exhaustive,
-// generated leaf-page corpus for d20srd.org.
+// generated leaf-page corpus for d20srd.org. Fail-closed: assertClosureExhaustive
+// throws (and no file is written) if the crawl had ANY fetch failure — a
+// snapshot generated from an incomplete crawl would silently under-report
+// the real corpus, which is worse than failing loudly and re-running.
 //
 // Re-run with: node --import tsx scripts/generate-d20srd-srd-snapshot.ts
 
-import { crawlD20srdClosure } from "../server/srd-d20srd-closure-crawl";
+import { crawlD20srdClosure, assertClosureExhaustive } from "../server/srd-d20srd-closure-crawl";
 import { SRD_MANIFEST_ROOTS_D20SRD } from "../server/srd-manifest-roots-d20srd";
 
 const BASE_URL = "https://www.d20srd.org";
 
 async function main() {
   const result = await crawlD20srdClosure(SRD_MANIFEST_ROOTS_D20SRD, BASE_URL);
+  assertClosureExhaustive(result); // throws before any file is written if there were fetch failures
+
   const entries = Array.from(result.entries.values()).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
 
   const output = `// GENERATED FILE — produced by scripts/generate-d20srd-srd-snapshot.ts
@@ -1788,11 +2121,10 @@ async function main() {
 // Do not hand-edit; re-run the script. Real generation run: ${result.rounds}
 // closure round(s), ${result.totalLinksExamined} total links examined,
 // ${result.totalExcluded} excluded (site furniture/admin/navigation/
-// external/wrong-ruleset), ${result.totalFetchFailures} fetch failures
-// during generation (see server/srd-manifest-acceptance-report for the
-// real per-page failure record from Task 7's actual discovery run — this
-// generation step's failures are transient and not authoritative),
-// ${entries.length} real rules-bearing leaf pages after closure.
+// external/wrong-ruleset), zero fetch failures (assertClosureExhaustive
+// requires this before a file is written — see server/srd-d20srd-closure-crawl.ts),
+// ${entries.length} real rules-bearing leaf pages after closure, each
+// classified deterministically by its own path (server/srd-d20srd-corpus-classification.ts).
 
 import type { CorpusArea } from "@shared/rules-registry/srd-manifest";
 
@@ -1801,20 +2133,20 @@ export const SRD_MANIFEST_SOURCE_D20SRD: Array<{ corpusArea: CorpusArea; sourceP
 
   const fs = await import("node:fs");
   fs.writeFileSync("server/srd-manifest-snapshot-d20srd.generated.ts", output);
-  console.log(`Closure converged after ${result.rounds} round(s): examined ${result.totalLinksExamined} links, excluded ${result.totalExcluded}, ${result.totalFetchFailures} fetch failures, wrote ${entries.length} real leaf pages to server/srd-manifest-snapshot-d20srd.generated.ts`);
+  console.log(`Closure converged after ${result.rounds} round(s): examined ${result.totalLinksExamined} links, excluded ${result.totalExcluded}, zero fetch failures, wrote ${entries.length} real leaf pages to server/srd-manifest-snapshot-d20srd.generated.ts`);
 }
 
 main();
 ```
 
-Run it for real: `node --import tsx scripts/generate-d20srd-srd-snapshot.ts`. This now fetches every discovered leaf page too (not just the 44 roots), so expect real wall-clock time proportional to the real closure size. Cross-check the real output count against this plan's "Real Source Structure" section's real per-root direct-link sample counts (spells: 608, monsters: 249, psionic powers: 287, epic spells: 74, epic monsters: 41, classes: 32, etc.) — the closure-crawled total should be at or above that direct-link sum, since closure can only add pages beyond what the roots directly link to, never fewer; if it's lower, investigate before committing, same discipline as olimot's Step 2. If generation throws a classification-conflict error, resolve it per the error message before re-running — do not work around it by catching and ignoring the conflict.
+Run it for real: `node --import tsx scripts/generate-d20srd-srd-snapshot.ts`. This now fetches every discovered leaf page too (not just the 44 roots), so expect real wall-clock time proportional to the real closure size. Cross-check the real output count against this plan's "Real Source Structure" section's real per-root direct-link sample counts (spells: 608, monsters: 249, psionic powers: 287, epic spells: 74, epic monsters: 41, classes: 32, etc.) — the closure-crawled total should be at or above that direct-link sum, since closure can only add pages beyond what the roots directly link to, never fewer; if it's lower, investigate before committing, same discipline as olimot's Step 2. If `assertClosureExhaustive` throws (any real fetch failure occurred), re-run generation — do not catch and ignore the failures, and do not write a snapshot from an incomplete crawl. If generation throws an unresolvable-path classification error (from `classifyD20srdCorpusArea`), resolve it by adding a real rule to Task 5's classification tables (verify the real page first) before re-running — never work around it with a broad fallback.
 
-- [ ] **Step 6: Write `server/srd-d20srd-closure-crawl.test.ts` — the closure algorithm and conflict detection, entirely against injected fake fetchers**
+- [ ] **Step 6: Write `server/srd-d20srd-closure-crawl.test.ts` — closure discovery, deterministic classification, and the fail-closed completeness gate, entirely against injected fake fetchers**
 
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { crawlD20srdClosure } from "./srd-d20srd-closure-crawl";
+import { crawlD20srdClosure, assertClosureExhaustive } from "./srd-d20srd-closure-crawl";
 
 const BASE_URL = "https://www.d20srd.org";
 
@@ -1826,7 +2158,7 @@ function fakeFetch(pages: Record<string, string>): typeof fetch {
   }) as typeof fetch;
 }
 
-test("crawlD20srdClosure discovers a page linked only from another leaf page, not directly from any root", async () => {
+test("crawlD20srdClosure discovers a page linked only from another leaf page, and classifies it by its own path — not the root's declared area", async () => {
   const pages = {
     "/indexes/classes.htm": `<a href="/srd/classes/barbarian.htm">Barbarian</a>`,
     "/srd/classes/barbarian.htm": `<a href="/srd/prestigeClasses/prestigeClasses.htm">Prestige Classes</a>`,
@@ -1839,11 +2171,11 @@ test("crawlD20srdClosure discovers a page linked only from another leaf page, no
     fakeFetch(pages),
   );
   assert.ok(result.rounds > 1, "discovering archmage.htm (two links deep from the root) requires more than one closure round");
-  assert.ok(result.entries.has("/srd/classes/barbarian.htm"));
-  assert.ok(result.entries.has("/srd/prestigeClasses/prestigeClasses.htm"));
-  assert.ok(
-    result.entries.has("/srd/prestigeClasses/archmage.htm"),
-    "a page reachable only via a leaf-to-leaf link (not directly from any root) must still be discovered by the closure",
+  assert.equal(result.entries.get("/srd/classes/barbarian.htm")?.corpusArea, "classes");
+  assert.equal(
+    result.entries.get("/srd/prestigeClasses/archmage.htm")?.corpusArea,
+    "prestige-classes",
+    "archmage.htm must classify as prestige-classes by its own path, even though it was reached transitively via the 'classes' root — the exact traversal-order bug this round's correction fixes",
   );
 });
 
@@ -1880,38 +2212,31 @@ test("crawlD20srdClosure stops when a round discovers zero new in-scope pages", 
   assert.ok(result.rounds <= 3, `expected the crawl to converge quickly (root -> feats.htm -> no new links), got ${result.rounds} rounds`);
 });
 
-test("crawlD20srdClosure throws on a genuine same-path conflicting corpus-area classification, never silently picks the first root", async () => {
+test("the real discovered case: two different roots (monsters and epic) both link to /srd/epic/feats.htm — deterministic classification means they can never disagree", async () => {
+  // Real chain observed during this round's research: the "monsters" root
+  // (monsterFeats.htm) and the "epic" root (epicFeats.htm) both link to
+  // this exact real page. Under the OLD inheritance design this could
+  // classify as "monsters" or "epic" depending on traversal order, or
+  // throw a conflict if both roots were crawled. Path-based classification
+  // structurally removes that race: it is always "epic".
   const pages = {
-    "/indexes/feats.htm": `<a href="/srd/shared/ambiguousPage.htm">Ambiguous</a>`,
-    "/indexes/skills.htm": `<a href="/srd/shared/ambiguousPage.htm">Ambiguous</a>`,
-    "/srd/shared/ambiguousPage.htm": `no further links`,
-  };
-  await assert.rejects(
-    () =>
-      crawlD20srdClosure(
-        [
-          { corpusArea: "feats", sourcePath: "/indexes/feats.htm" },
-          { corpusArea: "skills", sourcePath: "/indexes/skills.htm" },
-        ],
-        BASE_URL,
-        fakeFetch(pages),
-      ),
-    /Conflicting corpus-area classification/,
-    "the same real page classified as both 'feats' and 'skills' via two different roots must fail generation loudly, not silently keep whichever root was processed first",
-  );
-});
-
-test("crawlD20srdClosure does NOT throw when the same page is reached twice with the SAME classification — ordinary dedup, not a conflict", async () => {
-  const pages = {
-    "/indexes/feats.htm": `<a href="/srd/feats.htm#acrobatic">Acrobatic</a><a href="/srd/feats.htm#agile">Agile</a>`,
-    "/srd/feats.htm": `no further links`,
+    "/indexes/monsterFeats.htm": `<a href="/srd/epic/feats.htm">Epic Feats</a>`,
+    "/indexes/epicFeats.htm": `<a href="/srd/epic/feats.htm">Epic Feats</a>`,
+    "/srd/epic/feats.htm": `no further links`,
   };
   const result = await crawlD20srdClosure(
-    [{ corpusArea: "feats", sourcePath: "/indexes/feats.htm" }],
+    [
+      { corpusArea: "monsters", sourcePath: "/indexes/monsterFeats.htm" },
+      { corpusArea: "epic", sourcePath: "/indexes/epicFeats.htm" },
+    ],
     BASE_URL,
     fakeFetch(pages),
   );
-  assert.equal(result.entries.size, 1);
+  assert.equal(
+    result.entries.get("/srd/epic/feats.htm")?.corpusArea,
+    "epic",
+    "classified by its own path (epic), never by whichever root's declared area happened to reach it — monsters, in this real case",
+  );
 });
 
 test("crawlD20srdClosure excludes /indexes/*.htm cross-links between roots, never treats a discovery root as a leaf page", async () => {
@@ -1928,12 +2253,61 @@ test("crawlD20srdClosure excludes /indexes/*.htm cross-links between roots, neve
   assert.ok(!result.entries.has("/indexes/skills.htm"), "an /indexes/ cross-link must never enter the leaf-page manifest");
   assert.ok(result.entries.has("/srd/feats.htm"));
 });
+
+test("a failed root fetch is collected in failures, not silently skipped — the crawl still returns the other roots' real results", async () => {
+  const pages = {
+    "/indexes/feats.htm": `<a href="/srd/feats.htm">Feats</a>`,
+    "/srd/feats.htm": `no further links`,
+    // "/indexes/skills.htm" intentionally absent from `pages` -> fakeFetch returns 404
+  };
+  const result = await crawlD20srdClosure(
+    [
+      { corpusArea: "feats", sourcePath: "/indexes/feats.htm" },
+      { corpusArea: "skills", sourcePath: "/indexes/skills.htm" },
+    ],
+    BASE_URL,
+    fakeFetch(pages),
+  );
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0].url, /indexes\/skills\.htm/);
+  assert.ok(result.entries.has("/srd/feats.htm"), "the working root's real discoveries are still returned even though a sibling root failed");
+});
+
+test("a failed leaf fetch (not just a failed root) is also collected in failures", async () => {
+  const pages = {
+    "/indexes/feats.htm": `<a href="/srd/feats.htm">Feats</a>`,
+    // "/srd/feats.htm" intentionally absent -> 404 when the crawl fetches this leaf for its own links
+  };
+  const result = await crawlD20srdClosure(
+    [{ corpusArea: "feats", sourcePath: "/indexes/feats.htm" }],
+    BASE_URL,
+    fakeFetch(pages),
+  );
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0].url, /srd\/feats\.htm/);
+});
+
+test("assertClosureExhaustive throws when the crawl result has any failures — completeness cannot be claimed", () => {
+  const resultWithFailure = {
+    entries: new Map(),
+    totalLinksExamined: 0,
+    totalExcluded: 0,
+    failures: [{ url: "https://www.d20srd.org/srd/feats.htm", reason: "HTTP 500" }],
+    rounds: 1,
+  };
+  assert.throws(() => assertClosureExhaustive(resultWithFailure), /cannot be considered exhaustive/);
+});
+
+test("assertClosureExhaustive does not throw when the crawl result has zero failures", () => {
+  const cleanResult = { entries: new Map(), totalLinksExamined: 0, totalExcluded: 0, failures: [], rounds: 1 };
+  assert.doesNotThrow(() => assertClosureExhaustive(cleanResult));
+});
 ```
 
 - [ ] **Step 7: Run the closure-crawl tests**
 
 Run: `node --import tsx --test server/srd-d20srd-closure-crawl.test.ts`
-Expected: all 6 tests PASS.
+Expected: all 9 tests PASS.
 
 - [ ] **Step 8: Write `server/srd-manifest-snapshot.test.ts`**
 
@@ -2035,10 +2409,10 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add scripts/generate-olimot-srd-snapshot.ts server/srd-manifest-snapshot-olimot.generated.ts server/srd-manifest-roots-d20srd.ts server/srd-d20srd-closure-crawl.ts server/srd-d20srd-closure-crawl.test.ts scripts/generate-d20srd-srd-snapshot.ts server/srd-manifest-snapshot-d20srd.generated.ts server/srd-manifest-snapshot.test.ts
-git commit -m "feat: generate frozen leaf-page manifests for both sources (olimot from pinned tree, d20srd.org from a real transitive-closure crawl with conflict detection)"
+git commit -m "feat: generate frozen leaf-page manifests for both sources (olimot from pinned tree, d20srd.org from a fail-closed transitive-closure crawl with deterministic path-based classification)"
 ```
 
-**Independent verification before Task 7 begins:** re-run tests fresh; re-run both generation scripts a second time — olimot must be byte-identical (the commit is immutable), the d20srd.org closure crawl may legitimately differ slightly if the live site changed between runs (investigate any difference rather than assuming either run is wrong, and confirm any new/removed page is a real site change, not a bug); manually cross-check 5 random entries from `SRD_MANIFEST_SOURCE_D20SRD` against their `discoveredFromPath` by re-fetching that real root and confirming the leaf page's real href genuinely appears there (directly, or via the chain of leaf-to-leaf links the closure log shows); confirm zero `/indexes/*.htm` entries anywhere in the committed `SRD_MANIFEST_SOURCE_D20SRD` file by grepping it directly, not just trusting the test.
+**Independent verification before Task 7 begins:** re-run tests fresh; re-run both generation scripts a second time — olimot must be byte-identical (the commit is immutable), the d20srd.org closure crawl may legitimately differ slightly if the live site changed between runs (investigate any difference rather than assuming either run is wrong, and confirm any new/removed page is a real site change, not a bug — and if the re-run fails `assertClosureExhaustive`, re-run again rather than committing a snapshot from an incomplete crawl); manually cross-check 5 random entries from `SRD_MANIFEST_SOURCE_D20SRD` against their `discoveredFromPath` by re-fetching that real root and confirming the leaf page's real href genuinely appears there (directly, or via the chain of leaf-to-leaf links the closure log shows); manually cross-check the same 5 entries' `corpusArea` by re-deriving it independently from `classifyD20srdCorpusArea`'s rule tables (Task 5) — confirm it matches the page's real content topic, not just that the function ran without throwing; confirm zero `/indexes/*.htm` entries anywhere in the committed `SRD_MANIFEST_SOURCE_D20SRD` file by grepping it directly, not just trusting the test.
 
 ---
 
@@ -2050,9 +2424,13 @@ git commit -m "feat: generate frozen leaf-page manifests for both sources (olimo
 
 **Interfaces:**
 - Consumes: `SRD_MANIFEST_SOURCE_OLIMOT` (Task 6, ~97 entries), `SRD_MANIFEST_SOURCE_D20SRD` (Task 6, the real generated leaf-page list, ~1,560 entries, each carrying `discoveredFromPath`), `storage.upsertSrdManifestEntry`, `storage.recordSrdManifestDiscoveryFailure` (Task 3).
-- Produces: `discoverSourcePage(sourceId: number, baseUrl: string, entry: {corpusArea, sourcePath, discoveredFromPath?}, fetchImpl?): Promise<SrdManifestEntry>`, `runSrdManifestDiscovery(sources: Array<{sourceId: number; baseUrl: string; entries: Array<{corpusArea, sourcePath, discoveredFromPath?}>; concurrency?: number}>, fetchImpl?): Promise<{succeeded: number; failed: number}>`.
+- Produces: `discoverSourcePage(sourceId: number, baseUrl: string, entry: {corpusArea, sourcePath, discoveredFromPath?}, fetchImpl?): Promise<SrdManifestEntry>`, `runSrdManifestDiscovery(sources: Array<{sourceId: number; baseUrl: string; entries: Array<{corpusArea, sourcePath, discoveredFromPath?}>; concurrency?: number; delayMs?: number}>, fetchImpl?): Promise<{succeeded: number; failed: number}>`.
 
-**Expected behavior:** `discoverSourcePage` builds the real fetch URL as `${baseUrl}${entry.sourcePath}`, fetches via `fetchImpl`, hashes on success via `upsertSrdManifestEntry` (passing through `discoveredFromPath` when present), and calls `recordSrdManifestDiscoveryFailure` on any non-OK response or thrown error — never propagating the failure to abort sibling pages. `runSrdManifestDiscovery` accepts a list of `{sourceId, baseUrl, entries, concurrency?}` groups (one per real source) so both olimot's ~97 and `d20srd.org`'s ~1,560 real leaf pages run through the exact same pipeline code. **`concurrency` caps how many in-flight fetches a single source group runs at once** (default 5) — a real, considerate-citizen requirement given `d20srd.org`'s real scale is now ~1,560 pages against a small, non-CDN-fronted, volunteer-run site; olimot (jsDelivr, a real CDN built for exactly this kind of traffic) can reasonably use a higher default if desired, but this plan keeps both at the same conservative default rather than special-casing one source's politeness.
+**Expected behavior:** `discoverSourcePage` builds the real fetch URL as `${baseUrl}${entry.sourcePath}`, fetches via a real 429/503-aware `fetchWithBackoff` wrapper around `fetchImpl`, hashes on success via `upsertSrdManifestEntry` (passing through `discoveredFromPath` when present), and calls `recordSrdManifestDiscoveryFailure` on any non-OK response or thrown error — never propagating the failure to abort sibling pages. **Corrected this round: `discoverSourcePage` only advances `processingStatus` to `"hashed"` when the row's status was still `"discovered"`** — a routine re-fetch of a page a human (or a later pipeline stage) already advanced to `"parsed"` or `"source_verified"` must never silently regress it back to `"hashed"` just because the content happened to hash the same; this was a real risk identified while implementing this round's `upsertSrdManifestEntry` correction (Task 3), adjacent to it but not itself one of the numbered points — `upsertSrdManifestEntry` itself already correctly leaves `processingStatus` alone in the true-no-op case, but the *caller* here was unconditionally overwriting it regardless.
+
+`runSrdManifestDiscovery` accepts a list of `{sourceId, baseUrl, entries, concurrency?, delayMs?}` groups (one per real source) so both olimot's ~97 and `d20srd.org`'s ~1,560 real leaf pages run through the exact same pipeline code. **`concurrency` caps how many in-flight fetches a single source group runs at once** (default 5) — a real, considerate-citizen requirement given `d20srd.org`'s real scale is now ~1,560 pages against a small, non-CDN-fronted, volunteer-run site; olimot (jsDelivr, a real CDN built for exactly this kind of traffic) can reasonably use a higher default if desired, but this plan keeps both at the same conservative default rather than special-casing one source's politeness.
+
+**Corrected this round: a bare concurrency cap is not real pacing, and the prior revision's "considerate citizen" claim overstated what the code actually did.** A concurrency limit of 5 still fires a brand-new request the instant any of the 5 in-flight slots frees up — over a long run against ~1,560 pages that is still a tight, uninterrupted stream of requests, just capped in width rather than spread out in time. Two real additions close this gap: (1) **`delayMs`** (default 50ms, configurable per source group) — `runWithConcurrencyLimit` now staggers every request launched *beyond* the initial concurrency-limit batch by `delayMs`, so the pipeline maintains a real minimum gap between requests over the full run, not just a width cap; (2) **`fetchWithBackoff`** — every fetch (root or leaf, olimot or d20srd.org) goes through a wrapper that retries a `429`/`503` response, honoring a real `Retry-After` header when the server sends one, else backing off `2^attempt * 500`ms, up to 3 retries, before giving up and letting the normal failure path record it. Neither addition changes `discoverSourcePage`'s or `runSrdManifestDiscovery`'s success/failure semantics — they only change the real timing and resilience of the underlying fetches.
 
 **Migration risk:** None.
 
@@ -2066,13 +2444,37 @@ git commit -m "feat: generate frozen leaf-page manifests for both sources (olimo
 // Fetches both pinned SRD source transports' full real leaf-page lists,
 // hashes content, and persists via server/storage.ts's page-scoped CRUD
 // (Task 3) — never canonical entity tables, never canonical-id.ts, never
-// IngestionStatus. Concurrency-capped per source group: d20srd.org's real
-// scale (~1,560 leaf pages) makes an unbounded Promise.allSettled over
-// every entry inconsiderate against a small, volunteer-run site.
+// IngestionStatus. Concurrency-capped AND time-staggered per source group,
+// with 429/503 backoff: d20srd.org's real scale (~1,560 leaf pages) makes
+// an unbounded, unpaced fetch loop inconsiderate against a small,
+// volunteer-run, non-CDN-fronted site.
 
 import { createHash } from "crypto";
 import { storage } from "./storage";
 import type { CorpusArea, SrdManifestEntry } from "@shared/rules-registry/srd-manifest";
+
+/**
+ * Retries a fetch on 429/503 responses, respecting a real Retry-After
+ * header when the server sends one, else backing off exponentially
+ * (500ms, 1000ms, 2000ms). Every other outcome (2xx, any 4xx other than
+ * 429, any 5xx other than 503, or a thrown network error) returns/throws
+ * immediately on the first attempt — this is politeness against
+ * rate-limiting, not a general retry-everything policy.
+ */
+async function fetchWithBackoff(url: string, fetchImpl: typeof fetch, maxRetries = 3): Promise<Response> {
+  let lastResponse: Response | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchImpl(url);
+    if (res.status !== 429 && res.status !== 503) return res;
+    lastResponse = res;
+    if (attempt === maxRetries) break;
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
+    const waitMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 2 ** attempt * 500;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  return lastResponse!;
+}
 
 export async function discoverSourcePage(
   sourceId: number,
@@ -2082,7 +2484,7 @@ export async function discoverSourcePage(
 ): Promise<SrdManifestEntry> {
   const sourceUrl = `${baseUrl}${entry.sourcePath}`;
   try {
-    const res = await fetchImpl(sourceUrl);
+    const res = await fetchWithBackoff(sourceUrl, fetchImpl);
     if (!res.ok) {
       return storage.recordSrdManifestDiscoveryFailure(
         { sourceId, corpusArea: entry.corpusArea, sourceUrl, sourcePath: entry.sourcePath, discoveredFromPath: entry.discoveredFromPath },
@@ -2095,7 +2497,13 @@ export async function discoverSourcePage(
       sourceId, corpusArea: entry.corpusArea, sourceUrl, sourcePath: entry.sourcePath,
       discoveredFromPath: entry.discoveredFromPath, contentHash,
     });
-    storage.updateSrdManifestEntryProcessingStatus(result.sourcePageKey, "hashed");
+    // Only advance a freshly-discovered row to "hashed" — never regress a
+    // row already advanced further (e.g. "parsed" or "source_verified") by
+    // a human or a later pipeline stage, just because a routine re-fetch
+    // happened to hash identically to what's already on record.
+    if (result.processingStatus === "discovered") {
+      storage.updateSrdManifestEntryProcessingStatus(result.sourcePageKey, "hashed");
+    }
     return storage.getSrdManifestEntry(result.sourcePageKey)!;
   } catch (err) {
     return storage.recordSrdManifestDiscoveryFailure(
@@ -2105,17 +2513,29 @@ export async function discoverSourcePage(
   }
 }
 
-// Simple fixed-window concurrency limiter — no new dependency. Runs `items`
-// through `worker` with at most `limit` in flight at once, preserving
-// per-item error isolation (a rejected worker call still resolves via
-// discoverSourcePage's own try/catch, so this never needs its own
-// try/catch — every call it awaits already resolves, never rejects).
-async function runWithConcurrencyLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+// Fixed-window concurrency limiter with an optional real time stagger — no
+// new dependency. Runs `items` through `worker` with at most `limit` in
+// flight at once; every request launched BEYOND the initial `limit`-sized
+// batch additionally waits `delayMs` before firing, so the pipeline keeps a
+// real minimum gap between requests over the full run rather than firing
+// the instant any of the `limit` slots frees up. Preserves per-item error
+// isolation (a rejected worker call still resolves via discoverSourcePage's
+// own try/catch, so this never needs its own try/catch — every call it
+// awaits already resolves, never rejects).
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+  delayMs = 0,
+): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
   async function runNext(): Promise<void> {
     const index = nextIndex++;
     if (index >= items.length) return;
+    if (delayMs > 0 && index >= limit) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
     results[index] = await worker(items[index]);
     return runNext();
   }
@@ -2129,6 +2549,7 @@ export async function runSrdManifestDiscovery(
     baseUrl: string;
     entries: Array<{ corpusArea: CorpusArea; sourcePath: string; discoveredFromPath?: string }>;
     concurrency?: number;
+    delayMs?: number;
   }>,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ succeeded: number; failed: number }> {
@@ -2139,6 +2560,7 @@ export async function runSrdManifestDiscovery(
       source.entries,
       source.concurrency ?? 5,
       (entry) => discoverSourcePage(source.sourceId, source.baseUrl, entry, fetchImpl),
+      source.delayMs ?? 50,
     );
     for (const result of results) {
       if (!result.lastError) succeeded++;
@@ -2256,10 +2678,56 @@ test("runSrdManifestDiscovery never runs more than the configured concurrency li
     corpusArea: "spells" as const, sourcePath: `/srd/spells/concurrency-test-${i}.htm`,
   }));
   await runSrdManifestDiscovery(
-    [{ sourceId: d20srdSourceId, baseUrl: "https://www.d20srd.org", entries: manyEntries, concurrency: 3 }],
+    [{ sourceId: d20srdSourceId, baseUrl: "https://www.d20srd.org", entries: manyEntries, concurrency: 3, delayMs: 0 }],
     trackingFetch,
   );
   assert.ok(maxInFlight <= 3, `expected at most 3 concurrent fetches, observed ${maxInFlight}`);
+});
+
+test("discoverSourcePage retries a 429 response via backoff and succeeds once the server recovers", async () => {
+  let callCount = 0;
+  const flakyRateLimitedFetch: typeof fetch = async () => {
+    callCount++;
+    if (callCount < 3) return new Response("slow down", { status: 429, headers: { "Retry-After": "0" } });
+    return new Response("<html>ok</html>", { status: 200 });
+  };
+  const entry = await discoverSourcePage(
+    d20srdSourceId, "https://www.d20srd.org",
+    { corpusArea: "core", sourcePath: "/indexes/rate-limited-then-ok.htm" },
+    flakyRateLimitedFetch,
+  );
+  assert.equal(callCount, 3, "must have retried the 429 twice before the third attempt succeeded");
+  assert.equal(entry.lastError, null);
+  assert.equal(entry.processingStatus, "hashed");
+});
+
+test("discoverSourcePage records a real failure (never throws) after a 429 that never recovers within the retry budget", async () => {
+  const alwaysRateLimitedFetch: typeof fetch = async () => new Response("slow down", { status: 429, headers: { "Retry-After": "0" } });
+  const entry = await discoverSourcePage(
+    d20srdSourceId, "https://www.d20srd.org",
+    { corpusArea: "core", sourcePath: "/indexes/always-rate-limited.htm" },
+    alwaysRateLimitedFetch,
+  );
+  assert.equal(entry.lastError, "HTTP 429");
+});
+
+test("discoverSourcePage never regresses a processingStatus a later pipeline stage already advanced, on a routine re-fetch of unchanged content", async () => {
+  const stableFetch = fakeFetchOk("<html>already-processed page</html>");
+  const first = await discoverSourcePage(
+    d20srdSourceId, "https://www.d20srd.org",
+    { corpusArea: "skills", sourcePath: "/srd/skills/already-processed.htm" },
+    stableFetch,
+  );
+  assert.equal(first.processingStatus, "hashed");
+
+  storage.updateSrdManifestEntryProcessingStatus(first.sourcePageKey, "parsed");
+
+  const second = await discoverSourcePage(
+    d20srdSourceId, "https://www.d20srd.org",
+    { corpusArea: "skills", sourcePath: "/srd/skills/already-processed.htm" },
+    stableFetch,
+  );
+  assert.equal(second.processingStatus, "parsed", "a routine re-fetch with unchanged content must never regress an already-advanced processingStatus back to 'hashed'");
 });
 
 after(() => {
@@ -2271,7 +2739,7 @@ after(() => {
 
 - [ ] **Step 3: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/srd-manifest-discovery.test.ts` — expect 6/6.
+Run: `node --import tsx --test server/srd-manifest-discovery.test.ts` — expect 9/9 (6 from the original task + 3 added this round: 429-retry-then-succeed, 429-exhausts-retries-and-fails-loudly, processingStatus-never-regressed).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
@@ -2279,10 +2747,10 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add server/srd-manifest-discovery.ts server/srd-manifest-discovery.test.ts
-git commit -m "feat: add discovery pipeline for both sources' full leaf-page lists, concurrency-capped, injectable fetcher, loud failures"
+git commit -m "feat: add discovery pipeline for both sources' full leaf-page lists, concurrency-capped and time-staggered, 429/503 backoff, never regresses an already-advanced processingStatus"
 ```
 
-**Independent verification before Task 8 begins:** re-run tests fresh; grep the test file to confirm no test omits `fetchImpl` and falls through to the real network default; confirm `discoverSourcePage` never calls `recordRevision`/`canonical-id.ts` anywhere (a structural check, same discipline as Task 2's gate); confirm the concurrency test genuinely exercises the limiter by re-reading `runWithConcurrencyLimit`'s implementation, not just trusting the test's own timing-based assertion.
+**Independent verification before Task 8 begins:** re-run tests fresh; grep the test file to confirm no test omits `fetchImpl` and falls through to the real network default; confirm `discoverSourcePage` never calls `recordRevision`/`canonical-id.ts` anywhere (a structural check, same discipline as Task 2's gate); confirm the concurrency test genuinely exercises the limiter by re-reading `runWithConcurrencyLimit`'s implementation, not just trusting the test's own timing-based assertion; confirm by reading the code that `runWithConcurrencyLimit`'s `delayMs` stagger only applies beyond the initial `limit`-sized batch (not to every request), and that `fetchWithBackoff` is invoked for every fetch `discoverSourcePage` makes, not just some paths.
 
 ---
 
@@ -2334,17 +2802,20 @@ before(() => {
 });
 
 test("recordSourcePageVerification rejects verification before processingStatus reaches source_verified", () => {
+  // A real /srd/ leaf page, never a discovery-root /indexes/ path — this
+  // round's correction to the round/leaf invariant established in a prior
+  // review round (a discovery root is not itself a rules-bearing leaf page).
   const entry = storage.createSrdManifestEntry({
     sourceId, corpusArea: "feats",
-    sourceUrl: "https://www.d20srd.org/indexes/feats.htm", sourcePath: "/indexes/feats.htm",
+    sourceUrl: "https://www.d20srd.org/srd/feats.htm", sourcePath: "/srd/feats.htm",
   });
   assert.throws(() => storage.recordSourcePageVerification(entry.sourcePageKey, { method: "human_review" }));
 });
 
 test("a manifest entry can be hand-advanced through discovered -> fetched -> hashed -> parsed -> source_verified, each transition recorded", () => {
   const entry = storage.createSrdManifestEntry({
-    sourceId, corpusArea: "feats",
-    sourceUrl: "https://www.d20srd.org/indexes/feats-lifecycle-sample.htm", sourcePath: "/indexes/feats-lifecycle-sample.htm",
+    sourceId, corpusArea: "spells",
+    sourceUrl: "https://www.d20srd.org/srd/spells/fireball.htm", sourcePath: "/srd/spells/fireball.htm",
   });
   assert.equal(entry.processingStatus, "discovered");
 
@@ -2353,7 +2824,7 @@ test("a manifest entry can be hand-advanced through discovered -> fetched -> has
   storage.updateSrdManifestEntryProcessingStatus(entry.sourcePageKey, "parsed");
   storage.recordSourcePageRevision({
     sourcePageKey: entry.sourcePageKey, revision: 1,
-    changeReason: "manually confirmed page structure matches expected feats-index format", changedBy: "controller",
+    changeReason: "manually confirmed page structure matches the expected /srd/ leaf-page format", changedBy: "controller",
   });
 
   storage.updateSrdManifestEntryProcessingStatus(entry.sourcePageKey, "source_verified");
@@ -2367,6 +2838,42 @@ test("a manifest entry can be hand-advanced through discovered -> fetched -> has
 
   const report = storage.getSourcePageCoverageReport();
   assert.ok(report.sourceVerifiedCount >= 1);
+});
+
+test("upsertSrdManifestEntry clears stale verification metadata when content hash genuinely changes on an already-verified page", () => {
+  const created = storage.upsertSrdManifestEntry({
+    sourceId, corpusArea: "spells",
+    sourceUrl: "https://www.d20srd.org/srd/spells/magicMissile.htm", sourcePath: "/srd/spells/magicMissile.htm",
+    contentHash: "original-real-hash",
+  });
+  storage.updateSrdManifestEntryProcessingStatus(created.sourcePageKey, "fetched");
+  storage.updateSrdManifestEntryProcessingStatus(created.sourcePageKey, "hashed");
+  storage.updateSrdManifestEntryProcessingStatus(created.sourcePageKey, "parsed");
+  storage.updateSrdManifestEntryProcessingStatus(created.sourcePageKey, "source_verified");
+  storage.recordSourcePageVerification(created.sourcePageKey, {
+    method: "human_review", verifiedBy: "controller", verifiedAt: new Date().toISOString(), notes: "confirmed against the real live page",
+  });
+
+  const verified = storage.getSrdManifestEntry(created.sourcePageKey);
+  assert.equal(verified?.processingStatus, "source_verified");
+  assert.equal(verified?.verificationMethod, "human_review");
+
+  const afterChange = storage.upsertSrdManifestEntry({
+    sourceId, corpusArea: "spells",
+    sourceUrl: "https://www.d20srd.org/srd/spells/magicMissile.htm", sourcePath: "/srd/spells/magicMissile.htm",
+    contentHash: "a-genuinely-different-real-hash",
+  });
+
+  assert.equal(afterChange.processingStatus, "discovered", "genuinely changed content must fall back to unverified — it needs re-processing from scratch");
+  assert.equal(afterChange.verificationMethod, null, "a verification record describing the OLD content must not survive attached to genuinely different content");
+  assert.equal(afterChange.verifiedBy, null);
+  assert.equal(afterChange.verifiedAt, null);
+  assert.equal(afterChange.verificationNotes, null);
+
+  const history = storage.getSourcePageRevisionHistory(created.sourcePageKey);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].oldContentHash, "original-real-hash");
+  assert.equal(history[0].newContentHash, "a-genuinely-different-real-hash");
 });
 
 after(() => {
@@ -2412,7 +2919,7 @@ recordSourcePageVerification(sourcePageKey: string, metadata: VerificationMetada
 
 - [ ] **Step 3: Run tests, full suite, typecheck**
 
-Run: `node --import tsx --test server/srd-manifest-lifecycle.test.ts` — expect 2/2.
+Run: `node --import tsx --test server/srd-manifest-lifecycle.test.ts` — expect 3/3 (2 from the original task + 1 added this round proving verification metadata is cleared on a genuine content change).
 Run: `node --import tsx --test server/**/*.test.ts shared/rules-registry/**/*.test.ts` — no regressions.
 Run: `npx tsc --noEmit` — clean.
 
@@ -2420,24 +2927,24 @@ Run: `npx tsc --noEmit` — clean.
 
 ```bash
 git add server/storage.ts server/srd-manifest-lifecycle.test.ts
-git commit -m "feat: add source-page verification write path, prove full page-processing progression"
+git commit -m "feat: add source-page verification write path, prove full page-processing progression against real /srd/ leaf paths"
 ```
 
-**Independent verification before Task 9 begins:** re-run tests fresh; confirm `recordSourcePageVerification`'s guard actually calls `isValidSourcePageVerification` rather than a duplicated inline condition; confirm no HTTP route in the entire diff so far exposes either verification writer (grep `server/routes.ts` for `recordRuleSourceVerification`/`recordSourcePageVerification` — zero hits expected).
+**Independent verification before Task 9 begins:** re-run tests fresh; confirm `recordSourcePageVerification`'s guard actually calls `isValidSourcePageVerification` rather than a duplicated inline condition; confirm no HTTP route in the entire diff so far exposes either verification writer (grep `server/routes.ts` for `recordRuleSourceVerification`/`recordSourcePageVerification` — zero hits expected); confirm this task's fixtures use real `/srd/...` leaf paths, not `/indexes/...` roots, by grepping the test file directly.
 
 ---
 
 ### Task 9 (required for Phase 2A completion) — Execute the real discovery scan and produce acceptance-gate evidence
 
-**This task is not optional.** Tasks 1-8 are a fully tested, network-free *framework*. Phase 2A is not complete until this task runs for real and produces the evidence format below — an empty, well-tested manifest framework is not a corpus manifest. Its execution is isolated from the unit-test suite (nothing here runs inside `node --import tsx --test`), but it is a required gate, not a deferrable extra.
+**This task is not optional.** Every automated *test* across Tasks 1-8 is network-free via injectable fetchers — that is a statement about the test suite, not a claim that nothing in Tasks 1-8 ever touches the real network. Task 6's two generation scripts already use the real network directly (not via the test runner) to produce the committed snapshots this task's gates diff against. Phase 2A is not complete until this task runs for real and produces the evidence format below — an empty, well-tested manifest framework is not a corpus manifest. Its own execution is isolated from the unit-test suite (nothing here runs inside `node --import tsx --test`), but it is a required gate, not a deferrable extra.
 
 **Files:**
 - Create: `docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md`
 
 **Interfaces:**
-- Consumes: `runSrdManifestDiscovery` (Task 7), `SRD_MANIFEST_SOURCE_OLIMOT`/`SRD_MANIFEST_SOURCE_D20SRD`/`SRD_MANIFEST_ROOTS_D20SRD`/`crawlD20srdClosure` (Task 6 — the completeness gate reuses the exact same closure implementation Task 6's generation script uses, never a second parallel one), `storage.getSourcePageCoverageReport`/`findDuplicateSourcePages` (Task 4), the three real registered `rule_sources` rows (Task 1).
+- Consumes: `runSrdManifestDiscovery` (Task 7), `SRD_MANIFEST_SOURCE_OLIMOT`/`SRD_MANIFEST_SOURCE_D20SRD`/`SRD_MANIFEST_ROOTS_D20SRD`/`crawlD20srdClosure`/`assertClosureExhaustive` (Task 6 — the completeness gate reuses the exact same closure implementation and the same fail-closed exhaustiveness gate Task 6's generation script uses, never a second parallel one), `storage.getSourcePageCoverageReport`/`findDuplicateSourcePages` (Task 4), the three real registered `rule_sources` rows (Task 1).
 
-**Expected behavior:** A real run against both pinned sources' full real leaf-page lists (~97 olimot + the real closure-crawled d20srd.org count), followed by two **blocking** completeness gates — the pinned-tree diff for the git-hosted mirror, and a fresh re-run of `crawlD20srdClosure` against the live site, diffed against the committed generated snapshot. Both gates must pass with zero discrepancy before this task's acceptance report can be written; a non-zero diff on either gate is a real site-drift finding that must be investigated, reconciled (regenerate the affected snapshot, re-run discovery, re-run both gates), and resolved — never merely logged as informational. **Before Step 1, re-confirm the fetch strategy from wherever this task actually executes** — this plan's "Fetch Strategy Verification" section confirmed Node `fetch()` works from the local dev environment; the VPS is a different network, and a wave of failures here should first be diagnosed as a possible network-strategy issue, not silently accepted as "the real coverage number." **Zero game-rule content is stored anywhere, regardless of scale.**
+**Expected behavior:** A real run against both pinned sources' full real leaf-page lists (~97 olimot + the real closure-crawled d20srd.org count), followed by two **blocking** completeness gates — the pinned-tree diff for the git-hosted mirror, and a fresh re-run of `crawlD20srdClosure` against the live site, diffed against the committed generated snapshot. **Corrected this round: the fresh live crawl must itself pass `assertClosureExhaustive` before it is trusted for diffing** — a fresh re-crawl that had its own fetch failures cannot be used to certify completeness, since a failed page during the re-crawl could mask a real discrepancy just as easily as it could during generation. **Corrected this round: the diff itself now compares more than `sourcePath` sets.** For every path present in both the committed snapshot and the fresh crawl, `corpusArea` is also compared — a classification mismatch is a real, blocking finding (it would mean `classifyD20srdCorpusArea`'s deterministic rules disagree with themselves between generation time and acceptance time, which should be structurally impossible for a pure function but is worth catching if it ever isn't). `discoveredFromPath` is compared too, but reported **separately and non-blockingly** — a page legitimately reachable from more than one root can have its recorded originating root shift between crawl runs purely from harmless traversal-order variation (e.g. dictionary/object key iteration order across two different real crawl executions), and treating that as a completion-blocking failure would produce false alarms unrelated to real content drift. Path additions, path removals, and classification mismatches remain blocking; `discoveredFromPath` mismatches are logged in the report but never block completion. Both blocking gates must pass with zero discrepancy before this task's acceptance report can be written; a non-zero diff on either blocking gate is a real site-drift finding that must be investigated, reconciled (regenerate the affected snapshot, re-run discovery, re-run both gates), and resolved — never merely logged as informational. **Before Step 1, re-confirm the fetch strategy from wherever this task actually executes** — this plan's "Fetch Strategy Verification" section confirmed Node `fetch()` works from the local dev environment; the VPS is a different network, and a wave of failures here should first be diagnosed as a possible network-strategy issue, not silently accepted as "the real coverage number." **Zero game-rule content is stored anywhere, regardless of scale.**
 
 **Migration risk:** None — additive dev-database rows. **Do not target the live VPS database** unless the user explicitly asks for that in a later turn.
 
@@ -2499,42 +3006,77 @@ if (missingFromManifest.length > 0 || extraInManifest.length > 0) {
 console.log("Olimot coverage gate PASSED.");
 ```
 
-`d20srd.org` — **a blocking completeness gate, not an informational diff.** Re-run the exact same `crawlD20srdClosure` function Task 6's generation script uses (imported directly, never reimplemented) against the live site, and diff its result against the committed generated snapshot:
+`d20srd.org` — **a blocking completeness gate, not an informational diff.** Re-run the exact same `crawlD20srdClosure` function Task 6's generation script uses (imported directly, never reimplemented), require it to itself pass `assertClosureExhaustive` before trusting it, and diff its result against the committed generated snapshot on `sourcePath` (blocking), `corpusArea` (blocking), and `discoveredFromPath` (informational only):
 
 ```ts
-import { crawlD20srdClosure } from "./server/srd-d20srd-closure-crawl";
+import { crawlD20srdClosure, assertClosureExhaustive } from "./server/srd-d20srd-closure-crawl";
 import { SRD_MANIFEST_ROOTS_D20SRD } from "./server/srd-manifest-roots-d20srd";
 
-async function runD20srdCompletenessGate(): Promise<{ newlyFound: string[]; noLongerFound: string[] }> {
-  const fresh = await crawlD20srdClosure(SRD_MANIFEST_ROOTS_D20SRD, "https://www.d20srd.org");
-  const freshLeafPaths = new Set(fresh.entries.keys());
-  const committedLeafPaths = new Set(SRD_MANIFEST_SOURCE_D20SRD.map((e) => e.sourcePath));
-  return {
-    newlyFound: [...freshLeafPaths].filter((p) => !committedLeafPaths.has(p)),
-    noLongerFound: [...committedLeafPaths].filter((p) => !freshLeafPaths.has(p)),
-  };
+interface D20srdGateResult {
+  pathAdditions: string[];
+  pathRemovals: string[];
+  classificationMismatches: Array<{ sourcePath: string; committedArea: string; freshArea: string }>;
+  discoveredFromMismatches: Array<{ sourcePath: string; committedRoot: string; freshRoot: string }>;
 }
 
-const { newlyFound, noLongerFound } = await runD20srdCompletenessGate();
-if (newlyFound.length > 0 || noLongerFound.length > 0) {
-  throw new Error(
-    `d20srd.org completeness gate FAILED — the committed snapshot and a fresh live crawl disagree. ` +
-    `Newly found (${newlyFound.length}): ${JSON.stringify(newlyFound)}. ` +
-    `No longer found (${noLongerFound.length}): ${JSON.stringify(noLongerFound)}. ` +
-    `This is NOT automatically a bug — d20srd.org is a live site and can genuinely change between ` +
-    `planning and execution — but an unreconciled disagreement is a failed completion gate regardless ` +
-    `of cause. Do not proceed to Step 4 until this is resolved (see below).`,
+async function runD20srdCompletenessGate(): Promise<D20srdGateResult> {
+  const fresh = await crawlD20srdClosure(SRD_MANIFEST_ROOTS_D20SRD, "https://www.d20srd.org");
+  assertClosureExhaustive(fresh); // fail-closed: a fresh re-crawl with its own fetch failures cannot certify completeness
+
+  const freshByPath = fresh.entries; // Map<sourcePath, {corpusArea, sourcePath, discoveredFromPath}>
+  const committedByPath = new Map(SRD_MANIFEST_SOURCE_D20SRD.map((e) => [e.sourcePath, e]));
+
+  const pathAdditions = [...freshByPath.keys()].filter((p) => !committedByPath.has(p));
+  const pathRemovals = [...committedByPath.keys()].filter((p) => !freshByPath.has(p));
+
+  const classificationMismatches: D20srdGateResult["classificationMismatches"] = [];
+  const discoveredFromMismatches: D20srdGateResult["discoveredFromMismatches"] = [];
+  for (const [sourcePath, committed] of committedByPath) {
+    const freshEntry = freshByPath.get(sourcePath);
+    if (!freshEntry) continue; // already accounted for in pathRemovals
+    if (committed.corpusArea !== freshEntry.corpusArea) {
+      classificationMismatches.push({ sourcePath, committedArea: committed.corpusArea, freshArea: freshEntry.corpusArea });
+    }
+    if (committed.discoveredFromPath !== freshEntry.discoveredFromPath) {
+      discoveredFromMismatches.push({ sourcePath, committedRoot: committed.discoveredFromPath, freshRoot: freshEntry.discoveredFromPath });
+    }
+  }
+
+  return { pathAdditions, pathRemovals, classificationMismatches, discoveredFromMismatches };
+}
+
+const gateResult = await runD20srdCompletenessGate();
+
+if (gateResult.discoveredFromMismatches.length > 0) {
+  console.warn(
+    `d20srd.org gate: ${gateResult.discoveredFromMismatches.length} page(s) were recorded as reached via a different root than the ` +
+    `committed snapshot — informational only, NOT blocking: a page legitimately reachable from more than one root can have which root ` +
+    `"wins" shift between two separate crawl runs from harmless traversal-order variation. Record this in the acceptance report; do not ` +
+    `treat it as a completion blocker: ${JSON.stringify(gateResult.discoveredFromMismatches)}`,
   );
 }
-console.log("d20srd.org completeness gate PASSED: committed snapshot and fresh live crawl agree exactly.");
+
+if (gateResult.pathAdditions.length > 0 || gateResult.pathRemovals.length > 0 || gateResult.classificationMismatches.length > 0) {
+  throw new Error(
+    `d20srd.org completeness gate FAILED — the committed snapshot and a fresh live crawl disagree in a way that blocks completion. ` +
+    `Path additions (${gateResult.pathAdditions.length}): ${JSON.stringify(gateResult.pathAdditions)}. ` +
+    `Path removals (${gateResult.pathRemovals.length}): ${JSON.stringify(gateResult.pathRemovals)}. ` +
+    `Classification mismatches (${gateResult.classificationMismatches.length}): ${JSON.stringify(gateResult.classificationMismatches)}. ` +
+    `This is NOT automatically a bug — d20srd.org is a live site and can genuinely change between planning and execution, and a ` +
+    `classification mismatch specifically would point to a bug in classifyD20srdCorpusArea's determinism rather than site drift — but ` +
+    `an unreconciled disagreement of any of these three kinds is a failed completion gate regardless of cause. Do not proceed to Step 4 ` +
+    `until this is resolved (see below).`,
+  );
+}
+console.log("d20srd.org completeness gate PASSED: committed snapshot and fresh live crawl agree on every path and every classification.");
 ```
 
-**This is a blocking gate, not a log line.** If it throws:
-1. Investigate the specific `newlyFound`/`noLongerFound` paths — confirm each is a real site change (the page genuinely appeared/disappeared on the live site) and not a bug in the crawl or classifier.
+**This is a blocking gate, not a log line — for path and classification disagreement.** If it throws:
+1. Investigate the specific `pathAdditions`/`pathRemovals`/`classificationMismatches` — confirm each path addition/removal is a real site change (the page genuinely appeared/disappeared on the live site) and not a bug in the crawl or classifier; a non-empty `classificationMismatches` specifically warrants checking `server/srd-d20srd-corpus-classification.ts` for a bug before assuming site drift, since classification is supposed to be a deterministic pure function of path alone.
 2. Regenerate `server/srd-manifest-snapshot-d20srd.generated.ts` (re-run `scripts/generate-d20srd-srd-snapshot.ts`) so the committed snapshot reflects the current live state.
 3. Re-run the full discovery scan (Step 2) against the regenerated snapshot.
 4. Re-run **both** completeness gates (this step, in full, including the olimot gate) again.
-5. Only proceed to Step 4 once a fresh run of this gate passes with zero `newlyFound`/`noLongerFound` — site drift itself is not an error, but declaring Phase 2A complete while the accepted snapshot and a live crawl still disagree is exactly the "empty framework, not a real manifest" failure mode this task exists to prevent.
+5. Only proceed to Step 4 once a fresh run of this gate passes with zero `pathAdditions`/`pathRemovals`/`classificationMismatches` — site drift itself is not an error, but declaring Phase 2A complete while the accepted snapshot and a live crawl still disagree on paths or classification is exactly the "empty framework, not a real manifest" failure mode this task exists to prevent. `discoveredFromMismatches`, if any, do not need to be zero to proceed — just recorded in the report.
 
 If the olimot gate fails, the same discipline applies: regenerate `server/srd-manifest-snapshot-olimot.generated.ts` (re-run Task 6's script), re-run discovery, re-run both gates — never proceed to Step 4 with either gate red.
 
@@ -2546,7 +3088,7 @@ If the olimot gate fails, the same discipline applies: regenerate `server/srd-ma
 discovered N source pages → accounted for N → fetch failures X → changed X → duplicates X
 ```
 
-with **real numbers from the final, gate-passing run's output** — N in the low thousands (≈1,657+ = ~97 olimot + the real closure-crawled d20srd.org count, exact numbers from the real generated snapshots, not this plan's estimate), broken down per source, per corpus area, and per processing status (`byProcessingStatus`), plus the specific `sourcePath`+`lastError` for every failure (never just a bare count), plus both Step 3 gate results (both must read PASSED in the version that ships in this report — if the report is being written after a regenerate-and-rerun cycle, say so explicitly, e.g. "gate failed on first attempt with N drifted pages, reconciled by regenerating the snapshot, second attempt passed clean"). `changed X` is legitimately `0`/not-yet-applicable on a first-ever scan — state that explicitly rather than omitting the field. **The report must never describe this as "X canonical rules verified" or similar — every count in it is a source-page count**, matching `reportScope: "source-page-coverage"`.
+with **real numbers from the final, gate-passing run's output** — N in the low thousands (≈1,657+ = ~97 olimot + the real closure-crawled d20srd.org count, exact numbers from the real generated snapshots, not this plan's estimate), broken down per source, per corpus area, and per processing status (`byProcessingStatus`), plus the specific `sourcePath`+`lastError` for every failure (never just a bare count), plus both Step 3 gate results (both must read PASSED — meaning zero blocking disagreement: zero `pathAdditions`, zero `pathRemovals`, zero `classificationMismatches` — in the version that ships in this report; if the report is being written after a regenerate-and-rerun cycle, say so explicitly, e.g. "gate failed on first attempt with N drifted paths, reconciled by regenerating the snapshot, second attempt passed clean"). If the final passing run's `discoveredFromMismatches` was non-empty, report its count and the specific paths explicitly, labeled informational/non-blocking — do not omit it just because it didn't block completion. `changed X` is legitimately `0`/not-yet-applicable on a first-ever scan — state that explicitly rather than omitting the field. **The report must never describe this as "X canonical rules verified" or similar — every count in it is a source-page count**, matching `reportScope: "source-page-coverage"`.
 
 - [ ] **Step 5: Commit**
 
@@ -2555,23 +3097,42 @@ git add docs/superpowers/notes/2026-08-22-srd-manifest-acceptance-report.md
 git commit -m "docs: capture real SRD manifest discovery scan and both completeness-gate results (real leaf-page scale)"
 ```
 
-**Independent verification before Phase 2A is considered complete:** re-run the full test suite, typecheck, and build fresh; confirm the acceptance report's `discovered` count equals `SRD_MANIFEST_SOURCE_OLIMOT.length + SRD_MANIFEST_SOURCE_D20SRD.length` exactly (both real, generated numbers, not the plan's ~1,560 estimate); confirm zero rows anywhere in `srd_manifest_entries` reached `"parsed"` or `"source_verified"` from the real scan itself (those values must only exist from Task 8's deliberate sample row) — the concrete proof that Task 9 stayed within page-level discovery and never silently claimed entity-level progress it didn't earn; confirm the coverage report's `reportScope` field is present and correct in the real captured output.
+**Independent verification before Phase 2A is considered complete:** re-run the full test suite, typecheck, and build fresh; confirm the acceptance report's `discovered` count equals `SRD_MANIFEST_SOURCE_OLIMOT.length + SRD_MANIFEST_SOURCE_D20SRD.length` exactly (both real, generated numbers, not the plan's ~1,560 estimate); confirm zero rows anywhere in `srd_manifest_entries` reached `"parsed"` or `"source_verified"` from the real scan itself (those values must only exist from Task 8's deliberate sample row) — the concrete proof that Task 9 stayed within page-level discovery and never silently claimed entity-level progress it didn't earn; confirm the coverage report's `reportScope` field is present and correct in the real captured output; confirm by reading the shipped report that both blocking gate results explicitly show zero `pathAdditions`/`pathRemovals`/`classificationMismatches`, and that any non-zero `discoveredFromMismatches` is disclosed rather than silently dropped; confirm the fresh live crawl used for the d20srd.org gate genuinely called `assertClosureExhaustive` before diffing, by reading the executed code, not just trusting a PASSED log line.
 
 ---
 
 ## Self-Review
 
-**Against this round's 7 correction points, explicitly:**
+**Against this (fourth) round's 6 correction points, explicitly:**
 
-1. **`/indexes/*.htm` pages must not be leaf pages** — FIXED. `classifyD20srdLink` (Task 5) now checks `path.startsWith("/indexes/")` before the `/srd/` inclusion check and returns `{included: false, reason: "navigation/discovery-root page"}` unconditionally, regardless of which root or leaf page linked to it. The prior "index-page cross-link is included" test was replaced with a test proving `/indexes/skills.htm` (linked from the real Feats root) is excluded with that exact reason, plus a new, separate test proving a real `/srd/...` leaf link is still included and still inherits the calling root's `corpusArea`. Task 6's snapshot test file gained a dedicated assertion that `SRD_MANIFEST_SOURCE_D20SRD` contains zero `/indexes/` paths, and the closure-crawl test suite (Task 6) has its own direct test of the same property. ✅
-2. **Transitive-closure completeness gate** — FIXED. `crawlD20srdClosure` (Task 6, new file `server/srd-d20srd-closure-crawl.ts`) fetches the 44 roots, then repeats extraction/classification against every newly-discovered leaf page's own links, in rounds, until a round finds zero new in-scope paths — implemented as a real fixed-point loop with a generous round cap as a pathological-cycle safety valve, not a scope-narrowing device. Tested (network-free, injected fake fetchers) with a real 3-hop chain (root → class page → prestige-classes index page → individual prestige class) proving a page reachable only via a leaf-to-leaf link, never directly from any root, is still discovered. This remains page/URL discovery only — the closure algorithm classifies by corpus area and computes nothing about a page's game-rule content; no canonical entity ID or entity table is created anywhere in this plan. ✅
-3. **Task 9's fresh diff must be a blocking gate** — FIXED. The d20srd.org re-crawl-and-diff step now throws on any non-empty `newlyFound`/`noLongerFound`, explicitly refuses to proceed to the acceptance-report step while unresolved, and states the required investigate → regenerate → re-run-discovery → re-run-both-gates cycle as mandatory, not optional. The report-writing step is now explicitly gated on "written only after both completeness gates pass cleanly," with an explicit instruction to record in the report if a regenerate-and-rerun cycle was needed to get there. ✅
-4. **Revision numbering** — FIXED. `upsertSrdManifestEntry`'s hash-change branch (Task 3) now computes `nextRevision` from `this.getSourcePageRevisionHistory(sourcePageKey)`'s own current max (`(priorRevisions[0]?.revision ?? 0) + 1`), never from `attemptCount`. New regression test proves a real `hash-v1 → hash-v2 → hash-v3` sequence — with zero failure-triggered `attemptCount` increments in between, the exact scenario that would have collided under the old logic — produces revisions `1` then `2` in strict order. ✅
-5. **`discoveredFromPath` on first-fetch failures** — FIXED. `recordSrdManifestDiscoveryFailure`'s brand-new-row insert branch (Task 3) now includes `discoveredFromPath: input.discoveredFromPath ?? null`. New regression test proves a d20srd leaf that fails its very first fetch attempt still retains the real root path it was discovered from. ✅
-6. **Network-free wording corrected** — FIXED. The Global Constraints section now states the boundary precisely: every *automated test* (Tasks 1-8) is network-free via injectable fetchers; Task 6's two generation scripts deliberately use the real network when run directly (not via the test runner); Task 9 performs the mandatory real acceptance scan. The prior "Tasks 1-8 remain 100% network-free" line (technically about tests, but easy to misread as "nothing in Tasks 1-8 touches the network") is corrected to make this distinction explicit for the executor. ✅
-7. **No silent first-root-wins classification conflicts** — FIXED. `crawlD20srdClosure` tracks each discovered page's classification and throws immediately — naming the path and both conflicting classifications — the moment a second discovery of the same normalized path arrives with a *different* `corpusArea` than the first. A same-path/same-area repeat remains an ordinary, silent dedup (tested explicitly as the non-error case, so the fix doesn't overcorrect into flagging harmless re-discovery). No snapshot is written while a conflict is unresolved. ✅
+1. **A closure crawl with any fetch failure cannot be considered complete** — FIXED. `ClosureCrawlResult` now carries `failures: Array<{url, reason}>` instead of a bare `totalFetchFailures` counter (Task 6); `crawlD20srdClosure` still never aborts mid-crawl on an individual failure (collects and continues, so one broken page can't mask every other page's real state), but a new, separate `assertClosureExhaustive(result)` function throws immediately, naming every failed URL and reason, if `failures.length > 0`. Both real call sites — `scripts/generate-d20srd-srd-snapshot.ts` (before writing a snapshot) and Task 9's fresh re-crawl (before diffing) — now call it explicitly. Task 7's normal per-page discovery pipeline (a different concern: ongoing fetch/retry against an already-generated manifest) is untouched, per the user's explicit clarification that it may still record per-page failures without aborting siblings. New tests: a failed root is collected without dropping sibling roots' real discoveries; a failed leaf (not just a failed root) is also collected; `assertClosureExhaustive` throws on any failure and does not throw on zero. ✅
+2. **Stop inheriting corpus area blindly through the transitive graph** — FIXED. `classifyD20srdLink` (Task 5) now does inclusion/exclusion/normalization only — its `discoveryRootCorpusArea` parameter and `corpusArea` return field are both gone. A new, separate module `server/srd-d20srd-corpus-classification.ts` exports `classifyD20srdCorpusArea(sourcePath, overrides?)`, a pure function of a page's own path built from real path-family-prefix and exact-path rule tables (each verified against a real fetch during this round's research), throwing on a genuinely unresolvable path rather than falling back to a caller-supplied default. `crawlD20srdClosure` (Task 6) now calls this function for every newly-discovered leaf instead of propagating `item.corpusArea` from the frontier — the prior revision's "same-path classification conflict" error path is structurally eliminated for correctly-classified paths (there is no longer a per-traversal decision to race), leaving only the "genuinely unresolvable path" throw as the remaining failure mode. Both the real discovered case from this round's research (`monsterFeats.htm`, a "monsters" root, linking to `/srd/epic/feats.htm`, which must classify as "epic") and the class→prestige-class transitive case (`barbarian.htm` → `prestigeClasses.htm` → `archmage.htm`, which must classify as "prestige-classes" not "classes") are now real tests, at both the classification-module level (Task 5) and the closure-crawl level (Task 6), plus a same-path-classified-twice-identically test and a genuinely-unresolved-path-throws test. ✅
+3. **Successful fetches must clear stale failure state; changed content must clear stale verification state** — FIXED. `upsertSrdManifestEntry` (Task 3) is now a real three-branch function: true no-op (identical hash, nothing to reset beyond a possible stale error), first real acquisition (`existing.contentHash === null` — a prior-failures-only row getting real content for the first time: no revision recorded, since nothing about real content "changed"), and genuine content change (`existing.contentHash` was already real and now differs: `processingStatus` resets to `"discovered"` **and** all four verification fields reset to `null`, and a revision is recorded). All three branches now clear `lastError`/stamp `lastAttemptAt` on any successful call. New regression tests (Task 3): success→failure→success-with-unchanged-hash clears the stale error; first-real-acquisition-after-only-failures records no revision. New regression test (Task 8, where `recordSourcePageVerification` is available): a `source_verified` page with real verification metadata, on a genuine content-hash change, loses `processingStatus` back to `"discovered"` and all four verification fields back to `null`, with the revision history correctly recording the old→new hash transition. A directly adjacent bug found while implementing this fix — `discoverSourcePage` (Task 7) was unconditionally force-setting `processingStatus` to `"hashed"` after every successful upsert, which would have regressed a manually-advanced `"parsed"`/`"source_verified"` row on a same-hash re-fetch even though `upsertSrdManifestEntry` itself now correctly leaves it alone — is also fixed, gated on `result.processingStatus === "discovered"`, with its own regression test. ✅
+4. **Task 8's lifecycle sample must obey the root/leaf invariant** — FIXED. Both fixture paths (`/indexes/feats.htm`, `/indexes/feats-lifecycle-sample.htm`) are replaced with real `/srd/...` leaf paths (`/srd/feats.htm`, `/srd/spells/fireball.htm`), and the "feats-index format" wording in the manually-recorded revision's `changeReason` is reworded to "the expected /srd/ leaf-page format". ✅
+5. **Strengthen Task 9's snapshot equality gate** — FIXED. The d20srd.org completeness gate now builds `Map<sourcePath, entry>` for both the committed snapshot and the fresh re-crawl, and reports three categories: `pathAdditions`/`pathRemovals` (blocking, as before) plus a new `classificationMismatches` (blocking — `corpusArea` differs for the same path) and a new `discoveredFromMismatches` (non-blocking/informational — `discoveredFromPath` differs, reported in the acceptance report but does not throw, since a page reachable from more than one root can legitimately have which root "wins" shift between two real crawl runs from harmless traversal-order variation). The gate also now requires the fresh re-crawl to itself pass `assertClosureExhaustive` before any diffing occurs. ✅
+6. **Clean the remaining network wording and request-pacing claim** — FIXED. Task 9's stale "Tasks 1-8 are a fully tested, network-free *framework*" sentence is corrected to the same precise per-artifact wording established for the Global Constraints in a prior round (every automated *test* is network-free; generation scripts and Task 9 itself deliberately touch the real network). The pacing claim is no longer just a concurrency cap: `runWithConcurrencyLimit` (Task 7) gained a real `delayMs` stagger (default 50ms) applied to every request launched beyond the initial concurrency-limit batch, and a new `fetchWithBackoff` helper wraps every fetch `discoverSourcePage` makes, retrying 429/503 responses with real `Retry-After`-header-aware or exponential backoff before giving up. New tests cover both a 429-then-recovers case and a 429-that-never-recovers-within-budget case (which still resolves to a recorded failure, never a thrown exception). ✅
 
-**Re-verifying the literal "ALL rules-bearing d20srd.org material" requirement, specifically, as instructed:** the manifest this plan now produces is not "the 44 index pages" (round 2's gap) and not "whatever the 44 roots directly link to" (round 3's gap, corrected above) — it is every page the closure crawl can reach transitively from those 44 real, live-verified roots, with every single extracted link along the way accounted for as either a real leaf (`/srd/...`, included with a corpus area) or a real, named exclusion (navigation, site tooling, admin/legal, external host, wrong-ruleset subdomain) — never a silent drop. The one bound this plan still imposes is *depth*, not *breadth*: closure follows real links as far as they actually go (tested to at least 3 hops deep), capped only by a pathological-cycle safety valve far beyond any real content depth observed. Combined with olimot's independently pinned-and-generated ~97-page corpus (core/epic/psionics/divine) and d20srd.org's closure-discovered corpus (the same four areas *plus* Unearthed Arcana Variant Rules, the one area olimot has zero coverage of), the union of both sources is the honest, provable answer to "ALL" at this phase's page-discovery granularity — not a claim about every rule within those pages being individually structured or verified (that remains explicitly Phase 2B), but a real claim that every in-scope page is either in the manifest or excluded with a stated reason.
+**Verifying the five specific angles named for this round, explicitly:**
+
+1. **Exhaustive/fail-closed discovery:** `assertClosureExhaustive` is the single, explicit gate for this — both the generation script and Task 9's acceptance re-crawl call it before trusting a crawl result, and it throws on any non-zero `failures.length`, naming every failed URL. `crawlD20srdClosure` itself deliberately does not fail-fast mid-crawl (it collects and continues), so a transient single-page hiccup doesn't waste an otherwise-successful multi-hour real crawl — but nothing downstream of `assertClosureExhaustive` can treat a crawl with any failure as complete.
+2. **The transitive crawler cannot report completeness with a failed fetch:** confirmed structurally, not just by convention — `ClosureCrawlResult` carries `failures` as data on every result (there is no success/failure boolean flag a caller could ignore), and both real call sites are wired to check it via `assertClosureExhaustive` rather than inline ad hoc checks that could drift apart. Both a failed-root and a failed-leaf are covered by dedicated tests, not just a failed-root case.
+3. **Corpus classification is independent of traversal/root order:** `classifyD20srdCorpusArea` takes only a `sourcePath` (plus an optional, rarely-used override map) — it structurally cannot see which root or which intermediate leaf reached a page, so traversal order cannot influence its output by construction, not merely by testing. The tests still exercise this directly: the same real path (`/srd/epic/feats.htm`) reached via two different roots in a closure-crawl test produces the identical classification both times, and the deeper transitive chain (`classes` root → `barbarian.htm` → `prestigeClasses.htm` → `archmage.htm`) classifies the final page as `prestige-classes`, never inheriting `classes` from the root that started the chain.
+4. **Stale failure and verification state cannot survive a successful/new-content fetch:** `upsertSrdManifestEntry`'s three branches all clear `lastError`/stamp `lastAttemptAt` on success (verified by a dedicated success→failure→success-unchanged-hash test), and only the genuine-content-change branch touches the four verification fields, resetting all of them to `null` (verified by a dedicated source_verified→hash-changed test at the Task 8 level, where real verification metadata is present to observe being cleared). The adjacent `discoverSourcePage` regression (force-advancing `processingStatus` past a manually-advanced state) is fixed and independently tested.
+5. **Task 8 uses a real `/srd/` leaf:** confirmed — both fixture paths in `server/srd-manifest-lifecycle.test.ts` are now `/srd/feats.htm` and `/srd/spells/fireball.htm`; Task 8's own "Independent verification" line now explicitly instructs grepping the test file to confirm no `/indexes/...` path remains.
+
+**Re-verifying the literal "ALL rules-bearing d20srd.org material" requirement, specifically, once more:** this round's corrections strengthen rather than narrow the "ALL" claim — the closure crawl still discovers the same real transitive set of pages as the prior round (nothing about discovery breadth changed), but the manifest's per-page metadata (`corpusArea` specifically) is now provably correct regardless of which of the 44 roots happened to reach a given page first, and the acceptance gate now catches a classification regression as readily as it catches a missing or extra page. "ALL" was never in question this round; "ALL, correctly labeled" is what was fixed.
+
+**Against prior rounds' correction points, reconfirmed still intact after this round's fixes:**
+
+1. **`/indexes/*.htm` pages must not be leaf pages** — FIXED, still intact. `classifyD20srdLink` (Task 5) still checks `path.startsWith("/indexes/")` before the `/srd/` inclusion check and returns `{included: false, reason: "navigation/discovery-root page"}` unconditionally. Updated this round: the function no longer carries a `corpusArea` concept at all (point 2 above), so the companion test that a real `/srd/...` leaf link is included now asserts inclusion alone, not corpus-area inheritance — inheritance was the very thing this round removed. Task 6's snapshot test file still asserts `SRD_MANIFEST_SOURCE_D20SRD` contains zero `/indexes/` paths. ✅
+2. **Transitive-closure completeness gate** — FIXED, still intact. `crawlD20srdClosure` (Task 6) still fetches the 44 roots and repeats extraction against every newly-discovered leaf page's own links until a round finds zero new in-scope paths. Still tested with a real multi-hop chain proving a page reachable only via a leaf-to-leaf link is discovered — this round's version of that same test additionally proves the discovered page classifies correctly by its own path (`prestige-classes`, not the root's `classes`). Still page/URL discovery only; no canonical entity ID or entity table anywhere in this plan. ✅
+3. **Task 9's fresh diff must be a blocking gate** — FIXED, and strengthened further this round. The d20srd.org re-crawl-and-diff step still throws and still refuses to proceed to the acceptance-report step while unresolved; this round renamed and expanded the comparison from a bare `newlyFound`/`noLongerFound` path-set diff to `pathAdditions`/`pathRemovals`/`classificationMismatches` (all three blocking) plus a new `discoveredFromMismatches` (informational, non-blocking, per this round's point 5), and added a prerequisite `assertClosureExhaustive` call on the fresh crawl before any diffing occurs at all (per this round's point 1). ✅
+4. **Revision numbering** — FIXED, still intact. `upsertSrdManifestEntry`'s genuine-content-change branch (Task 3) still computes `nextRevision` from `this.getSourcePageRevisionHistory(sourcePageKey)`'s own current max, never from `attemptCount`. This round's rewrite of the same function (point 3 above) preserved this exact logic inside the new three-branch structure — the `hash-v1 → hash-v2 → hash-v3` regression test still passes unchanged. ✅
+5. **`discoveredFromPath` on first-fetch failures** — FIXED, still intact. `recordSrdManifestDiscoveryFailure`'s insert branch still includes `discoveredFromPath: input.discoveredFromPath ?? null`, untouched by this round's changes (this round's Task 3 rewrite only touched `upsertSrdManifestEntry`, a different method). ✅
+6. **Network-free wording corrected** — FIXED in a prior round, and corrected again this round at a second location: the prior round fixed the Global Constraints section's wording; this round found and fixed a second stale instance of the same imprecision in Task 9's own header text (point 6 above), which still read "Tasks 1-8 are a fully tested, network-free *framework*" even after the Global Constraints section had already been corrected. ✅
+7. **No silent first-root-wins classification conflicts** — FIXED in a prior round via an explicit conflict-detection throw; **superseded this round**, per this round's point 2 above: with corpus classification now a deterministic pure function of path alone, the "two roots disagree" scenario is structurally impossible for a correctly-classified path (there is no longer a per-traversal classification decision that could disagree with itself), so the prior round's conflict-detection code is removed as dead weight rather than kept alongside the new design. The one remaining error mode — a path neither rule table can resolve — is a different, narrower thing: a real gap in the classification tables, not a disagreement between two roots. ✅
+
+**Re-verifying the literal "ALL rules-bearing d20srd.org material" requirement, specifically, once more across every round:** the manifest this plan produces is not "the 44 index pages" (round 2's gap), not "whatever the 44 roots directly link to" (round 3's gap), and not "correctly discovered but potentially mislabeled by traversal order" (this round's gap) — it is every page the closure crawl can reach transitively from the 44 real, live-verified roots, each one deterministically and correctly classified by its own path, with every extracted link accounted for as a real leaf, a real named exclusion, or (this round) a real, loud classification-table gap rather than a silent mislabel. See this round's own "Re-verifying" paragraph above for the specific claim this round adds on top of round 3's breadth guarantee.
 
 **Against the round-2 correction points, reconfirmed still intact after this round's fixes:**
 
@@ -2586,13 +3147,13 @@ git commit -m "docs: capture real SRD manifest discovery scan and both completen
 9. **Coverage report distinguishes layers** — unchanged; `reportScope` literal still present. ✅
 10. **Fetch strategy verified, not assumed** — unchanged from round 2; Task 9 still re-verifies from its own execution environment. ✅
 
-**Placeholder scan:** every step has real, complete code, including `crawlD20srdClosure`'s full closure/conflict-detection logic (not pseudocode), its 6 real tests against injected fetchers, and the two regression tests added for the revision-numbering and `discoveredFromPath` fixes.
+**Placeholder scan:** every step has real, complete code, including `classifyD20srdCorpusArea`'s full rule tables and unresolved-path throw (not pseudocode), `crawlD20srdClosure`'s full fail-closed-failure-collection logic, `assertClosureExhaustive`, `fetchWithBackoff`, `runWithConcurrencyLimit`'s `delayMs` stagger, `upsertSrdManifestEntry`'s three-branch rewrite, and every regression test named in points 1-6 above — none are described-but-not-shown.
 
-**Type consistency:** `crawlD20srdClosure`'s return shape (`{entries, totalLinksExamined, totalExcluded, totalFetchFailures, rounds}`) is consumed identically by `scripts/generate-d20srd-srd-snapshot.ts` (Task 6) and Task 9's real completeness gate — one implementation, two real call sites, matching the discipline already established for `extractLinks`/`classifyD20srdLink`. `CreateSrdManifestEntryInput`'s `discoveredFromPath?` field is now threaded through all three `srdManifestEntries` insert paths (`createSrdManifestEntry`, `upsertSrdManifestEntry`, `recordSrdManifestDiscoveryFailure`) — verified by re-reading all three, not just the two that were already correct.
+**Type consistency:** `crawlD20srdClosure`'s return shape (`{entries, totalLinksExamined, totalExcluded, failures, rounds}` — `failures` replacing the prior `totalFetchFailures` counter everywhere, not just at the definition site) is consumed identically by `scripts/generate-d20srd-srd-snapshot.ts` (Task 6) and Task 9's real completeness gate — re-checked this round that both call sites use the new field name and both call `assertClosureExhaustive`, not just one. `classifyD20srdLink`'s corpusArea-free signature is consumed identically by `crawlD20srdClosure` (Task 6) and by no other caller in the plan — re-checked that no stale call site still passes a third `discoveryRootCorpusArea` argument. `CreateSrdManifestEntryInput`'s `discoveredFromPath?` field is still threaded through all three `srdManifestEntries` insert paths, unaffected by this round's changes. `SrdManifestEntry`'s four verification fields (`verificationMethod`/`verifiedBy`/`verifiedAt`/`verificationNotes`) are now referenced by name in three places that must agree — Task 2's schema, `recordSourcePageVerification` (Task 8), and `upsertSrdManifestEntry`'s genuine-change branch (Task 3) — re-checked all three use the identical four field names.
 
-**Migration risk / rollback:** unchanged in shape; Task 3 remains the only real schema migration, and both storage-layer fixes in this round (revision numbering, `discoveredFromPath`) are corrections to that task's own code, not new migrations.
+**Migration risk / rollback:** unchanged in shape; Task 3 remains the only real schema migration, and every fix in this round (classification split, fail-closed gate, three-branch upsert, pacing/backoff, leaf-path fixtures, gate strengthening) is a correction to existing task code or new pure-function/test files, never a new schema migration.
 
-No gaps found against the approved canonical-rules design or the literal "ALL rules-bearing d20srd.org material" requirement, re-verified explicitly above at real transitive-closure granularity. Ready for user approval.
+No gaps found against the approved canonical-rules design or the literal "ALL rules-bearing d20srd.org material" requirement, re-verified explicitly above at real transitive-closure granularity with this round's added guarantee that classification is traversal-order-independent. Ready for user approval.
 
 ## Execution Handoff
 
