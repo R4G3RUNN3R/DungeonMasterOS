@@ -896,6 +896,16 @@ export interface IStorage {
   listSrdManifestEntries(filter?: { corpusArea?: CorpusArea; sourceId?: number }): SrdManifestEntry[];
   recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision;
   getSourcePageRevisionHistory(sourcePageKey: string): SrdSourcePageRevision[];
+  getSourcePageCoverageReport(): {
+    reportScope: "source-page-coverage";
+    totalDiscovered: number;
+    byProcessingStatus: Record<PageProcessingStatus, number>;
+    byCorpusArea: Record<string, number>;
+    bySource: Record<string, number>;
+    sourceVerifiedCount: number;
+    failedCount: number;
+  };
+  findDuplicateSourcePages(): Array<{ contentHash: string; entries: SrdManifestEntry[] }>;
 
   // Campaign source selection (Task 5) — the persisted, authoritative
   // resolver for "what sources can this campaign see." getCampaignEnabledSources
@@ -1949,6 +1959,50 @@ export class DatabaseStorage implements IStorage {
       .where(eq(srdSourcePageRevisions.sourcePageKey, sourcePageKey))
       .orderBy(desc(srdSourcePageRevisions.revision))
       .all();
+  }
+
+  getSourcePageCoverageReport() {
+    const all = db.select().from(srdManifestEntries).all();
+    const byProcessingStatus: Record<PageProcessingStatus, number> = {
+      discovered: 0, fetched: 0, hashed: 0, parsed: 0, source_verified: 0,
+    };
+    const byCorpusArea: Record<string, number> = {};
+    const bySource: Record<string, number> = {};
+    let failedCount = 0;
+
+    for (const entry of all) {
+      const status = entry.processingStatus as PageProcessingStatus;
+      byProcessingStatus[status] = (byProcessingStatus[status] ?? 0) + 1;
+      byCorpusArea[entry.corpusArea] = (byCorpusArea[entry.corpusArea] ?? 0) + 1;
+      const source = this.getRuleSourceById(entry.sourceId);
+      const key = source?.sourceKey ?? `unknown-source-${entry.sourceId}`;
+      bySource[key] = (bySource[key] ?? 0) + 1;
+      if (entry.lastError) failedCount++;
+    }
+
+    return {
+      reportScope: "source-page-coverage" as const,
+      totalDiscovered: all.length,
+      byProcessingStatus,
+      byCorpusArea,
+      bySource,
+      sourceVerifiedCount: byProcessingStatus.source_verified,
+      failedCount,
+    };
+  }
+
+  findDuplicateSourcePages(): Array<{ contentHash: string; entries: SrdManifestEntry[] }> {
+    const all = db.select().from(srdManifestEntries).all();
+    const byHash = new Map<string, SrdManifestEntry[]>();
+    for (const entry of all) {
+      if (!entry.contentHash) continue;
+      const group = byHash.get(entry.contentHash) ?? [];
+      group.push(entry);
+      byHash.set(entry.contentHash, group);
+    }
+    return Array.from(byHash.entries())
+      .filter(([, entries]) => entries.length > 1)
+      .map(([contentHash, entries]) => ({ contentHash, entries }));
   }
 
   // Campaign source selection (Task 5) — both of these are intentionally

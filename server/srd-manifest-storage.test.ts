@@ -358,6 +358,51 @@ test("recordSourcePageRevision + getSourcePageRevisionHistory round-trip, newest
   assert.equal(history[0].revision, 2);
 });
 
+test("getSourcePageCoverageReport carries an explicit, literal scope label", () => {
+  const report = storage.getSourcePageCoverageReport();
+  assert.equal(report.reportScope, "source-page-coverage");
+});
+
+test("getSourcePageCoverageReport computes correct arithmetic against constructed fixture data", () => {
+  const report = storage.getSourcePageCoverageReport();
+  const all = storage.listSrdManifestEntries();
+  const expectedByStatus: Record<string, number> = { discovered: 0, fetched: 0, hashed: 0, parsed: 0, source_verified: 0 };
+  let expectedFailed = 0;
+  for (const entry of all) {
+    expectedByStatus[entry.processingStatus] = (expectedByStatus[entry.processingStatus] ?? 0) + 1;
+    if (entry.lastError) expectedFailed++;
+  }
+  assert.equal(report.totalDiscovered, all.length);
+  assert.equal(report.sourceVerifiedCount, expectedByStatus.source_verified);
+  assert.equal(report.failedCount, expectedFailed);
+  for (const status of ["discovered", "fetched", "hashed", "parsed", "source_verified"] as const) {
+    assert.equal(report.byProcessingStatus[status], expectedByStatus[status]);
+  }
+});
+
+test("getSourcePageCoverageReport's byCorpusArea and bySource both sum to totalDiscovered", () => {
+  const report = storage.getSourcePageCoverageReport();
+  assert.equal(Object.values(report.byCorpusArea).reduce((a, b) => a + b, 0), report.totalDiscovered);
+  assert.equal(Object.values(report.bySource).reduce((a, b) => a + b, 0), report.totalDiscovered);
+});
+
+test("findDuplicateSourcePages surfaces two rows sharing a content hash", () => {
+  storage.upsertSrdManifestEntry({
+    sourceId, corpusArea: "core",
+    sourceUrl: "https://example.test/dup-a.html", sourcePath: "basic-rules-and-legal/dup-a.html",
+    contentHash: "duplicate-hash-xyz",
+  });
+  storage.upsertSrdManifestEntry({
+    sourceId, corpusArea: "core",
+    sourceUrl: "https://example.test/dup-b.html", sourcePath: "basic-rules-and-legal/dup-b.html",
+    contentHash: "duplicate-hash-xyz",
+  });
+  const duplicates = storage.findDuplicateSourcePages();
+  const match = duplicates.find((d) => d.contentHash === "duplicate-hash-xyz");
+  assert.ok(match);
+  assert.equal(match!.entries.length, 2);
+});
+
 after(() => {
   for (const suffix of ["", "-wal", "-shm"]) {
     try { fs.rmSync(dbPath + suffix); } catch {}
