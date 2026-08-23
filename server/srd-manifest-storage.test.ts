@@ -364,6 +364,15 @@ test("getSourcePageCoverageReport carries an explicit, literal scope label", () 
 });
 
 test("getSourcePageCoverageReport computes correct arithmetic against constructed fixture data", () => {
+  // Create a fixture entry that reaches source_verified status so the assertion below is non-trivial
+  const sourceVerifiedEntry = storage.upsertSrdManifestEntry({
+    sourceId,
+    corpusArea: "coverage-test",
+    sourceUrl: "https://example.test/source-coverage-verified.html",
+    sourcePath: "coverage-test/source-coverage-verified.html",
+    contentHash: "source-coverage-verified-hash",
+  });
+  storage.updateSrdManifestEntryProcessingStatus(sourceVerifiedEntry.sourcePageKey, "source_verified");
   const report = storage.getSourcePageCoverageReport();
   const all = storage.listSrdManifestEntries();
   const expectedByStatus: Record<string, number> = { discovered: 0, fetched: 0, hashed: 0, parsed: 0, source_verified: 0 };
