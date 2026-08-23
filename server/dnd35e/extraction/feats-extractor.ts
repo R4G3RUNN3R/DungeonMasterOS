@@ -73,9 +73,13 @@ const H3_BLOCK_RE = /<h3 id="([a-zA-Z0-9]+)"[^>]*>([^<]+?)\s*\[([^\]]+)\]<\/h3>/
 // Within a block, up to the next <h3>: each <h5>Heading</h5> immediately
 // followed by a single <p>...</p>. Real page headings vary between singular
 // and plural ("Prerequisite" vs "Prerequisites", "Benefit" vs "Benefits");
-// only the first <p> after a heading is captured (some Special sections run
-// to a second <p> — that overflow is intentionally not captured by this
-// pass, matching the deterministic, minimal-parsing design).
+// only the first <p> after a heading is captured (real Benefit, Special, and
+// occasionally other sections run to a second or third <p> — that overflow
+// is intentionally not captured by this pass, matching the deterministic,
+// minimal-parsing design). For the Benefit section specifically, this
+// truncation is not silent: see countBenefitParagraphs below, which detects
+// the real paragraph count and records an honest extractionNotes entry when
+// content is being dropped.
 const H5_SECTION_RE = /<h5[^>]*>([^<]+)<\/h5>\s*<p>\s*([\s\S]*?)\s*<\/p>/g;
 
 function normalizeHeading(raw: string): "prerequisites" | "benefit" | "normal" | "special" | null {
@@ -183,6 +187,36 @@ function parseBenefitEffect(rawHtml: string): Dnd35eFeatEffect {
   };
 }
 
+// --- benefit multi-paragraph detection -----------------------------------
+//
+// H5_SECTION_RE above only captures a heading's first <p>...</p> block, by
+// design (see the comment above H5_SECTION_RE). For the Benefit section
+// specifically — since it's the one this pass structures effects from, and
+// rawBenefitText/benefitSummary are meant to be a reliable "preservation of
+// record" for anything an unresolved/partially_structured feat couldn't be
+// structured — silently dropping extra paragraphs would hide real content
+// rather than fail honestly. This helper finds the true paragraph count of
+// the real Benefit section (between its <h5> heading and the next <h5>, or
+// the end of the block) so the caller can record an honest extractionNotes
+// entry whenever more than one paragraph is being truncated.
+const H5_HEADING_ONLY_RE = /<h5[^>]*>([^<]+)<\/h5>/g;
+
+function countBenefitParagraphs(blockHtml: string): number {
+  const headings: { key: ReturnType<typeof normalizeHeading>; start: number; end: number }[] = [];
+  let headingMatch: RegExpExecArray | null;
+  H5_HEADING_ONLY_RE.lastIndex = 0;
+  while ((headingMatch = H5_HEADING_ONLY_RE.exec(blockHtml))) {
+    headings.push({ key: normalizeHeading(headingMatch[1]), start: headingMatch.index, end: H5_HEADING_ONLY_RE.lastIndex });
+  }
+  const benefitIndex = headings.findIndex((h) => h.key === "benefit");
+  if (benefitIndex === -1) return 0;
+  const sectionStart = headings[benefitIndex].end;
+  const sectionEnd = benefitIndex + 1 < headings.length ? headings[benefitIndex + 1].start : blockHtml.length;
+  const section = blockHtml.slice(sectionStart, sectionEnd);
+  const paragraphMatches = section.match(/<p[^>]*>/g);
+  return paragraphMatches ? paragraphMatches.length : 0;
+}
+
 // --- extractionStatus / notes --------------------------------------------
 
 function prerequisitesContainSpecial(prereq: Dnd35eFeatPrerequisite | null): boolean {
@@ -258,6 +292,13 @@ export function extractFeatsFromHtml(html: string): Dnd35eFeatDefinition[] {
       if (effect.kind === "unresolved") {
         notes.push(`Benefit text did not match a structured effect pattern (${effect.reason}): "${effect.rawBenefitText}"`);
       }
+    }
+
+    const benefitParagraphCount = countBenefitParagraphs(blockHtml);
+    if (benefitParagraphCount > 1) {
+      notes.push(
+        `Benefit section has ${benefitParagraphCount} paragraphs; only the first was parsed for structured effects — see the real source page for the full text.`,
+      );
     }
 
     const hasSpecialPrereq = prerequisitesContainSpecial(prerequisites);

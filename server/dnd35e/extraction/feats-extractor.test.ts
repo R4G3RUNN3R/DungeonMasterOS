@@ -53,6 +53,46 @@ test("at least one real feat has a genuinely unresolved Benefit — extraction h
   }
 });
 
+test("Blind-Fight: real Benefit section spans 3 real <p> paragraphs — truncation to the first is honestly disclosed in extractionNotes", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const blindFight = feats.find((f) => f.canonicalId === "dnd35e:feat:blind-fight");
+  assert.ok(blindFight, "Blind-Fight must be found in the real fixture");
+  assert.ok(
+    blindFight!.extractionNotes.some((n) => n.includes("Benefit section has 3 paragraphs")),
+    `expected a multi-paragraph Benefit disclosure note, got: ${JSON.stringify(blindFight!.extractionNotes)}`,
+  );
+});
+
+test("Combat Reflexes: real Benefit section spans 2 real <p> paragraphs (the second covers attacks of opportunity while flat-footed) — truncation is honestly disclosed", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const combatReflexes = feats.find((f) => f.canonicalId === "dnd35e:feat:combat-reflexes");
+  assert.ok(combatReflexes, "Combat Reflexes must be found in the real fixture");
+  assert.ok(
+    combatReflexes!.extractionNotes.some((n) => n.includes("Benefit section has 2 paragraphs")),
+    `expected a multi-paragraph Benefit disclosure note, got: ${JSON.stringify(combatReflexes!.extractionNotes)}`,
+  );
+});
+
+test("Brew Potion: real Benefit section spans 3 real <p> paragraphs (including material-component/XP cost rules) — truncation is honestly disclosed", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const brewPotion = feats.find((f) => f.canonicalId === "dnd35e:feat:brew-potion");
+  assert.ok(brewPotion, "Brew Potion must be found in the real fixture");
+  assert.ok(
+    brewPotion!.extractionNotes.some((n) => n.includes("Benefit section has 3 paragraphs")),
+    `expected a multi-paragraph Benefit disclosure note, got: ${JSON.stringify(brewPotion!.extractionNotes)}`,
+  );
+});
+
+test("single-paragraph Benefit feats (e.g. Acrobatic) get no multi-paragraph disclosure note", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const acrobatic = feats.find((f) => f.canonicalId === "dnd35e:feat:acrobatic");
+  assert.ok(acrobatic, "Acrobatic must be found in the real fixture");
+  assert.ok(
+    !acrobatic!.extractionNotes.some((n) => n.includes("Benefit section has")),
+    `Acrobatic has a single-paragraph Benefit and should not get a truncation note, got: ${JSON.stringify(acrobatic!.extractionNotes)}`,
+  );
+});
+
 test("no extracted feat silently invents a mechanical effect for prose it could not parse", () => {
   const feats = extractFeatsFromHtml(FIXTURE_HTML);
   for (const feat of feats) {
