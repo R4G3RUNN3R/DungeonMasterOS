@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_HTML = fs.readFileSync(path.join(__dirname, "fighter-fixture.html"), "utf-8");
 const BARBARIAN_HTML = fs.readFileSync(path.join(__dirname, "barbarian-fixture.html"), "utf-8");
 const ROGUE_HTML = fs.readFileSync(path.join(__dirname, "rogue-fixture.html"), "utf-8");
+const MONK_HTML = fs.readFileSync(path.join(__dirname, "monk-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -134,4 +135,52 @@ test("Rogue: real Sneak Attack and Trapfinding class features are present with r
   const trapfinding = rogue.classFeatures.find((f) => f.slug === "trapfinding");
   assert.ok(sneakAttack && sneakAttack.description.length > 0);
   assert.ok(trapfinding && trapfinding.description.length > 0);
+});
+
+// --- Monk: real 10-column table (4 unique extra columns) ------------------
+
+test("Monk: real <th>Unarmed<br />Damage<sup>1</sup></th> footnote-marker header is stripped correctly, and the real 10-column table is recognized (not rejected by the fail-closed header check)", () => {
+  const monk = extractClassFromHtml(MONK_HTML);
+  assert.equal(monk.canonicalId, "dnd35e:class:monk");
+  assert.equal(monk.extractionStatus, "fully_structured");
+  assert.equal(monk.levelProgression.length, 20);
+});
+
+test("Monk: real d8 hit die, three-quarter BAB, all three saves good (Monk is the only core class with all-good saves), 'Any lawful' alignment", () => {
+  const monk = extractClassFromHtml(MONK_HTML);
+  assert.equal(monk.hitDie, 8);
+  assert.equal(monk.babProgression, "three-quarter");
+  assert.deepEqual(monk.saveProgression, { fort: "good", ref: "good", will: "good" });
+  assert.equal(monk.alignment, "Any lawful.");
+  assert.equal(monk.skillPointsBase, 4);
+});
+
+test("Monk: real tfoot footnote row (a single <td colspan=\"10\"> cell) is correctly skipped, not mistaken for a data row", () => {
+  const monk = extractClassFromHtml(MONK_HTML);
+  const levels = monk.levelProgression.map((r) => r.level);
+  assert.deepEqual(levels, Array.from({ length: 20 }, (_, i) => i + 1), "every level 1-20 must appear exactly once, with no extra row from the footnote");
+});
+
+test("Monk: real level 1 and level 20 rows have the correct real Flurry of Blows / Unarmed Damage / AC Bonus / Unarmored Speed Bonus values", () => {
+  const monk = extractClassFromHtml(MONK_HTML);
+  const level1 = monk.levelProgression.find((r) => r.level === 1);
+  const level20 = monk.levelProgression.find((r) => r.level === 20);
+  assert.deepEqual(
+    { flurry: level1?.flurryOfBlowsAttackBonus, damage: level1?.unarmedDamage, ac: level1?.acBonus, speed: level1?.unarmoredSpeedBonus },
+    { flurry: "-2/-2", damage: "1d6", ac: 0, speed: 0 },
+  );
+  assert.deepEqual(
+    { flurry: level20?.flurryOfBlowsAttackBonus, damage: level20?.unarmedDamage, ac: level20?.acBonus, speed: level20?.unarmoredSpeedBonus },
+    { flurry: "+15/+15/+15/+10/+5", damage: "2d10", ac: 4, speed: 60 },
+  );
+});
+
+test("Monk: real non-Monk classes never populate the Monk-specific optional progression fields", () => {
+  const fighter = extractClassFromHtml(FIXTURE_HTML);
+  for (const row of fighter.levelProgression) {
+    assert.equal(row.flurryOfBlowsAttackBonus, undefined);
+    assert.equal(row.unarmedDamage, undefined);
+    assert.equal(row.acBonus, undefined);
+    assert.equal(row.unarmoredSpeedBonus, undefined);
+  }
 });

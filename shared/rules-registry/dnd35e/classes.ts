@@ -29,6 +29,14 @@ export interface Dnd35eClassLevelProgressionRow {
   // references classFeatures[].slug. Empty when the row's Special cell is
   // blank (most rows).
   specialFeatureSlugs: string[];
+  // Monk-specific extra progression columns — undefined for every other
+  // class. Monk's real table has 4 extra columns beyond the standard 6;
+  // rather than a separate parallel row type, these are modeled as optional
+  // fields here so levelProgression stays one uniform array.
+  flurryOfBlowsAttackBonus?: string; // e.g. "-2/-2" — real multi-attack penalty notation, not one reducible number the way normal iterative BAB is
+  unarmedDamage?: string; // e.g. "1d6" — a real dice expression, not a flat number
+  acBonus?: number;
+  unarmoredSpeedBonus?: number; // feet
 }
 
 export interface Dnd35eClassSkill {

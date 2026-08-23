@@ -6,13 +6,11 @@
 // same exclusion from the automated test suite via package.json's
 // *.test.ts glob).
 //
-// Currently extracts Fighter, Barbarian, and Rogue — the 3 core classes
-// verified to work with the current (non-spellcasting-aware) extractor. The
-// remaining 7 core classes are casters and need a real spellcasting-
-// progression schema/extractor addition first; Monk has unique extra
-// progression-table columns (Flurry of Blows, Unarmed Damage, AC Bonus,
-// Unarmored Speed Bonus) needing its own schema extension. See classes.ts
-// and the extraction report for the explicit scope gaps this leaves.
+// Currently extracts Fighter, Barbarian, Rogue, and Monk — the 4 core
+// non-spellcasting classes. The remaining 7 core classes (Bard, Cleric,
+// Druid, Paladin, Ranger, Sorcerer, Wizard) are casters and need a real
+// spellcasting-progression schema/extractor addition first. See classes.ts
+// and the extraction report for the explicit scope gap this leaves.
 // Structured as a list so extending to more class pages is a one-line
 // addition once each is real-verified, not a rewrite.
 //
@@ -29,6 +27,7 @@ const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/fighter.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/barbarian.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/rogue.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/monk.htm",
 ];
 
 async function runClassExtraction(sourcePageKey: string): Promise<void> {

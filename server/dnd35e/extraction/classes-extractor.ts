@@ -29,19 +29,27 @@ import type {
 } from "@shared/rules-registry/dnd35e/classes";
 import { stripTags, kebabCase } from "./html-utils";
 
-const EXPECTED_HEADERS = ["Level", "Base Attack Bonus", "Fort Save", "Ref Save", "Will Save", "Special"];
+const EXPECTED_HEADERS_STANDARD = ["Level", "Base Attack Bonus", "Fort Save", "Ref Save", "Will Save", "Special"];
+// Monk's real table has 4 extra columns beyond the standard 6 (Flurry of
+// Blows Attack Bonus, Unarmed Damage, AC Bonus, Unarmored Speed Bonus) — a
+// genuine, unique-to-Monk page structure, not a formatting inconsistency.
+const EXPECTED_HEADERS_MONK = [...EXPECTED_HEADERS_STANDARD, "Flurry of Blows Attack Bonus", "Unarmed Damage", "AC Bonus", "Unarmored Speed Bonus"];
 
 const TABLE_RE = /<table id="tableThe[a-zA-Z]+"[^>]*>([\s\S]*?)<\/table>/;
 // Real page inconsistency: most classes' header cells are bare <th>Level</th>,
-// but some (e.g. Barbarian, Rogue) use <th align="left">Base<br />Attack
+// but some (e.g. Barbarian, Rogue, Monk) use <th align="left">Base<br />Attack
 // Bonus</th> — attributes on the tag and a <br /> splitting the label across
-// two lines. Tolerant of both; header text is normalized below.
+// two lines. Tolerant of both; header text is normalized below. Monk's
+// "Unarmed Damage" header also carries a footnote marker,
+// <th>Unarmed<br />Damage<sup>1</sup></th> — the <sup> tag AND its digit
+// content are stripped, not just the tag, so the real footnote number never
+// leaks into the header text being compared.
 const TH_RE = /<th[^>]*>([\s\S]*?)<\/th>/g;
 const TR_RE = /<tr>([\s\S]*?)<\/tr>/g;
 const TD_RE = /<td[^>]*>([\s\S]*?)<\/td>/g;
 
 function normalizeHeaderText(raw: string): string {
-  return stripTags(raw.replace(/<br\s*\/?>/gi, " "));
+  return stripTags(raw.replace(/<br\s*\/?>/gi, " ").replace(/<sup>[\s\S]*?<\/sup>/gi, ""));
 }
 
 // Real page inconsistency: most classes use <h1>Name</h1>, but at least one
@@ -79,6 +87,10 @@ function classifySaveProgression(level20Save: number): Dnd35eSaveProgression {
   throw new Error(`Unrecognized save progression: level 20 save is +${level20Save}, expected +12 (good) or +6 (poor)`);
 }
 
+function headersMatch(headers: string[], expected: string[]): boolean {
+  return headers.length === expected.length && headers.every((h, i) => h === expected[i]);
+}
+
 function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgressionRow[] {
   const headers: string[] = [];
   let thMatch: RegExpExecArray | null;
@@ -86,9 +98,16 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
   while ((thMatch = TH_RE.exec(tableHtml))) {
     headers.push(normalizeHeaderText(thMatch[1]));
   }
-  if (headers.length !== EXPECTED_HEADERS.length || headers.some((h, i) => h !== EXPECTED_HEADERS[i])) {
-    throw new Error(`Unexpected class progression table header order: ${JSON.stringify(headers)}, expected ${JSON.stringify(EXPECTED_HEADERS)}`);
+
+  let columnSet: "standard" | "monk";
+  if (headersMatch(headers, EXPECTED_HEADERS_STANDARD)) columnSet = "standard";
+  else if (headersMatch(headers, EXPECTED_HEADERS_MONK)) columnSet = "monk";
+  else {
+    throw new Error(
+      `Unexpected class progression table header order: ${JSON.stringify(headers)}, expected the standard 6-column set ${JSON.stringify(EXPECTED_HEADERS_STANDARD)} or Monk's 10-column set ${JSON.stringify(EXPECTED_HEADERS_MONK)}`,
+    );
   }
+  const expectedCellCount = headers.length;
 
   const rows: Dnd35eClassLevelProgressionRow[] = [];
   let trMatch: RegExpExecArray | null;
@@ -105,7 +124,10 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
     while ((tdMatch = TD_RE.exec(trMatch[1]))) {
       cells.push(tdMatch[1]);
     }
-    if (cells.length !== 6) continue;
+    // Skips both the tfoot footnote row (a single <td colspan="N"> cell, on
+    // pages like Monk's that have one) and any other non-data row — a real
+    // data row always has exactly expectedCellCount plain cells.
+    if (cells.length !== expectedCellCount) continue;
 
     const level = Number(stripTags(cells[0]).match(/^(\d+)/)?.[1]);
     const bab = Number(stripTags(cells[1]).match(/^\+(\d+)/)?.[1]);
@@ -114,7 +136,14 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
     const will = Number(stripTags(cells[4]).match(/^\+(\d+)/)?.[1]);
     const specialFeatureSlugs = [...cells[5].matchAll(SPECIAL_CELL_ANCHOR_RE)].map((m) => m[1]);
 
-    rows.push({ level, baseAttackBonus: bab, fortSave: fort, refSave: ref, willSave: will, specialFeatureSlugs });
+    const row: Dnd35eClassLevelProgressionRow = { level, baseAttackBonus: bab, fortSave: fort, refSave: ref, willSave: will, specialFeatureSlugs };
+    if (columnSet === "monk") {
+      row.flurryOfBlowsAttackBonus = stripTags(cells[6]).trim();
+      row.unarmedDamage = stripTags(cells[7]).trim();
+      row.acBonus = Number(stripTags(cells[8]).match(/^\+(\d+)/)?.[1]);
+      row.unarmoredSpeedBonus = Number(stripTags(cells[9]).match(/^\+(\d+)/)?.[1]);
+    }
+    rows.push(row);
   }
   return rows;
 }
