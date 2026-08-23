@@ -32,11 +32,21 @@ import { stripTags, kebabCase } from "./html-utils";
 const EXPECTED_HEADERS = ["Level", "Base Attack Bonus", "Fort Save", "Ref Save", "Will Save", "Special"];
 
 const TABLE_RE = /<table id="tableThe[a-zA-Z]+"[^>]*>([\s\S]*?)<\/table>/;
-const TH_RE = /<th>([^<]*)<\/th>/g;
+// Real page inconsistency: most classes' header cells are bare <th>Level</th>,
+// but some (e.g. Barbarian, Rogue) use <th align="left">Base<br />Attack
+// Bonus</th> — attributes on the tag and a <br /> splitting the label across
+// two lines. Tolerant of both; header text is normalized below.
+const TH_RE = /<th[^>]*>([\s\S]*?)<\/th>/g;
 const TR_RE = /<tr>([\s\S]*?)<\/tr>/g;
 const TD_RE = /<td[^>]*>([\s\S]*?)<\/td>/g;
 
-const CLASS_NAME_RE = /<h1>([^<]+)<\/h1>/;
+function normalizeHeaderText(raw: string): string {
+  return stripTags(raw.replace(/<br\s*\/?>/gi, " "));
+}
+
+// Real page inconsistency: most classes use <h1>Name</h1>, but at least one
+// (Rogue) uses <h2 id="slug">Name</h2> instead. Tolerant of both.
+const CLASS_NAME_RE = /<h1>([^<]+)<\/h1>|<h2 id="[a-zA-Z]+">([^<]+)<\/h2>/;
 const ALIGNMENT_RE = /<h5>Alignment<\/h5>\s*<p>\s*([\s\S]*?)\s*<\/p>/;
 const HIT_DIE_RE = /<h5>Hit Die<\/h5>\s*<p>\s*d(\d+)\.?\s*<\/p>/i;
 const CLASS_SKILLS_SECTION_RE = /<h4>Class Skills<\/h4>\s*<p>([\s\S]*?)<\/p>/;
@@ -74,7 +84,7 @@ function extractLevelProgression(tableHtml: string): Dnd35eClassLevelProgression
   let thMatch: RegExpExecArray | null;
   TH_RE.lastIndex = 0;
   while ((thMatch = TH_RE.exec(tableHtml))) {
-    headers.push(thMatch[1].trim());
+    headers.push(normalizeHeaderText(thMatch[1]));
   }
   if (headers.length !== EXPECTED_HEADERS.length || headers.some((h, i) => h !== EXPECTED_HEADERS[i])) {
     throw new Error(`Unexpected class progression table header order: ${JSON.stringify(headers)}, expected ${JSON.stringify(EXPECTED_HEADERS)}`);
@@ -135,8 +145,8 @@ function extractClassFeatures(html: string): Dnd35eClassFeature[] {
 
 export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
   const nameMatch = CLASS_NAME_RE.exec(html);
-  if (!nameMatch) throw new Error("No <h1> class name found on this page — not a real class page.");
-  const name = nameMatch[1].trim();
+  if (!nameMatch) throw new Error("No <h1> or <h2 id> class name found on this page — not a real class page.");
+  const name = (nameMatch[1] ?? nameMatch[2]).trim();
 
   const tableMatch = TABLE_RE.exec(html);
   if (!tableMatch) throw new Error(`No real level-progression table found for class "${name}".`);

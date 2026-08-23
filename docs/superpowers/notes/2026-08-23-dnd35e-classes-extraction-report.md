@@ -1,6 +1,6 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23)
 
-**Scope note, stated explicitly:** this is the first vertical slice for the Classes entity family — **one real class (Fighter)**, chosen deliberately as the simplest non-spellcasting class to validate the architecture before extending to the other 9. It does not cover spellcasting progression (Wizard/Sorcerer/Cleric/Druid/Bard/Ranger/Paladin all need a real spells-per-day/spells-known table this schema doesn't model yet), and it does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **3 real non-spellcasting core classes** (Fighter, Barbarian, Rogue) — the full set of core classes the current extractor can handle without further schema work. It does not cover spellcasting progression (Wizard/Sorcerer/Cleric/Druid/Bard/Ranger/Paladin all need a real spells-per-day/spells-known table this schema doesn't model yet), it does not cover Monk (whose real progression table has 4 extra unique columns — Flurry of Blows Attack Bonus, Unarmed Damage, AC Bonus, Unarmored Speed Bonus — that need their own schema extension, discovered and deliberately left unattempted rather than forced), and it does not cover any other entity family.
 
 ## Architecture
 
@@ -32,7 +32,16 @@ Zero drift against Phase 2A's real acceptance-scan hash for `/srd/classes/fighte
 
 ```
 Extracted real class "Fighter" (dnd35e:class:fighter): fully_structured, 20 level rows, 2 class features.
+Extracted real class "Barbarian" (dnd35e:class:barbarian): fully_structured, 20 level rows, 2 class features.
+Extracted real class "Rogue" (dnd35e:class:rogue): fully_structured, 20 level rows, 4 class features.
 ```
+
+## Two real page-format inconsistencies found and fixed during verification
+
+Both were caught by the extractor's fail-closed design (it threw rather than silently mis-extracting) when Barbarian and Rogue were tried against the Fighter-derived extractor:
+
+1. **Header cell format varies.** Fighter's table uses bare `<th>Level</th>` cells; Barbarian's (and Rogue's) use `<th align="left">Base<br />Attack Bonus</th>` — an attribute on the tag and a `<br />` splitting the label across two lines. Fixed by normalizing header text (converting `<br>` to a space before stripping tags) rather than requiring an exact bare-tag match.
+2. **Class-name heading tag varies.** Fighter and Barbarian use `<h1>Name</h1>`; Rogue uses `<h2 id="rogue">Rogue</h2>` instead. Fixed by accepting either real pattern.
 
 ## Real verified facts (Fighter)
 
@@ -45,10 +54,26 @@ Extracted real class "Fighter" (dnd35e:class:fighter): fully_structured, 20 leve
 - **Class Features**: 2 real features extracted — "Weapon and Armor Proficiency" (no real page `id`, so kebab-cased from its name) and "Bonus Feats" (`id="bonusFeats"`, a real 2-paragraph description, both paragraphs captured in full).
 - `extractionStatus: fully_structured`, zero extraction notes — every real section on the page matched a known pattern.
 
+## Real verified facts (Barbarian)
+
+- **BAB progression**: `full`. **Save progression**: Fort `good`, Ref/Will `poor`.
+- **Hit die**: d12 (highest of any core class — real, correct). **Alignment**: "Any nonlawful." — a real compound restriction, preserved as prose rather than force-flattened into a single enum value.
+- **Skill points**: base 4. **Class skills**: 9 real skills (Climb, Craft, Handle Animal, Intimidate, Jump, Listen, Ride, Survival, Swim).
+- **Class Features**: 2 real features — "Weapon and Armor Proficiency" and "Illiteracy" (a real, distinctive Barbarian trait).
+- `extractionStatus: fully_structured`, zero extraction notes.
+
+## Real verified facts (Rogue)
+
+- **BAB progression**: `three-quarter` — verified per-row against the real `floor(level×3/4)` curve, not just at level 20.
+- **Save progression**: Ref `good`, Fort/Will `poor`. **Hit die**: d6 (lowest of any core class — real, correct). **Alignment**: "Any."
+- **Skill points**: base 8 — the highest of any core class, correctly extracted. **Class skills**: 28 real skills — the largest class-skill list in core 3.5, every one resolved to a real canonical skill ID.
+- **Class Features**: 4 real features — "Weapon and Armor Proficiency," "Sneak Attack," "Trapfinding," "Special Abilities."
+- `extractionStatus: fully_structured`, zero extraction notes.
+
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **The other 9 core classes** — Barbarian, Bard, Cleric, Druid, Monk, Paladin, Ranger, Rogue, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`). Barbarian, Monk, and Rogue are non-spellcasters and should extract cleanly with the current extractor as-is (real, cheap next wins). The remaining 7 are full or partial spellcasters and need real schema/extractor work first (see next point).
-2. **Spellcasting progression** — no `spellsPerDay`/`spellsKnown` table exists in `Dnd35eClassDefinition` yet. This is real, separate, necessarily bigger work (the real per-class tables have a different shape: spell level columns instead of a flat Special column, prepared-vs-known casting distinctions, bonus spells from high ability scores) — deliberately not guessed or stubbed ahead of doing it for real against an actual caster page.
+1. **Monk** — its real level-progression table has 4 extra columns beyond the standard 6 (Flurry of Blows Attack Bonus, Unarmed Damage — a dice expression like "1d6"/"1d8", not a flat number — AC Bonus, Unarmored Speed Bonus). The extractor's fail-closed header check correctly caught this rather than silently mis-mapping columns; Monk needs its own schema extension (real, concrete follow-on work) before it can be extracted.
+2. **The 7 spellcasting core classes** — Bard, Cleric, Druid, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`). No `spellsPerDay`/`spellsKnown` table exists in `Dnd35eClassDefinition` yet — the real per-class tables have a different shape (spell-level columns instead of a flat Special column, prepared-vs-known casting distinctions, bonus spells from high ability scores). Deliberately not guessed or stubbed ahead of doing it for real against an actual caster page.
 3. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
 4. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
 

@@ -8,6 +8,8 @@ import { extractClassFromHtml } from "./classes-extractor";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_HTML = fs.readFileSync(path.join(__dirname, "fighter-fixture.html"), "utf-8");
+const BARBARIAN_HTML = fs.readFileSync(path.join(__dirname, "barbarian-fixture.html"), "utf-8");
+const ROGUE_HTML = fs.readFileSync(path.join(__dirname, "rogue-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -81,4 +83,55 @@ test("Fighter: fully_structured with zero extraction notes — every real sectio
 
 test("extractClassFromHtml throws on a page with no real class name (fail-closed, never silently returns a garbage definition)", () => {
   assert.throws(() => extractClassFromHtml("<html><body>not a class page</body></html>"));
+});
+
+// --- Barbarian: real header cells with attributes and <br/>-split labels --
+
+test("Barbarian: real <th align=\"left\">Base<br />Attack Bonus</th> header cells (attributes + line-break-split labels) are normalized and don't trip the fail-closed header check", () => {
+  const barbarian = extractClassFromHtml(BARBARIAN_HTML);
+  assert.equal(barbarian.canonicalId, "dnd35e:class:barbarian");
+  assert.equal(barbarian.extractionStatus, "fully_structured");
+  assert.equal(barbarian.levelProgression.length, 20);
+});
+
+test("Barbarian: real d12 hit die, full BAB, good Fort / poor Ref+Will, 'Any nonlawful' alignment (a real compound restriction, not force-flattened)", () => {
+  const barbarian = extractClassFromHtml(BARBARIAN_HTML);
+  assert.equal(barbarian.hitDie, 12);
+  assert.equal(barbarian.babProgression, "full");
+  assert.deepEqual(barbarian.saveProgression, { fort: "good", ref: "poor", will: "poor" });
+  assert.equal(barbarian.alignment, "Any nonlawful.");
+  assert.equal(barbarian.skillPointsBase, 4);
+});
+
+// --- Rogue: real <h2 id> class name (not <h1>) ----------------------------
+
+test("Rogue: real <h2 id=\"rogue\">Rogue</h2> class name (this page uses h2, not h1, like every other class) is still resolved correctly", () => {
+  const rogue = extractClassFromHtml(ROGUE_HTML);
+  assert.equal(rogue.canonicalId, "dnd35e:class:rogue");
+  assert.equal(rogue.name, "Rogue");
+  assert.equal(rogue.extractionStatus, "fully_structured");
+});
+
+test("Rogue: real d6 hit die, three-quarter BAB, good Ref / poor Fort+Will, 8+Int skill points, 28 real class skills (the largest class skill list in core 3.5)", () => {
+  const rogue = extractClassFromHtml(ROGUE_HTML);
+  assert.equal(rogue.hitDie, 6);
+  assert.equal(rogue.babProgression, "three-quarter");
+  assert.deepEqual(rogue.saveProgression, { fort: "poor", ref: "good", will: "poor" });
+  assert.equal(rogue.skillPointsBase, 8);
+  assert.equal(rogue.classSkills.length, 28);
+});
+
+test("Rogue: real three-quarter BAB progression matches the exact floor(level*3/4) curve at every level", () => {
+  const rogue = extractClassFromHtml(ROGUE_HTML);
+  for (const row of rogue.levelProgression) {
+    assert.equal(row.baseAttackBonus, Math.floor((row.level * 3) / 4), `level ${row.level} BAB`);
+  }
+});
+
+test("Rogue: real Sneak Attack and Trapfinding class features are present with real descriptions", () => {
+  const rogue = extractClassFromHtml(ROGUE_HTML);
+  const sneakAttack = rogue.classFeatures.find((f) => f.slug === "sneakAttack");
+  const trapfinding = rogue.classFeatures.find((f) => f.slug === "trapfinding");
+  assert.ok(sneakAttack && sneakAttack.description.length > 0);
+  assert.ok(trapfinding && trapfinding.description.length > 0);
 });

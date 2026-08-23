@@ -6,13 +6,15 @@
 // same exclusion from the automated test suite via package.json's
 // *.test.ts glob).
 //
-// Currently extracts only Fighter — the first real vertical slice for this
-// entity family (a non-spellcasting class, deliberately chosen as the
-// simplest real starting point; see classes.ts and the extraction report
-// for the explicit spellcasting-progression scope gap this leaves for the
-// remaining 9 classes). Structured as a list so extending to the other
-// class pages is a one-line addition once each is real-verified the same
-// way Fighter was, not a rewrite.
+// Currently extracts Fighter, Barbarian, and Rogue — the 3 core classes
+// verified to work with the current (non-spellcasting-aware) extractor. The
+// remaining 7 core classes are casters and need a real spellcasting-
+// progression schema/extractor addition first; Monk has unique extra
+// progression-table columns (Flurry of Blows, Unarmed Damage, AC Bonus,
+// Unarmored Speed Bonus) needing its own schema extension. See classes.ts
+// and the extraction report for the explicit scope gaps this leaves.
+// Structured as a list so extending to more class pages is a one-line
+// addition once each is real-verified, not a rewrite.
 //
 // Re-run with: node --import tsx server/dnd35e/extraction/run-classes-extraction.ts
 // Targets the real dev database (server/storage.ts's default DATABASE_URL,
@@ -23,7 +25,11 @@ import { createHash } from "node:crypto";
 import { storage, runMigrations } from "../../storage";
 import { extractClassFromHtml } from "./classes-extractor";
 
-const CLASS_SOURCE_PAGE_KEYS = ["dnd35e-srd-hypertext-d20::/srd/classes/fighter.htm"];
+const CLASS_SOURCE_PAGE_KEYS = [
+  "dnd35e-srd-hypertext-d20::/srd/classes/fighter.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/barbarian.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/rogue.htm",
+];
 
 async function runClassExtraction(sourcePageKey: string): Promise<void> {
   const manifestEntry = storage.getSrdManifestEntry(sourcePageKey);
