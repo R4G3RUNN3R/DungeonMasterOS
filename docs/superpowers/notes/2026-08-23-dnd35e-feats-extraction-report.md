@@ -12,13 +12,15 @@ Three new prerequisite kinds were added to the schema (`shared/rules-registry/dn
 
 No real "any"/OR-alternative prerequisite was observed on this page — only AND-composition via comma lists — so this pass did not attempt to detect OR phrasing. The evaluator already supports `any`; the extractor simply has nothing real to feed it yet.
 
+A small Benefit-side follow-up was also added: a `save_bonus` effect kind (`{save: "fortitude"|"reflex"|"will", bonus, bonusType}`, deliberately separate from `skill_check_bonus` since saving throws are a distinct 3.5 mechanical concept from skills) structures the real "You get a +N bonus on all Fortitude/Reflex/Will saving throws." pattern — Great Fortitude, Iron Will, Lightning Reflexes. Combat Casting's superficially similar "+4 on Concentration checks" was deliberately left `unresolved`: its real text is conditional ("made to cast a spell ... while on the defensive"), and a flat bonus pattern would misrepresent that condition rather than honestly fail to structure it.
+
 ## Headline evidence line
 
 ```
-extracted 110 real feats from https://www.d20srd.org/srd/feats.htm → 15 fully_structured → 57 partially_structured → 38 unresolved
+extracted 110 real feats from https://www.d20srd.org/srd/feats.htm → 18 fully_structured → 57 partially_structured → 35 unresolved
 ```
 
-Unresolved dropped from **81 → 38** (a 53% reduction) through real parser coverage of prerequisite forms that were always present on the page — not through any change to the corpus or to what counts as "resolved." `fully_structured` is unchanged at 15, because this pass deliberately scoped to prerequisites only; a feat needs both its prerequisites *and* its Benefit mechanically structured to reach `fully_structured`, and Benefit-effect patterns (single-skill/save bonuses, resource grants, metamagic effects) remain real, separate follow-on work — see "What's still needed" below.
+Unresolved dropped from **81 → 35** (a 57% reduction) through real parser coverage of prerequisite forms (and one narrow Benefit pattern) that were always present on the page — not through any change to the corpus or to what counts as "resolved." `fully_structured` rose from 15 to 18 (Great Fortitude, Iron Will, Lightning Reflexes — each had no prerequisite and now has a real structured Benefit). The rest of the Benefit-effect surface (resource grants, metamagic effects, item-creation cost formulas) remains real, separate follow-on work — see "What's still needed" below.
 
 ## Content-hash verification (fail-closed drift check)
 
@@ -35,18 +37,18 @@ Zero drift since the original Phase 2A scan — the page has not changed. Had th
 | Metric | Original pass | This pass |
 |---|---|---|
 | Total real feats extracted | 110 | 110 |
-| `fully_structured` | 15 | 15 |
+| `fully_structured` | 15 | 18 |
 | `partially_structured` | 14 | 57 |
-| `unresolved` | 81 | 38 |
+| `unresolved` | 81 | 35 |
 | Real duplicate canonical IDs | 0 | 0 |
 | Real dangling feat-reference prerequisites | 0 | 0 |
 
 ## Full real gap list (every non-`fully_structured` feat, by name and reason — never just a count)
 
-The complete list below is real data pulled directly from the dev database after this pass's real re-extraction run — still 95 feats (unchanged set, since `fully_structured` didn't move), each with its real, honest `extractionNotes`. Almost every remaining note is now Benefit-side only — prerequisite-side notes have mostly disappeared from this list.
+The complete list below is real data pulled directly from the dev database after this pass's real re-extraction run — 92 feats (down from 95: Great Fortitude, Iron Will, and Lightning Reflexes moved to `fully_structured` via the new `save_bonus` pattern and no longer appear here), each with its real, honest `extractionNotes`. Almost every remaining note is now Benefit-side only — prerequisite-side notes have mostly disappeared from this list.
 
 <details>
-<summary>Click to expand the full 95-feat gap list (name, status, real reason(s))</summary>
+<summary>Click to expand the full 92-feat gap list (name, status, real reason(s))</summary>
 
 1. **Armor Proficiency (Heavy)** (`partially_structured`) — Benefit is "See Armor Proficiency (light)." (a cross-reference, not a self-contained mechanic).
 2. **Armor Proficiency (Light)** (`unresolved`) — real armor-check-penalty mechanic, no Benefit pattern covers it.
@@ -76,7 +78,6 @@ The complete list below is real data pulled directly from the dev database after
 26. **Far Shot** (`partially_structured`) — real range-increment mechanic.
 27. **Forge Ring** (`partially_structured`, was `unresolved`) — "Caster level 12th." now fully structures; Benefit still uncovered, 3 paragraphs (disclosed).
 28. **Great Cleave** (`partially_structured`, was `unresolved`) — real 4-clause mixed prereq now fully decomposes to `all[ability(str,13), feat(cleave), feat(power-attack), bab(4)]`, no special left; Benefit cross-references Cleave, still uncovered.
-29. **Great Fortitude** (`unresolved`) — real +2 Fortitude-save mechanic — a single-check-family save bonus, not the covered two-*skill* pattern.
 30. **Greater Spell Focus** (`unresolved`) — real DC-bonus mechanic.
 31. **Greater Spell Penetration** (`partially_structured`) — real caster-level-check bonus mechanic.
 32. **Greater Two-Weapon Fighting** (`partially_structured`, was `unresolved`) — real 4-clause prereq now fully decomposes; Benefit still uncovered.
@@ -99,9 +100,7 @@ The complete list below is real data pulled directly from the dev database after
 49. **Improved Turning** (`partially_structured`, was `unresolved`) — "Ability to turn or rebuke creatures." now structures to `class_feature`; Benefit still uncovered.
 50. **Improved Two-Weapon Fighting** (`partially_structured`, was `unresolved`) — "Dex 17, Two-Weapon Fighting, base attack bonus +6." now fully decomposes; Benefit still uncovered.
 51. **Improved Unarmed Strike** (`unresolved`) — real armed-when-unarmed mechanic; 2 paragraphs (disclosed).
-52. **Iron Will** (`unresolved`) — real +2 Will-save mechanic (same single-save-type gap as Great Fortitude).
 53. **Leadership** (`partially_structured`, was `unresolved`) — "Character level 6th." now fully structures to `character_level(6)`; real cohort/follower-table mechanic still uncovered.
-54. **Lightning Reflexes** (`unresolved`) — real +2 Reflex-save mechanic (same single-save-type gap).
 55. **Manyshot** (`partially_structured`, was `unresolved`) — "Dex 17, Point Blank Shot, Rapid Shot, base attack bonus +6." now fully decomposes; Benefit still uncovered, 3 paragraphs (disclosed).
 56. **Martial Weapon Proficiency** (`unresolved`) — real attack-roll-normally mechanic.
 57. **Maximize Spell** (`unresolved`) — real metamagic maximize mechanic; 2 paragraphs (disclosed).
@@ -148,9 +147,9 @@ The complete list below is real data pulled directly from the dev database after
 
 ## What's still needed (explicit follow-on work, not implied by this report)
 
-Prerequisite decomposition is now real and substantial (81 → 38 unresolved). The remaining gap is almost entirely **Benefit-side**: this pass did not touch effect-pattern coverage. Reading the list above, the highest-value next structured-effect patterns (by how many real feats they'd resolve) are unchanged from the original report's assessment:
+Prerequisite decomposition is now real and substantial (81 → 35 unresolved), and one narrow Benefit pattern (`save_bonus`) is now covered too. The remaining gap is almost entirely **Benefit-side**. Reading the list above, the highest-value next structured-effect patterns (by how many real feats they'd resolve) are:
 
-1. **Single-named-check/save bonus** (`"You get a +N bonus on <check type>"` with one target, not two) — would resolve Great Fortitude, Iron Will, Lightning Reflexes, Improved Initiative, Skill Focus, Combat Casting, Point Blank Shot, and similar (~8+ feats).
+1. **Single-named-check bonus, non-conditional** (`"You get a +N bonus on <check type> checks."` with one literal target and no attached condition) — would resolve Improved Initiative (~1 feat outright); Skill Focus's target skill is a variable ("that skill"), not a literal in the Benefit text, so it needs its own small extraction (read the chosen skill from context) rather than this pattern; Combat Casting and Point Blank Shot are conditional/multi-target and are correctly excluded from this simple pattern (see below).
 2. **Resource-grant effects** (Toughness's flat HP grant) and **metamagic-specific effects** (the 9 real Metamagic feats, all still `unresolved`) are each their own real effect-pattern family, not yet attempted.
 3. **Cross-reference Benefits** ("See Armor Proficiency (light)", "This feat works like Cleave, except...") — a distinct real pattern (a Benefit that defers to another feat's text rather than stating its own mechanic).
 4. **Item-creation Benefits** (Brew Potion, Craft Wand/Rod/Staff/Ring/Wondrous Item, Scribe Scroll) — a real, recurring cost/time-formula family (`spell level × caster level × N gp`) shared across ~7 feats.

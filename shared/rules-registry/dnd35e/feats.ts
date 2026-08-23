@@ -32,6 +32,10 @@ export type Dnd35eFeatPrerequisite =
 
 export type Dnd35eFeatEffect =
   | { kind: "skill_check_bonus"; skillCanonicalIds: string[]; bonus: number; bonusType: "competence" | "untyped" }
+  // Saving throws are a distinct 3.5 mechanical concept from skills — never
+  // conflated into skill_check_bonus, even though the surface shape (a flat
+  // untyped/competence bonus) looks similar.
+  | { kind: "save_bonus"; save: "fortitude" | "reflex" | "will"; bonus: number; bonusType: "competence" | "untyped" }
   | { kind: "unresolved"; rawBenefitText: string; reason: string };
 
 export interface Dnd35eFeatDefinition {

@@ -211,6 +211,34 @@ test("Rapid Reload: real 'Weapon Proficiency (crossbow type chosen).' structures
   assert.deepEqual(rapidReload!.prerequisites, { kind: "proficiency", description: "Weapon Proficiency (crossbow type chosen)." });
 });
 
+// --- save_bonus benefit effect (real fixture data) -----------------------
+
+test("Great Fortitude: real 'You get a +2 bonus on all Fortitude saving throws.' structures to a real save_bonus effect, distinct from skill_check_bonus", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const greatFortitude = feats.find((f) => f.canonicalId === "dnd35e:feat:great-fortitude");
+  assert.ok(greatFortitude, "Great Fortitude must be found in the real fixture");
+  assert.deepEqual(greatFortitude!.mechanicalEffects, [
+    { kind: "save_bonus", save: "fortitude", bonus: 2, bonusType: "competence" },
+  ]);
+  assert.equal(greatFortitude!.extractionStatus, "fully_structured", "no prerequisite and a real structured save effect must reach fully_structured");
+});
+
+test("Iron Will and Lightning Reflexes: the same real save_bonus pattern structures for Will and Reflex", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const ironWill = feats.find((f) => f.canonicalId === "dnd35e:feat:iron-will");
+  const lightningReflexes = feats.find((f) => f.canonicalId === "dnd35e:feat:lightning-reflexes");
+  assert.ok(ironWill && lightningReflexes, "both feats must be found in the real fixture");
+  assert.deepEqual(ironWill!.mechanicalEffects, [{ kind: "save_bonus", save: "will", bonus: 2, bonusType: "competence" }]);
+  assert.deepEqual(lightningReflexes!.mechanicalEffects, [{ kind: "save_bonus", save: "reflex", bonus: 2, bonusType: "competence" }]);
+});
+
+test("Combat Casting: real conditional Concentration bonus ('made to cast a spell ... while on the defensive') is honestly left unresolved — a flat check_bonus pattern would misrepresent the real condition", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const combatCasting = feats.find((f) => f.canonicalId === "dnd35e:feat:combat-casting");
+  assert.ok(combatCasting, "Combat Casting must be found in the real fixture");
+  assert.equal(combatCasting!.mechanicalEffects[0]?.kind, "unresolved");
+});
+
 test("real unresolved-prerequisite rate dropped substantially versus the pre-deepening baseline (81/110) — deterministic multi-clause coverage, not a corpus limitation", () => {
   const feats = extractFeatsFromHtml(FIXTURE_HTML);
   const unresolved = feats.filter((f) => f.extractionStatus === "unresolved");

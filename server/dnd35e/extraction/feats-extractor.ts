@@ -283,8 +283,25 @@ function parsePrerequisites(rawHtml: string): Dnd35eFeatPrerequisite {
 
 const SKILL_CHECK_BONUS_RE =
   /You get a \+(\d+) bonus on all <a[^>]*>([^<]+)<\/a> checks and <a[^>]*>([^<]+)<\/a> checks/;
+// Real fixture pattern: "You get a +2 bonus on all <a ...>Fortitude saving
+// throws</a>." — unconditional, single-save. Deliberately does NOT try to
+// cover conditional bonuses like Combat Casting's "+4 on Concentration
+// checks made to cast a spell ... while on the defensive" — that condition
+// is real mechanical content this pass would misrepresent by dropping it,
+// so it's correctly left `unresolved` rather than force-matched.
+const SAVE_BONUS_RE = /You get a \+(\d+) bonus on all <a[^>]*>(Fortitude|Reflex|Will) saving throws<\/a>/;
 
 function parseBenefitEffect(rawHtml: string): Dnd35eFeatEffect {
+  const saveMatch = SAVE_BONUS_RE.exec(rawHtml);
+  if (saveMatch) {
+    return {
+      kind: "save_bonus",
+      save: saveMatch[2].toLowerCase() as "fortitude" | "reflex" | "will",
+      bonus: Number(saveMatch[1]),
+      bonusType: "competence",
+    };
+  }
+
   const match = SKILL_CHECK_BONUS_RE.exec(rawHtml);
   if (match) {
     const bonus = Number(match[1]);
