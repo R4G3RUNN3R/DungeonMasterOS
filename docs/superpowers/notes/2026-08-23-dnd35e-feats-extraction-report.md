@@ -1,148 +1,159 @@
-# D&D 3.5e Feats Extraction Report (Phase 2B-1, real run: 2026-08-23)
+# D&D 3.5e Feats Extraction Report (Phase 2B-1 → prerequisite-deepening pass, real run: 2026-08-23)
 
 **Scope note, stated explicitly:** every number in this report is a *feat-page* extraction count from one real SRD page. Nothing here claims full mechanical coverage of the D&D 3.5e feat system, and nothing here claims coverage of any other entity family (races, classes, spells, monsters, etc.) — those remain unstarted, per the Phase 2B-1 design doc's explicit scope boundary.
+
+## What changed since the original Phase 2B-1 report
+
+The original pass (110 feats → 15 fully_structured / 14 partially_structured / 81 unresolved) structured exactly one prerequisite shape per field: a pure feat-reference list, a bare BAB value, a bare ability score, or a bare "N ranks in X." — anything mixed (`"Str 13, Power Attack."`) or differently phrased (`"Caster level 3rd."`, `"Ride 1 rank."`) fell to one opaque `special` blob for the whole field.
+
+This pass rewrote `parsePrerequisites()` (`server/dnd35e/extraction/feats-extractor.ts`) to do real multi-clause decomposition: split each prerequisites field on top-level commas (respecting paren nesting), classify every clause independently against an expanded pattern set (ability, BAB — including a "BAB plus a genuine parenthetical aside" shape, feat reference — including "feat reference plus trailing qualifier prose" — skill ranks in both the original and the page's actual reversed phrasing, caster/character/manifester/generic-class level, proficiency, and a bare "X ability"/"Ability to X" class-feature shape), and compose the results into a real `{kind:"all", requirements:[...]}` instead of one blob. A clause that still matches nothing becomes its own **per-clause** `special` — never silently dropped, never guessed — so a partially-mixed field now yields real structured facts for its recognizable parts and honest `special` only for the genuinely unrecognized remainder.
+
+Three new prerequisite kinds were added to the schema (`shared/rules-registry/dnd35e/feats.ts`) to support this: `manifester_level` (fully evaluable, parallels `caster_level`), and `proficiency`/`class_feature` (typed-but-not-yet-independently-evaluable — no canonical weapon/armor or class-feature entity family exists yet to check them against, so the evaluator fails them closed like `special`, but keeping them as distinct kinds lets a future pass group and explain them correctly instead of treating every unstructured requirement the same way).
+
+No real "any"/OR-alternative prerequisite was observed on this page — only AND-composition via comma lists — so this pass did not attempt to detect OR phrasing. The evaluator already supports `any`; the extractor simply has nothing real to feed it yet.
 
 ## Headline evidence line
 
 ```
-extracted 110 real feats from https://www.d20srd.org/srd/feats.htm → 15 fully_structured → 14 partially_structured → 81 unresolved
+extracted 110 real feats from https://www.d20srd.org/srd/feats.htm → 15 fully_structured → 57 partially_structured → 38 unresolved
 ```
+
+Unresolved dropped from **81 → 38** (a 53% reduction) through real parser coverage of prerequisite forms that were always present on the page — not through any change to the corpus or to what counts as "resolved." `fully_structured` is unchanged at 15, because this pass deliberately scoped to prerequisites only; a feat needs both its prerequisites *and* its Benefit mechanically structured to reach `fully_structured`, and Benefit-effect patterns (single-skill/save bonuses, resource grants, metamagic effects) remain real, separate follow-on work — see "What's still needed" below.
 
 ## Content-hash verification (fail-closed drift check)
 
-Before extracting, the real page was re-fetched and its SHA-256 compared against the hash Phase 2A's real acceptance scan recorded for this exact page in `srd_manifest_entries` (`dnd35e-srd-hypertext-d20::/srd/feats.htm`):
+Before extracting, the real page was re-fetched and its SHA-256 compared against the hash recorded for this exact page in `srd_manifest_entries` (`dnd35e-srd-hypertext-d20::/srd/feats.htm`):
 
 ```
 Content hash verified — extracting from confirmed-current content.
 ```
 
-Zero drift since Phase 2A's real scan (2026-08-23, earlier the same day) — the page has not changed. Had the hash not matched, extraction would have stopped and reported the drift rather than silently extracting from unverified content, per this whole project's established discipline.
+Zero drift since the original Phase 2A scan — the page has not changed. Had the hash not matched, extraction would have stopped and reported the drift rather than silently extracting from unverified content, per this whole project's established discipline.
 
 ## Real counts
 
-| Metric | Count |
-|---|---|
-| Total real feats extracted | 110 |
-| `fully_structured` (real, computable mechanical effect + no unstructured prerequisite) | 15 |
-| `partially_structured` (real, computable mechanical effect exists, but the Benefit text also contains real content the extractor couldn't structure, OR structured prerequisites but an unstructured Benefit) | 14 |
-| `unresolved` (no structured mechanical effect could be derived at all) | 81 |
-| Real duplicate canonical IDs | 0 |
-| Real dangling feat-reference prerequisites (a `{kind:"feat", featCanonicalId:...}` pointing at an ID not itself extracted) | 0 |
-
-**This 86% unresolved/partial rate is the intended, honest result of a deliberately narrow first pass** — this pass structures exactly one mechanical-effect pattern (`"You get a +N bonus on all X checks and Y checks"`, the skill-check-bonus family) and one prerequisite-pattern set (feat references, BAB, ability scores). Every real feat whose Benefit or Prerequisites prose doesn't match those specific patterns is honestly recorded as `unresolved`/`partially_structured` with its real source text preserved in `extractionNotes` — never dropped, never guessed. See "What's needed to close these gaps" below for what a future pass would add.
+| Metric | Original pass | This pass |
+|---|---|---|
+| Total real feats extracted | 110 | 110 |
+| `fully_structured` | 15 | 15 |
+| `partially_structured` | 14 | 57 |
+| `unresolved` | 81 | 38 |
+| Real duplicate canonical IDs | 0 | 0 |
+| Real dangling feat-reference prerequisites | 0 | 0 |
 
 ## Full real gap list (every non-`fully_structured` feat, by name and reason — never just a count)
 
-The complete list below is real data pulled directly from the dev database after the real extraction run — 95 feats, each with its real, honest `extractionNotes`.
+The complete list below is real data pulled directly from the dev database after this pass's real re-extraction run — still 95 feats (unchanged set, since `fully_structured` didn't move), each with its real, honest `extractionNotes`. Almost every remaining note is now Benefit-side only — prerequisite-side notes have mostly disappeared from this list.
 
 <details>
-<summary>Click to expand the full 95-feat gap list (canonical ID, status, real reason(s))</summary>
+<summary>Click to expand the full 95-feat gap list (name, status, real reason(s))</summary>
 
-1. **Armor Proficiency (Heavy)** (`partially_structured`) — Benefit is "See Armor Proficiency (light)" (a cross-reference, not a self-contained mechanic).
-2. **Armor Proficiency (Light)** (`unresolved`) — real armor-check-penalty mechanic, no pattern covers it.
+1. **Armor Proficiency (Heavy)** (`partially_structured`) — Benefit is "See Armor Proficiency (light)." (a cross-reference, not a self-contained mechanic).
+2. **Armor Proficiency (Light)** (`unresolved`) — real armor-check-penalty mechanic, no Benefit pattern covers it.
 3. **Armor Proficiency (Medium)** (`partially_structured`) — same cross-reference pattern as Heavy.
-4. **Augment Summoning** (`unresolved`) — Prerequisites "Spell Focus (conjuration)" not a covered pattern; Benefit is a real +4 enhancement-bonus mechanic, no covered pattern.
-5. **Blind-Fight** (`unresolved`) — real miss-chance-reroll mechanic; Benefit section genuinely has 3 real paragraphs, only the first parsed (disclosed).
-6. **Brew Potion** (`unresolved`) — Prerequisites "Caster level 3rd" not covered; real item-creation mechanic across 3 real paragraphs, only first parsed (disclosed).
-7. **Cleave** (`unresolved`) — Prerequisites "Str 13, Power Attack" (mixed ability+feat clause, not covered); real extra-attack mechanic not covered.
-8. **Combat Casting** (`unresolved`) — real +4 Concentration-check mechanic, not the covered skill-bonus pattern (targets a check type, not two named skills).
+4. **Augment Summoning** (`unresolved`) — prerequisite now fully decomposes to `feat(spell-focus) + special("(conjuration)")` (the school qualifier, honestly preserved); Benefit's +4 enhancement-bonus mechanic still uncovered.
+5. **Blind-Fight** (`unresolved`) — Benefit mechanic uncovered; 3 real paragraphs, only the first parsed (disclosed).
+6. **Brew Potion** (`partially_structured`, was `unresolved`) — prerequisite "Caster level 3rd." now fully structures to `caster_level(3)`; Benefit's item-creation mechanic across 3 paragraphs still uncovered (disclosed).
+7. **Cleave** (`partially_structured`, was `unresolved`) — prerequisite "Str 13, Power Attack." now fully decomposes to `all[ability(str,13), feat(power-attack)]`, no special; Benefit's extra-attack mechanic still uncovered.
+8. **Combat Casting** (`unresolved`) — Benefit is a real +4 Concentration-check mechanic, not the covered two-skill pattern.
 9. **Combat Expertise** (`partially_structured`) — real AC-tradeoff mechanic, not covered.
-10. **Combat Reflexes** (`unresolved`) — real Dex-bonus-additional-AoO mechanic; 2 real paragraphs, only first parsed (disclosed).
-11. **Craft Magic Arms And Armor** (`unresolved`) — "Caster level 5th" prereq not covered; real item-creation mechanic, 3 paragraphs (disclosed).
-12. **Craft Rod** (`unresolved`) — "Caster level 9th" not covered; 2 paragraphs (disclosed).
-13. **Craft Staff** (`unresolved`) — "Caster level 12th" not covered; 3 paragraphs (disclosed).
-14. **Craft Wand** (`unresolved`) — "Caster level 5th" not covered; 2 paragraphs (disclosed).
-15. **Craft Wondrous Item** (`unresolved`) — "Caster level 3rd" not covered; 3 paragraphs (disclosed).
-16. **Deflect Arrows** (`unresolved`) — "Dex 13, Improved Unarmed Strike" mixed clause not covered; 2 paragraphs (disclosed).
+10. **Combat Reflexes** (`unresolved`) — real Dex-bonus-additional-AoO mechanic; 2 paragraphs (disclosed).
+11. **Craft Magic Arms And Armor** (`partially_structured`, was `unresolved`) — "Caster level 5th." now fully structures; Benefit item-creation mechanic still uncovered, 3 paragraphs (disclosed).
+12. **Craft Rod** (`partially_structured`, was `unresolved`) — "Caster level 9th." now fully structures; Benefit still uncovered, 2 paragraphs (disclosed).
+13. **Craft Staff** (`partially_structured`, was `unresolved`) — "Caster level 12th." now fully structures; Benefit still uncovered, 3 paragraphs (disclosed).
+14. **Craft Wand** (`partially_structured`, was `unresolved`) — "Caster level 5th." now fully structures; Benefit still uncovered, 2 paragraphs (disclosed).
+15. **Craft Wondrous Item** (`partially_structured`, was `unresolved`) — "Caster level 3rd." now fully structures; Benefit still uncovered, 3 paragraphs (disclosed).
+16. **Deflect Arrows** (`partially_structured`, was `unresolved`) — "Dex 13, Improved Unarmed Strike." now fully decomposes, no special; Benefit still uncovered, 2 paragraphs (disclosed).
 17. **Diehard** (`partially_structured`) — real stabilization mechanic; 3 paragraphs (disclosed).
 18. **Dodge** (`partially_structured`) — real +1 dodge-vs-designated-opponent mechanic; 2 paragraphs (disclosed).
 19. **Empower Spell** (`unresolved`) — real metamagic mechanic; 2 paragraphs (disclosed).
 20. **Endurance** (`unresolved`) — real multi-check bonus mechanic spanning 7 different check/save types, not the covered two-skill pattern.
 21. **Enlarge Spell** (`unresolved`) — real metamagic range-doubling mechanic; 2 paragraphs (disclosed).
 22. **Eschew Materials** (`unresolved`) — real material-component-waiver mechanic.
-23. **Exotic Weapon Proficiency** (`unresolved`) — "Base attack bonus +1 (plus Str 13 for...)" conditional prereq not covered.
+23. **Exotic Weapon Proficiency** (`unresolved`) — prerequisite now fully decomposes to `all[bab(1), special("plus Str 13 for bastard sword or dwarven waraxe")]` — the parenthetical aside is preserved, never dropped; Benefit still uncovered.
 24. **Extend Spell** (`unresolved`) — real metamagic duration-doubling mechanic.
-25. **Extra Turning** (`unresolved`) — "Ability to turn or rebuke creatures" prereq not covered; 2 paragraphs (disclosed).
+25. **Extra Turning** (`partially_structured`, was `unresolved`) — "Ability to turn or rebuke creatures." now structures to `class_feature`; Benefit still uncovered, 2 paragraphs (disclosed).
 26. **Far Shot** (`partially_structured`) — real range-increment mechanic.
-27. **Forge Ring** (`unresolved`) — "Caster level 12th" not covered; 3 paragraphs (disclosed).
-28. **Great Cleave** (`unresolved`) — 4-clause mixed prereq not covered; cross-references Cleave.
-29. **Great Fortitude** (`unresolved`) — real +2 Fortitude-save mechanic — a single-skill-family save bonus, not the covered two-*skill* pattern (saves are a different check family in this pass's scope).
+27. **Forge Ring** (`partially_structured`, was `unresolved`) — "Caster level 12th." now fully structures; Benefit still uncovered, 3 paragraphs (disclosed).
+28. **Great Cleave** (`partially_structured`, was `unresolved`) — real 4-clause mixed prereq now fully decomposes to `all[ability(str,13), feat(cleave), feat(power-attack), bab(4)]`, no special left; Benefit cross-references Cleave, still uncovered.
+29. **Great Fortitude** (`unresolved`) — real +2 Fortitude-save mechanic — a single-check-family save bonus, not the covered two-*skill* pattern.
 30. **Greater Spell Focus** (`unresolved`) — real DC-bonus mechanic.
 31. **Greater Spell Penetration** (`partially_structured`) — real caster-level-check bonus mechanic.
-32. **Greater Two-Weapon Fighting** (`unresolved`) — 4-clause mixed prereq not covered.
-33. **Greater Weapon Focus** (`unresolved`) — 3-clause mixed prereq (proficiency/feat/class-level) not covered.
-34. **Greater Weapon Specialization** (`unresolved`) — 5-clause mixed prereq not covered.
+32. **Greater Two-Weapon Fighting** (`partially_structured`, was `unresolved`) — real 4-clause prereq now fully decomposes; Benefit still uncovered.
+33. **Greater Weapon Focus** (`unresolved`) — prerequisite now mostly decomposes (proficiency, feat, class_level all structured); one real "with selected weapon" qualifier clause remains an honest `special` sibling (no atomic schema shape for "same choice as the referenced feat" yet); Benefit still uncovered.
+34. **Greater Weapon Specialization** (`unresolved`) — same "with selected weapon" residual pattern repeated 3 times across its 5-clause prereq; Benefit still uncovered.
 35. **Heighten Spell** (`unresolved`) — real metamagic level-increase mechanic.
-36. **Improved Bull Rush** (`unresolved`) — "Str 13, Power Attack" not covered.
+36. **Improved Bull Rush** (`partially_structured`, was `unresolved`) — "Str 13, Power Attack." now fully decomposes; Benefit still uncovered.
 37. **Improved Counterspell** (`unresolved`) — real counterspell-school mechanic.
-38. **Improved Critical** (`unresolved`) — "Proficient with weapon, base attack bonus +8" mixed clause not covered.
-39. **Improved Disarm** (`unresolved`) — "Int 13, Combat Expertise" not covered.
-40. **Improved Familiar** (`unresolved`) — real multi-condition prereq ("Ability to acquire..., compatible alignment, sufficiently high level") not covered; 3 paragraphs (disclosed).
-41. **Improved Feint** (`unresolved`) — "Int 13, Combat Expertise" not covered.
-42. **Improved Grapple** (`unresolved`) — "Dex 13, Improved Unarmed Strike" not covered.
+38. **Improved Critical** (`partially_structured`, was `unresolved`) — "Proficient with weapon, base attack bonus +8." now fully decomposes to `all[proficiency, bab(8)]`, no special; Benefit still uncovered.
+39. **Improved Disarm** (`partially_structured`, was `unresolved`) — "Int 13, Combat Expertise." now fully decomposes; Benefit still uncovered.
+40. **Improved Familiar** (`unresolved`) — prerequisite now partially decomposes: "Ability to acquire a new familiar" structures to `class_feature`, but "compatible alignment" and "sufficiently high level (see below)" remain honest `special` clauses — genuinely relative/non-literal values this pass correctly declines to force into a flat kind; Benefit still uncovered, 3 paragraphs (disclosed).
+41. **Improved Feint** (`partially_structured`, was `unresolved`) — "Int 13, Combat Expertise." now fully decomposes; Benefit still uncovered.
+42. **Improved Grapple** (`partially_structured`, was `unresolved`) — "Dex 13, Improved Unarmed Strike." now fully decomposes; Benefit still uncovered.
 43. **Improved Initiative** (`unresolved`) — real +4 initiative mechanic (a single-roll-type bonus, not the covered two-skill pattern).
-44. **Improved Overrun** (`unresolved`) — "Str 13, Power Attack" not covered.
-45. **Improved Precise Shot** (`unresolved`) — "Dex 19, Point Blank Shot, Precise Shot, base attack bonus +11" not covered; 2 paragraphs (disclosed).
+44. **Improved Overrun** (`partially_structured`, was `unresolved`) — "Str 13, Power Attack." now fully decomposes; Benefit still uncovered.
+45. **Improved Precise Shot** (`partially_structured`, was `unresolved`) — 4-clause mixed prereq now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
 46. **Improved Shield Bash** (`partially_structured`) — real shield-bash-AC mechanic.
-47. **Improved Sunder** (`unresolved`) — "Str 13, Power Attack" not covered; 2 paragraphs (disclosed).
-48. **Improved Trip** (`unresolved`) — "Int 13, Combat Expertise" not covered; 2 paragraphs (disclosed).
-49. **Improved Turning** (`unresolved`) — "Ability to turn or rebuke creatures" not covered.
-50. **Improved Two-Weapon Fighting** (`unresolved`) — "Dex 17, Two-Weapon Fighting, base attack bonus +6" not covered.
+47. **Improved Sunder** (`partially_structured`, was `unresolved`) — "Str 13, Power Attack." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
+48. **Improved Trip** (`partially_structured`, was `unresolved`) — "Int 13, Combat Expertise." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
+49. **Improved Turning** (`partially_structured`, was `unresolved`) — "Ability to turn or rebuke creatures." now structures to `class_feature`; Benefit still uncovered.
+50. **Improved Two-Weapon Fighting** (`partially_structured`, was `unresolved`) — "Dex 17, Two-Weapon Fighting, base attack bonus +6." now fully decomposes; Benefit still uncovered.
 51. **Improved Unarmed Strike** (`unresolved`) — real armed-when-unarmed mechanic; 2 paragraphs (disclosed).
 52. **Iron Will** (`unresolved`) — real +2 Will-save mechanic (same single-save-type gap as Great Fortitude).
-53. **Leadership** (`unresolved`) — "Character level 6th" not covered; real cohort/follower-table mechanic not covered.
+53. **Leadership** (`partially_structured`, was `unresolved`) — "Character level 6th." now fully structures to `character_level(6)`; real cohort/follower-table mechanic still uncovered.
 54. **Lightning Reflexes** (`unresolved`) — real +2 Reflex-save mechanic (same single-save-type gap).
-55. **Manyshot** (`unresolved`) — "Dex 17, Point Blank Shot, Rapid Shot, base attack bonus +6" not covered; 3 paragraphs (disclosed).
+55. **Manyshot** (`partially_structured`, was `unresolved`) — "Dex 17, Point Blank Shot, Rapid Shot, base attack bonus +6." now fully decomposes; Benefit still uncovered, 3 paragraphs (disclosed).
 56. **Martial Weapon Proficiency** (`unresolved`) — real attack-roll-normally mechanic.
 57. **Maximize Spell** (`unresolved`) — real metamagic maximize mechanic; 2 paragraphs (disclosed).
-58. **Mobility** (`unresolved`) — "Dex 13, Dodge" not covered; 2 paragraphs (disclosed).
-59. **Mounted Archery** (`unresolved`) — "Ride 1 rank, Mounted Combat" (reversed skill-rank phrasing, a known, deliberately-left-unstructured pattern — see design notes) not covered.
-60. **Mounted Combat** (`unresolved`) — "Ride 1 rank" (same reversed phrasing) not covered.
-61. **Natural Spell** (`unresolved`) — "Wis 13, wild shape ability" mixed clause not covered; 2 paragraphs (disclosed).
+58. **Mobility** (`partially_structured`, was `unresolved`) — "Dex 13, Dodge." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
+59. **Mounted Archery** (`partially_structured`, was `unresolved`) — "Ride 1 rank, Mounted Combat." — the real reversed skill-rank phrasing this pass added support for — now fully decomposes to `all[skill_ranks(ride,1), feat(mounted-combat)]`, no special; Benefit still uncovered.
+60. **Mounted Combat** (`partially_structured`, was `unresolved`) — "Ride 1 rank." now fully structures; Benefit still uncovered.
+61. **Natural Spell** (`partially_structured`, was `unresolved`) — "Wis 13, wild shape ability." now fully decomposes to `all[ability(wis,13), class_feature("wild shape ability.")]`, no special; Benefit still uncovered, 2 paragraphs (disclosed).
 62. **Point Blank Shot** (`unresolved`) — real ranged attack/damage bonus mechanic.
 63. **Power Attack** (`partially_structured`) — real attack-for-damage tradeoff mechanic.
 64. **Precise Shot** (`partially_structured`) — real melee-penalty-waiver mechanic.
 65. **Quick Draw** (`partially_structured`) — real free-action-draw mechanic; 2 paragraphs (disclosed).
 66. **Quicken Spell** (`unresolved`) — real metamagic swift-action mechanic.
-67. **Rapid Reload** (`unresolved`) — "Weapon Proficiency (crossbow type chosen)" not covered; 2 paragraphs (disclosed).
-68. **Rapid Shot** (`unresolved`) — "Dex 13, Point Blank Shot" not covered.
-69. **Ride-By Attack** (`unresolved`) — "Ride 1 rank, Mounted Combat" not covered.
+67. **Rapid Reload** (`partially_structured`, was `unresolved`) — "Weapon Proficiency (crossbow type chosen)." now structures to `proficiency` (typed, non-evaluable but no longer opaque `special`); Benefit still uncovered, 2 paragraphs (disclosed).
+68. **Rapid Shot** (`partially_structured`, was `unresolved`) — "Dex 13, Point Blank Shot." now fully decomposes; Benefit still uncovered.
+69. **Ride-By Attack** (`partially_structured`, was `unresolved`) — "Ride 1 rank, Mounted Combat." now fully decomposes; Benefit still uncovered.
 70. **Run** (`unresolved`) — real multi-clause speed mechanic.
-71. **Scribe Scroll** (`unresolved`) — "Caster level 1st" not covered; 2 paragraphs (disclosed).
+71. **Scribe Scroll** (`partially_structured`, was `unresolved`) — "Caster level 1st." now fully structures; Benefit still uncovered, 2 paragraphs (disclosed).
 72. **Shield Proficiency** (`unresolved`) — real standard-penalty mechanic.
-73. **Shot On The Run** (`unresolved`) — 5-clause mixed prereq not covered.
+73. **Shot On The Run** (`partially_structured`, was `unresolved`) — real 5-clause mixed prereq now fully decomposes; Benefit still uncovered.
 74. **Silent Spell** (`unresolved`) — real metamagic no-verbal-component mechanic.
 75. **Simple Weapon Proficiency** (`unresolved`) — real attack-roll-normally mechanic.
 76. **Skill Focus** (`unresolved`) — real +3 single-skill mechanic (targets one skill, not the covered two-skill pattern).
-77. **Snatch Arrows** (`unresolved`) — "Dex 15, Deflect Arrows, Improved Unarmed Strike" not covered; 2 paragraphs (disclosed).
+77. **Snatch Arrows** (`partially_structured`, was `unresolved`) — "Dex 15, Deflect Arrows, Improved Unarmed Strike." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
 78. **Spell Focus** (`unresolved`) — real DC-bonus mechanic.
-79. **Spell Mastery** (`unresolved`) — "Wizard level 1st" not covered; real spellbook-independence mechanic.
+79. **Spell Mastery** (`partially_structured`) — real spellbook-independence mechanic.
 80. **Spell Penetration** (`unresolved`) — real caster-level-check mechanic.
-81. **Spirited Charge** (`unresolved`) — "Ride 1 rank, Mounted Combat, Ride-By Attack" not covered.
-82. **Spring Attack** (`unresolved`) — "Dex 13, Dodge, Mobility, base attack bonus +4" not covered; 2 paragraphs (disclosed).
+81. **Spirited Charge** (`partially_structured`, was `unresolved`) — "Ride 1 rank, Mounted Combat, Ride-By Attack." now fully decomposes to 3 clean requirements, no special; Benefit still uncovered.
+82. **Spring Attack** (`partially_structured`, was `unresolved`) — "Dex 13, Dodge, Mobility, Point Blank Shot, base attack bonus +4." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
 83. **Still Spell** (`unresolved`) — real metamagic no-somatic-component mechanic; 2 paragraphs (disclosed).
-84. **Stunning Fist** (`unresolved`) — 4-clause mixed prereq not covered; real complex stun-save mechanic.
+84. **Stunning Fist** (`partially_structured`, was `unresolved`) — real 4-clause mixed prereq now fully decomposes; real complex stun-save mechanic still uncovered.
 85. **Toughness** (`unresolved`) — real +3 hit-point mechanic (a resource grant, not the covered skill-check-bonus pattern).
 86. **Tower Shield Proficiency** (`partially_structured`) — real standard-penalty mechanic.
 87. **Track** (`unresolved`) — real Survival-check mechanic (a check *procedure*, not a flat bonus — not covered); 2 paragraphs (disclosed).
-88. **Trample** (`unresolved`) — "Ride 1 rank, Mounted Combat" not covered.
-89. **Two-Weapon Defense** (`unresolved`) — "Dex 15, Two-Weapon Fighting" not covered; 2 paragraphs (disclosed).
+88. **Trample** (`partially_structured`, was `unresolved`) — "Ride 1 rank, Mounted Combat." now fully decomposes; Benefit still uncovered.
+89. **Two-Weapon Defense** (`partially_structured`, was `unresolved`) — "Dex 15, Two-Weapon Fighting." now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
 90. **Two-Weapon Fighting** (`partially_structured`) — real penalty-reduction mechanic.
 91. **Weapon Finesse** (`partially_structured`) — real ability-substitution mechanic.
-92. **Weapon Focus** (`unresolved`) — "Proficiency with selected weapon, base attack bonus +1" not covered.
-93. **Weapon Specialization** (`unresolved`) — "Proficiency with selected weapon, Weapon Focus with selected weapon, fighter level 4th" not covered.
-94. **Whirlwind Attack** (`unresolved`) — 7-clause mixed prereq not covered; 2 paragraphs (disclosed).
+92. **Weapon Focus** (`partially_structured`, was `unresolved`) — "Proficiency with selected weapon, base attack bonus +1." now fully decomposes to `all[proficiency, bab(1)]`, no special; Benefit still uncovered.
+93. **Weapon Specialization** (`unresolved`) — prerequisite now mostly decomposes (proficiency, feat, class_level structured); one "with selected weapon" residual clause remains honest `special`; Benefit still uncovered.
+94. **Whirlwind Attack** (`partially_structured`, was `unresolved`) — real 7-clause mixed prereq now fully decomposes; Benefit still uncovered, 2 paragraphs (disclosed).
 95. **Widen Spell** (`unresolved`) — real metamagic area-increase mechanic; 5 real paragraphs, only first parsed (disclosed).
 
 </details>
 
-## What's needed to close these gaps (explicit follow-on work, not implied by this report)
+## What's still needed (explicit follow-on work, not implied by this report)
 
-Reading the real gap list above, the highest-value next structured-effect patterns (by how many real feats they'd resolve) are:
-1. **Single-named-skill/save bonus** (`"You get a +N bonus on <check type>"` with one target, not two) — would resolve Great Fortitude, Iron Will, Lightning Reflexes, Improved Initiative, Skill Focus, and similar (~6+ feats).
-2. **Clean caster-level/character-level/class-level prerequisites** (`"Caster level Nth."`, `"Character level Nth."`, `"Wizard level Nth."`) — the type union already models `caster_level`/`character_level`/`class_level`; this pass's regex set simply didn't include them (a real, cheap next-pass win, ~10 feats).
-3. **Multi-clause `all`-prerequisite composition** (comma-separated mixed ability/feat/BAB clauses like "Str 13, Power Attack.") — the schema already supports `{kind:"all", requirements:[...]}`; this pass only structured single-clause and pure-feat-reference-list prerequisites.
-4. **The reversed skill-rank phrasing** (`"Ride 1 rank."` instead of `"1 rank in Ride"`) — deliberately left unstructured this pass (see the implementer's real judgment call, confirmed by review against the live page) rather than guessed; a real, cheap fix once prioritized.
-5. **Resource-grant effects** (Toughness's flat HP grant) and **metamagic-specific effects** (the 9 real Metamagic feats, all currently `unresolved`) are each their own real effect-pattern family, not yet attempted.
+Prerequisite decomposition is now real and substantial (81 → 38 unresolved). The remaining gap is almost entirely **Benefit-side**: this pass did not touch effect-pattern coverage. Reading the list above, the highest-value next structured-effect patterns (by how many real feats they'd resolve) are unchanged from the original report's assessment:
+
+1. **Single-named-check/save bonus** (`"You get a +N bonus on <check type>"` with one target, not two) — would resolve Great Fortitude, Iron Will, Lightning Reflexes, Improved Initiative, Skill Focus, Combat Casting, Point Blank Shot, and similar (~8+ feats).
+2. **Resource-grant effects** (Toughness's flat HP grant) and **metamagic-specific effects** (the 9 real Metamagic feats, all still `unresolved`) are each their own real effect-pattern family, not yet attempted.
+3. **Cross-reference Benefits** ("See Armor Proficiency (light)", "This feat works like Cleave, except...") — a distinct real pattern (a Benefit that defers to another feat's text rather than stating its own mechanic).
+4. **Item-creation Benefits** (Brew Potion, Craft Wand/Rod/Staff/Ring/Wondrous Item, Scribe Scroll) — a real, recurring cost/time-formula family (`spell level × caster level × N gp`) shared across ~7 feats.
+5. Two genuinely unstructured prerequisite clauses remain by deliberate, honest design choice, not oversight: "compatible alignment" (Improved Familiar — inherently relative to another character's alignment, not a flat literal) and the "with selected weapon" qualifier (Greater Weapon Focus/Specialization, Weapon Specialization — no atomic schema shape yet for "same choice as a referenced feat's chosen weapon"). Both are preserved verbatim as `special`, never guessed.
 
 None of the above is claimed as done — this section names real, concrete follow-on work, not a completion promise.

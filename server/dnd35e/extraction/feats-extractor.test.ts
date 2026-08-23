@@ -93,6 +93,133 @@ test("single-paragraph Benefit feats (e.g. Acrobatic) get no multi-paragraph dis
   );
 });
 
+// --- multi-clause prerequisite decomposition (real fixture data) ---------
+
+test("Cleave: real mixed 'Str 13, Power Attack.' prerequisite decomposes into a real all-composite of ability + feat, no leftover special", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const cleave = feats.find((f) => f.canonicalId === "dnd35e:feat:cleave");
+  assert.ok(cleave, "Cleave must be found in the real fixture");
+  assert.deepEqual(cleave!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "ability", ability: "str", minimum: 13 },
+      { kind: "feat", featCanonicalId: "dnd35e:feat:power-attack" },
+    ],
+  });
+});
+
+test("Great Cleave: real 4-clause 'Str 13, Cleave, Power Attack, base attack bonus +4.' fully decomposes — every clause structured, no special", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const greatCleave = feats.find((f) => f.canonicalId === "dnd35e:feat:great-cleave");
+  assert.ok(greatCleave, "Great Cleave must be found in the real fixture");
+  assert.deepEqual(greatCleave!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "ability", ability: "str", minimum: 13 },
+      { kind: "feat", featCanonicalId: "dnd35e:feat:cleave" },
+      { kind: "feat", featCanonicalId: "dnd35e:feat:power-attack" },
+      { kind: "bab", minimum: 4 },
+    ],
+  });
+});
+
+test("Brew Potion: real 'Caster level 3rd.' prerequisite structures to a real caster_level prerequisite", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const brewPotion = feats.find((f) => f.canonicalId === "dnd35e:feat:brew-potion");
+  assert.ok(brewPotion, "Brew Potion must be found in the real fixture");
+  assert.deepEqual(brewPotion!.prerequisites, { kind: "caster_level", minimum: 3 });
+});
+
+test("Mounted Combat: real reversed skill-rank phrasing 'Ride 1 rank.' structures to a real skill_ranks prerequisite", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const mountedCombat = feats.find((f) => f.canonicalId === "dnd35e:feat:mounted-combat");
+  assert.ok(mountedCombat, "Mounted Combat must be found in the real fixture");
+  assert.deepEqual(mountedCombat!.prerequisites, { kind: "skill_ranks", skillCanonicalId: "dnd35e:skill:ride", ranks: 1 });
+});
+
+test("Trample: real 'Ride 1 rank, Mounted Combat.' fully decomposes into skill_ranks + feat, with no spurious trailing-period special clause", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const trample = feats.find((f) => f.canonicalId === "dnd35e:feat:trample");
+  assert.ok(trample, "Trample must be found in the real fixture");
+  assert.deepEqual(trample!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "skill_ranks", skillCanonicalId: "dnd35e:skill:ride", ranks: 1 },
+      { kind: "feat", featCanonicalId: "dnd35e:feat:mounted-combat" },
+    ],
+  });
+});
+
+test("Weapon Specialization: real 'Proficiency with selected weapon, Weapon Focus with selected weapon, fighter level 4th.' — proficiency, feat+residual, and generic class_level all structure; only the qualifier prose stays special", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const weaponSpecialization = feats.find((f) => f.canonicalId === "dnd35e:feat:weapon-specialization");
+  assert.ok(weaponSpecialization, "Weapon Specialization must be found in the real fixture");
+  assert.deepEqual(weaponSpecialization!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "proficiency", description: "Proficiency with selected weapon" },
+      { kind: "feat", featCanonicalId: "dnd35e:feat:weapon-focus" },
+      { kind: "special", description: "with selected weapon" },
+      { kind: "class_level", classCanonicalId: "dnd35e:class:fighter", minimum: 4 },
+    ],
+  });
+});
+
+test("Natural Spell: real 'Wis 13, wild shape ability.' — ability score structures, and the bare 'X ability' phrasing structures to class_feature", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const naturalSpell = feats.find((f) => f.canonicalId === "dnd35e:feat:natural-spell");
+  assert.ok(naturalSpell, "Natural Spell must be found in the real fixture");
+  assert.deepEqual(naturalSpell!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "ability", ability: "wis", minimum: 13 },
+      { kind: "class_feature", description: "wild shape ability." },
+    ],
+  });
+});
+
+test("Exotic Weapon Proficiency: real 'Base attack bonus +1 (plus Str 13 for bastard sword or dwarven waraxe).' preserves the parenthetical aside as an honest special sibling, never silently dropped", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const exoticWeaponProficiency = feats.find((f) => f.canonicalId === "dnd35e:feat:exotic-weapon-proficiency");
+  assert.ok(exoticWeaponProficiency, "Exotic Weapon Proficiency must be found in the real fixture");
+  assert.deepEqual(exoticWeaponProficiency!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "bab", minimum: 1 },
+      { kind: "special", description: "plus Str 13 for bastard sword or dwarven waraxe" },
+    ],
+  });
+});
+
+test("Augment Summoning: real 'Spell Focus (conjuration).' preserves the school qualifier as an honest special sibling alongside the real feat requirement", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const augmentSummoning = feats.find((f) => f.canonicalId === "dnd35e:feat:augment-summoning");
+  assert.ok(augmentSummoning, "Augment Summoning must be found in the real fixture");
+  assert.deepEqual(augmentSummoning!.prerequisites, {
+    kind: "all",
+    requirements: [
+      { kind: "feat", featCanonicalId: "dnd35e:feat:spell-focus" },
+      { kind: "special", description: "(conjuration)" },
+    ],
+  });
+});
+
+test("Rapid Reload: real 'Weapon Proficiency (crossbow type chosen).' structures to a real proficiency prerequisite (non-evaluable but typed, not opaque special)", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const rapidReload = feats.find((f) => f.canonicalId === "dnd35e:feat:rapid-reload");
+  assert.ok(rapidReload, "Rapid Reload must be found in the real fixture");
+  assert.deepEqual(rapidReload!.prerequisites, { kind: "proficiency", description: "Weapon Proficiency (crossbow type chosen)." });
+});
+
+test("real unresolved-prerequisite rate dropped substantially versus the pre-deepening baseline (81/110) — deterministic multi-clause coverage, not a corpus limitation", () => {
+  const feats = extractFeatsFromHtml(FIXTURE_HTML);
+  const unresolved = feats.filter((f) => f.extractionStatus === "unresolved");
+  assert.ok(
+    unresolved.length < 50,
+    `expected a substantial real reduction from the 81/110 pre-deepening baseline, got ${unresolved.length}/110 unresolved`,
+  );
+});
+
 test("no extracted feat silently invents a mechanical effect for prose it could not parse", () => {
   const feats = extractFeatsFromHtml(FIXTURE_HTML);
   for (const feat of feats) {

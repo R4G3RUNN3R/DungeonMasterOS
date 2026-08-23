@@ -92,11 +92,54 @@ function normalizeHeading(raw: string): "prerequisites" | "benefit" | "normal" |
 }
 
 // --- prerequisite parsing ------------------------------------------------
+//
+// The real page overwhelmingly phrases multi-part prerequisites as a
+// top-level comma-separated list ("Str 13, Power Attack.", "Dex 13, Wis 13,
+// Improved Unarmed Strike, base attack bonus +8."). This pass splits on
+// those top-level commas (respecting paren nesting, since one real clause —
+// Exotic Weapon Proficiency's BAB clause — embeds its own parenthetical
+// aside), classifies each clause independently against an expanded pattern
+// set, and composes the results into a real `{kind:"all", requirements:[...]}`
+// instead of one opaque `special` blob for the whole field. A clause that
+// still doesn't match anything becomes its own per-clause `special` — never
+// silently dropped, never guessed — so a partially-mixed field now yields
+// real structured facts for its recognizable parts and honest `special` only
+// for the genuinely unrecognized remainder.
+//
+// No real "any"/OR-alternative prerequisite was observed on this page (only
+// AND-composition via comma lists), so this pass does not attempt to detect
+// OR phrasing — the evaluator already supports `any`, this extractor simply
+// has nothing real to feed it yet.
 
 const FEAT_ANCHOR_RE = /<a href="#([a-zA-Z0-9]+)">([^<]*)<\/a>/g;
-const BAB_WHOLE_RE = /^Base attack bonus \+(\d+)\.?$/;
+// Case-insensitive: "Base attack bonus" is only capitalized when it opens
+// the whole field. Mid-field, after a comma-split, the real page has it
+// lowercase ("Proficient with weapon, base attack bonus +8.").
+const BAB_WHOLE_RE = /^base attack bonus \+(\d+)\.?$/i;
+// Exotic Weapon Proficiency's real clause: "Base attack bonus +1 (plus Str
+// 13 for bastard sword or dwarven waraxe)." — a BAB value plus a genuine
+// parenthetical aside that must not be silently dropped.
+const BAB_TRAILING_RE = /^base attack bonus \+(\d+)\s*\(([^)]*)\)\.?$/i;
 const ABILITY_WHOLE_RE = /^(Str|Dex|Con|Int|Wis|Cha) (\d+)\.?$/;
+// Original phrasing: "N ranks in <skill>."
 const SKILL_RANKS_WHOLE_RE = /^(\d+) ranks? in ([A-Za-z ]+?)\.?$/;
+// Reversed phrasing, the real page's actual style for this ("Ride 1 rank.").
+// Requires the literal "rank(s)" keyword so it can't collide with the
+// ability-score pattern (which is checked first anyway).
+const SKILL_RANKS_REVERSED_RE = /^([A-Za-z][A-Za-z ]*?) (\d+) ranks?\.?$/;
+const CASTER_LEVEL_RE = /^caster level (\d+)(?:st|nd|rd|th)?\.?$/i;
+const CHARACTER_LEVEL_RE = /^character level (\d+)(?:st|nd|rd|th)?\.?$/i;
+const MANIFESTER_LEVEL_RE = /^manifester level (\d+)(?:st|nd|rd|th)?\.?$/i;
+// Generic "<Class> level Nth." — checked only after the three specific
+// level kinds above, so it never swallows "Caster level 3rd." as a class
+// named "Caster". stripTags already removes the real page's <a
+// href="/srd/classes/...">Fighter</a> wrapper, leaving plain "fighter level
+// 8th." for this to match.
+const CLASS_LEVEL_RE = /^([A-Za-z][A-Za-z '-]*?) level (\d+)(?:st|nd|rd|th)?\.?$/i;
+// Real page phrasings: "Proficiency with selected weapon", "Proficient with
+// weapon", "Weapon Proficiency (crossbow type chosen)." — broad substring
+// match is deliberate; every real observed variant contains "proficien".
+const PROFICIENCY_RE = /proficien(t|cy)/i;
 
 type AbilityCode = "str" | "dex" | "con" | "int" | "wis" | "cha";
 
@@ -109,60 +152,131 @@ const ABILITY_CODE: Record<string, AbilityCode> = {
   Cha: "cha",
 };
 
-function parsePrerequisites(rawHtml: string): Dnd35eFeatPrerequisite {
-  const text = stripTags(rawHtml);
-
-  // Pattern 1: a pure comma/period-separated list of #slug feat-anchor
-  // links, with no other real prose content in the field.
-  const anchors: { slug: string }[] = [];
-  let anchorMatch: RegExpExecArray | null;
-  FEAT_ANCHOR_RE.lastIndex = 0;
-  while ((anchorMatch = FEAT_ANCHOR_RE.exec(rawHtml))) {
-    anchors.push({ slug: anchorMatch[1] });
-  }
-  if (anchors.length > 0) {
-    const remainder = stripTags(rawHtml.replace(FEAT_ANCHOR_RE, ""));
-    // FEAT_ANCHOR_RE has the /g flag; replace() with a global regex and no
-    // lastIndex dependency is safe here since we're not using exec() on it.
-    if (/^[,.\s]*$/.test(remainder)) {
-      const requirements: Dnd35eFeatPrerequisite[] = anchors.map((a) => ({
-        kind: "feat",
-        featCanonicalId: buildCanonicalId("dnd35e", "feat", kebabCase(a.slug)),
-      }));
-      return requirements.length === 1 ? requirements[0] : { kind: "all", requirements };
+// Splits raw prerequisite HTML on top-level commas — commas not nested
+// inside parentheses. This must operate on the raw HTML (not stripped text)
+// so per-clause classification can still see <a href="#slug"> feat anchors.
+function splitTopLevelClauses(rawHtml: string): string[] {
+  const clauses: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of rawHtml) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) {
+      clauses.push(current);
+      current = "";
+    } else {
+      current += ch;
     }
   }
+  if (current.trim().length > 0) clauses.push(current);
+  return clauses.map((c) => c.trim()).filter((c) => c.length > 0);
+}
 
-  // Pattern 2: a bare "Base attack bonus +N." field, nothing else.
-  const babMatch = BAB_WHOLE_RE.exec(text);
-  if (babMatch) {
-    return { kind: "bab", minimum: Number(babMatch[1]) };
-  }
-
-  // Pattern 3: a bare "Xyz N." ability-score field, nothing else.
-  const abilityMatch = ABILITY_WHOLE_RE.exec(text);
-  if (abilityMatch) {
-    return { kind: "ability", ability: ABILITY_CODE[abilityMatch[1]], minimum: Number(abilityMatch[2]) };
-  }
-
-  // Pattern 4: a bare "N ranks in <skill>." field, nothing else. (Note: the
-  // real fixture's skill-rank prerequisites are all phrased the opposite
-  // way — "<Skill> N rank(s)", e.g. "Ride 1 rank" — which this pattern does
-  // not match; those honestly fall through to `special` below rather than
-  // being force-matched by a pattern this plan didn't actually observe.)
-  const skillMatch = SKILL_RANKS_WHOLE_RE.exec(text);
-  if (skillMatch) {
-    return {
-      kind: "skill_ranks",
-      skillCanonicalId: buildCanonicalId("dnd35e", "skill", kebabCase(skillMatch[2].trim())),
-      ranks: Number(skillMatch[1]),
+// Classifies one clause (raw HTML, no top-level commas inside it) into one
+// or more prerequisites. Almost always returns exactly one; a clause that
+// pairs a real feat/BAB anchor with genuine trailing prose (a parenthetical
+// aside, a "with selected weapon" qualifier) returns the structured fact
+// plus a `special` sibling for the prose, so nothing real is silently lost.
+function classifyClause(rawClauseHtml: string): Dnd35eFeatPrerequisite[] {
+  const anchors = [...rawClauseHtml.matchAll(FEAT_ANCHOR_RE)];
+  if (anchors.length === 1) {
+    const featReq: Dnd35eFeatPrerequisite = {
+      kind: "feat",
+      featCanonicalId: buildCanonicalId("dnd35e", "feat", kebabCase(anchors[0][1])),
     };
+    // Strip stray leading/trailing commas and periods (sentence-ending
+    // punctuation left behind by clause-splitting, e.g. a bare "." after
+    // the anchor when this was the last item in a list) before deciding
+    // whether real trailing prose remains — "(conjuration)" and "with
+    // selected weapon" are real content; a lone "." is not.
+    const residual = stripTags(rawClauseHtml.replace(FEAT_ANCHOR_RE, ""))
+      .trim()
+      .replace(/^[,.]+|[,.]+$/g, "")
+      .trim();
+    return residual.length === 0 ? [featReq] : [featReq, { kind: "special", description: residual }];
   }
 
-  // Anything else — including every mixed clause like "Str 13, Power
-  // Attack." or "Base attack bonus +1 (plus Str 13 for bastard sword...)."
-  // — is real prose this pass doesn't force into a wrong structured shape.
-  return { kind: "special", description: text };
+  const text = stripTags(rawClauseHtml);
+  if (text.length === 0) return [];
+
+  const babTrailing = BAB_TRAILING_RE.exec(text);
+  if (babTrailing) {
+    return [
+      { kind: "bab", minimum: Number(babTrailing[1]) },
+      { kind: "special", description: babTrailing[2].trim() },
+    ];
+  }
+
+  const bab = BAB_WHOLE_RE.exec(text);
+  if (bab) return [{ kind: "bab", minimum: Number(bab[1]) }];
+
+  const ability = ABILITY_WHOLE_RE.exec(text);
+  if (ability) return [{ kind: "ability", ability: ABILITY_CODE[ability[1]], minimum: Number(ability[2]) }];
+
+  const skillForward = SKILL_RANKS_WHOLE_RE.exec(text);
+  if (skillForward) {
+    return [
+      {
+        kind: "skill_ranks",
+        skillCanonicalId: buildCanonicalId("dnd35e", "skill", kebabCase(skillForward[2].trim())),
+        ranks: Number(skillForward[1]),
+      },
+    ];
+  }
+
+  const casterLevel = CASTER_LEVEL_RE.exec(text);
+  if (casterLevel) return [{ kind: "caster_level", minimum: Number(casterLevel[1]) }];
+
+  const characterLevel = CHARACTER_LEVEL_RE.exec(text);
+  if (characterLevel) return [{ kind: "character_level", minimum: Number(characterLevel[1]) }];
+
+  const manifesterLevel = MANIFESTER_LEVEL_RE.exec(text);
+  if (manifesterLevel) return [{ kind: "manifester_level", minimum: Number(manifesterLevel[1]) }];
+
+  const classLevel = CLASS_LEVEL_RE.exec(text);
+  if (classLevel) {
+    return [
+      {
+        kind: "class_level",
+        classCanonicalId: buildCanonicalId("dnd35e", "class", kebabCase(classLevel[1].trim())),
+        minimum: Number(classLevel[2]),
+      },
+    ];
+  }
+
+  const skillReversed = SKILL_RANKS_REVERSED_RE.exec(text);
+  if (skillReversed) {
+    return [
+      {
+        kind: "skill_ranks",
+        skillCanonicalId: buildCanonicalId("dnd35e", "skill", kebabCase(skillReversed[1].trim())),
+        ranks: Number(skillReversed[2]),
+      },
+    ];
+  }
+
+  if (PROFICIENCY_RE.test(text)) {
+    return [{ kind: "proficiency", description: text }];
+  }
+
+  const withoutTrailingPeriod = text.replace(/\.$/, "");
+  if (/^ability to /i.test(text) || /\bability$/i.test(withoutTrailingPeriod)) {
+    return [{ kind: "class_feature", description: text }];
+  }
+
+  // Real prose this pass genuinely can't normalize safely (e.g. "compatible
+  // alignment" — inherently relative to another character's alignment, not
+  // a flat literal value; "sufficiently high level (see below)" — points at
+  // narrative table lookup, not a number). Preserved verbatim, never guessed.
+  return [{ kind: "special", description: text }];
+}
+
+function parsePrerequisites(rawHtml: string): Dnd35eFeatPrerequisite {
+  const clauses = splitTopLevelClauses(rawHtml);
+  const requirements = clauses.flatMap(classifyClause);
+  if (requirements.length === 0) return { kind: "special", description: stripTags(rawHtml) };
+  return requirements.length === 1 ? requirements[0] : { kind: "all", requirements };
 }
 
 // --- benefit / effect parsing --------------------------------------------
