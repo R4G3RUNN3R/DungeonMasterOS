@@ -65,6 +65,17 @@ import {
   type RecordRevisionInput,
 } from "@shared/rules-registry/revisions";
 import { isValidCanonicalId } from "@shared/rules-registry/canonical-id";
+import {
+  srdManifestEntries,
+  srdSourcePageRevisions,
+  type SrdManifestEntry,
+  type SrdSourcePageRevision,
+  type CreateSrdManifestEntryInput,
+  type RecordSourcePageRevisionInput,
+  type CorpusArea,
+  type PageProcessingStatus,
+  buildSourcePageKey,
+} from "@shared/rules-registry/srd-manifest";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc } from "drizzle-orm";
@@ -560,6 +571,47 @@ export function runMigrations() {
 
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_canonical_revisions_canonical_id
     ON canonical_revisions(canonical_id);`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_page_key TEXT NOT NULL UNIQUE,
+    ruleset TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    corpus_area TEXT NOT NULL,
+    source_url TEXT NOT NULL UNIQUE,
+    source_path TEXT NOT NULL,
+    discovered_from_path TEXT,
+    content_hash TEXT,
+    processing_status TEXT NOT NULL DEFAULT 'discovered',
+    verification_method TEXT,
+    verified_by TEXT,
+    verified_at TEXT,
+    verification_notes TEXT,
+    last_error TEXT,
+    last_attempt_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    discovered_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_srd_manifest_entries_corpus_area
+    ON srd_manifest_entries(corpus_area);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_srd_manifest_entries_source_id
+    ON srd_manifest_entries(source_id);`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_source_page_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_page_key TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    changed_at TEXT NOT NULL,
+    changed_by TEXT NOT NULL DEFAULT '',
+    change_reason TEXT NOT NULL,
+    old_content_hash TEXT,
+    new_content_hash TEXT
+  );`);
+
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_srd_source_page_revisions_key
+    ON srd_source_page_revisions(source_page_key);`);
 }
 
 export type TurnLedgerReason =
@@ -832,6 +884,18 @@ export interface IStorage {
   updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void;
   recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void;
   recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void;
+
+  // SRD source-page manifest (Phase 2A). Page-scoped, never entity-scoped —
+  // see shared/rules-registry/srd-manifest.ts's header comment. ruleset is
+  // never a parameter: createSrdManifestEntry always writes "dnd35e" internally.
+  createSrdManifestEntry(input: CreateSrdManifestEntryInput): SrdManifestEntry;
+  upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: string }): SrdManifestEntry;
+  updateSrdManifestEntryProcessingStatus(sourcePageKey: string, status: PageProcessingStatus): void;
+  recordSrdManifestDiscoveryFailure(input: CreateSrdManifestEntryInput, errorMessage: string): SrdManifestEntry;
+  getSrdManifestEntry(sourcePageKey: string): SrdManifestEntry | undefined;
+  listSrdManifestEntries(filter?: { corpusArea?: CorpusArea; sourceId?: number }): SrdManifestEntry[];
+  recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision;
+  getSourcePageRevisionHistory(sourcePageKey: string): SrdSourcePageRevision[];
 
   // Campaign source selection (Task 5) — the persisted, authoritative
   // resolver for "what sources can this campaign see." getCampaignEnabledSources
@@ -1659,6 +1723,232 @@ export class DatabaseStorage implements IStorage {
       .set({ pinnedRevision, updatedAt: new Date().toISOString() })
       .where(eq(ruleSources.sourceKey, sourceKey))
       .run();
+  }
+
+  createSrdManifestEntry(input: CreateSrdManifestEntryInput): SrdManifestEntry {
+    const source = this.getRuleSourceById(input.sourceId);
+    if (!source) throw new Error(`Rule source ${input.sourceId} not found`);
+    const sourcePageKey = buildSourcePageKey(source.sourceKey, input.sourcePath);
+    const now = new Date().toISOString();
+    return db.insert(srdManifestEntries).values({
+      sourcePageKey,
+      ruleset: "dnd35e",
+      sourceId: input.sourceId,
+      corpusArea: input.corpusArea,
+      sourceUrl: input.sourceUrl,
+      sourcePath: input.sourcePath,
+      discoveredFromPath: input.discoveredFromPath ?? null,
+      processingStatus: "discovered",
+      attemptCount: 0,
+      discoveredAt: now,
+      updatedAt: now,
+    }).returning().get();
+  }
+
+  upsertSrdManifestEntry(input: CreateSrdManifestEntryInput & { contentHash: string }): SrdManifestEntry {
+    const source = this.getRuleSourceById(input.sourceId);
+    if (!source) throw new Error(`Rule source ${input.sourceId} not found`);
+    const sourcePageKey = buildSourcePageKey(source.sourceKey, input.sourcePath);
+    const now = new Date().toISOString();
+    const existing = db.select().from(srdManifestEntries)
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get();
+
+    if (!existing) {
+      return db.insert(srdManifestEntries).values({
+        sourcePageKey,
+        ruleset: "dnd35e",
+        sourceId: input.sourceId,
+        corpusArea: input.corpusArea,
+        sourceUrl: input.sourceUrl,
+        sourcePath: input.sourcePath,
+        discoveredFromPath: input.discoveredFromPath ?? null,
+        contentHash: input.contentHash,
+        processingStatus: "discovered",
+        lastError: null,
+        lastAttemptAt: now,
+        attemptCount: 0,
+        discoveredAt: now,
+        updatedAt: now,
+      }).returning().get();
+    }
+
+    // Reconcile the CURRENT generated-manifest metadata onto the existing
+    // row on every successful call, independent of whether the content hash
+    // itself changed. corpusArea specifically can be legitimately corrected
+    // during Task 6's iteration before the final snapshot converges — a row
+    // must not keep an obsolete classification just because its content
+    // happens not to have changed since the last scan. This is metadata
+    // RECONCILIATION, a separate concept from a content REVISION: it is
+    // folded into every branch below via object spread, and never by itself
+    // triggers recordSourcePageRevision — only a genuine content-hash change
+    // does that (see the final branch).
+    const metadataPatch: Partial<typeof srdManifestEntries.$inferInsert> = {};
+    if (existing.corpusArea !== input.corpusArea) metadataPatch.corpusArea = input.corpusArea;
+    if (existing.sourceUrl !== input.sourceUrl) metadataPatch.sourceUrl = input.sourceUrl;
+    if (input.discoveredFromPath !== undefined && existing.discoveredFromPath !== input.discoveredFromPath) {
+      metadataPatch.discoveredFromPath = input.discoveredFromPath;
+    }
+
+    const isFirstRealAcquisition = existing.contentHash === null;
+    const hashChanged = !isFirstRealAcquisition && existing.contentHash !== input.contentHash;
+
+    if (!isFirstRealAcquisition && !hashChanged) {
+      // True no-op on CONTENT: identical hash to what's already recorded.
+      // This is still a real successful fetch attempt, so it ALWAYS stamps
+      // lastAttemptAt and clears any stale lastError — even when lastError
+      // was already null and even when metadataPatch is empty. A prior
+      // revision of this plan special-cased "nothing to update" as an early
+      // return; that silently violated the requirement that every
+      // successful fetch attempt is stamped, so there is no early return
+      // here at all — every successful call always writes.
+      db.update(srdManifestEntries)
+        .set({ ...metadataPatch, lastError: null, lastAttemptAt: now, updatedAt: now })
+        .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+        .run();
+      return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
+    }
+
+    if (isFirstRealAcquisition) {
+      // Every prior attempt for this row only ever failed (contentHash was
+      // never set) — this is the FIRST real content acquisition, not a
+      // "content changed" event. No revision recorded; verification fields
+      // are already at their creation defaults (null), so there's nothing
+      // to reset — resetting them here would be a no-op, but recording a
+      // revision here would be dishonest: nothing about real content changed,
+      // real content simply arrived for the first time.
+      db.update(srdManifestEntries)
+        .set({ ...metadataPatch, contentHash: input.contentHash, lastError: null, lastAttemptAt: now, updatedAt: now })
+        .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+        .run();
+      return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
+    }
+
+    // Genuine content change: existing.contentHash was already a real,
+    // non-null value, and the new hash differs from it. processingStatus
+    // resets to "discovered" AND all four verification fields reset to
+    // null — a verification record describes the OLD content snapshot and
+    // must never silently survive attached to genuinely different content.
+    // Metadata reconciliation folds into this same update.
+    db.update(srdManifestEntries)
+      .set({
+        ...metadataPatch,
+        contentHash: input.contentHash,
+        processingStatus: "discovered",
+        verificationMethod: null,
+        verifiedBy: null,
+        verifiedAt: null,
+        verificationNotes: null,
+        lastError: null,
+        lastAttemptAt: now,
+        updatedAt: now,
+      })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
+
+    // attemptCount is a fetch-failure/retry counter, NOT a revision counter —
+    // using it here would let two separate content-hash changes collide on
+    // the same revision number if no failure ever incremented attemptCount
+    // in between. The real next revision is derived from this page's own
+    // revision history (newest-first per getSourcePageRevisionHistory's
+    // contract), never from an unrelated counter.
+    const priorRevisions = this.getSourcePageRevisionHistory(sourcePageKey);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+
+    this.recordSourcePageRevision({
+      sourcePageKey,
+      revision: nextRevision,
+      changeReason: "content hash changed on re-scan, processingStatus and verification metadata reset",
+      changedBy: "srd-manifest-discovery",
+      oldContentHash: existing.contentHash ?? undefined,
+      newContentHash: input.contentHash,
+    });
+
+    return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
+  }
+
+  updateSrdManifestEntryProcessingStatus(sourcePageKey: string, status: PageProcessingStatus): void {
+    db.update(srdManifestEntries)
+      .set({ processingStatus: status, updatedAt: new Date().toISOString() })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
+  }
+
+  recordSrdManifestDiscoveryFailure(input: CreateSrdManifestEntryInput, errorMessage: string): SrdManifestEntry {
+    const source = this.getRuleSourceById(input.sourceId);
+    if (!source) throw new Error(`Rule source ${input.sourceId} not found`);
+    const sourcePageKey = buildSourcePageKey(source.sourceKey, input.sourcePath);
+    const now = new Date().toISOString();
+    const existing = db.select().from(srdManifestEntries)
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get();
+
+    if (!existing) {
+      return db.insert(srdManifestEntries).values({
+        sourcePageKey,
+        ruleset: "dnd35e",
+        sourceId: input.sourceId,
+        corpusArea: input.corpusArea,
+        sourceUrl: input.sourceUrl,
+        sourcePath: input.sourcePath,
+        discoveredFromPath: input.discoveredFromPath ?? null,
+        processingStatus: "discovered",
+        lastError: errorMessage,
+        lastAttemptAt: now,
+        attemptCount: 1,
+        discoveredAt: now,
+        updatedAt: now,
+      }).returning().get();
+    }
+
+    // Even a failed attempt carries the CURRENT generated-manifest metadata —
+    // the caller always passes corpusArea/sourceUrl/discoveredFromPath from
+    // the live snapshot, not a cached value — so reconcile it onto the row
+    // here too. Otherwise a run of consecutive failures leaves a stale
+    // corpusArea/sourceUrl/discoveredFromPath sitting on an otherwise-real
+    // row merely because the newest request happened to fail rather than
+    // succeed; a fetch failure says nothing about whether the manifest's own
+    // metadata for this page is still correct.
+    const metadataPatch: Partial<typeof srdManifestEntries.$inferInsert> = {};
+    if (existing.corpusArea !== input.corpusArea) metadataPatch.corpusArea = input.corpusArea;
+    if (existing.sourceUrl !== input.sourceUrl) metadataPatch.sourceUrl = input.sourceUrl;
+    if (input.discoveredFromPath !== undefined && existing.discoveredFromPath !== input.discoveredFromPath) {
+      metadataPatch.discoveredFromPath = input.discoveredFromPath;
+    }
+
+    db.update(srdManifestEntries)
+      .set({ ...metadataPatch, lastError: errorMessage, lastAttemptAt: now, attemptCount: existing.attemptCount + 1, updatedAt: now })
+      .where(eq(srdManifestEntries.sourcePageKey, sourcePageKey))
+      .run();
+    return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get()!;
+  }
+
+  getSrdManifestEntry(sourcePageKey: string): SrdManifestEntry | undefined {
+    return db.select().from(srdManifestEntries).where(eq(srdManifestEntries.sourcePageKey, sourcePageKey)).get();
+  }
+
+  listSrdManifestEntries(filter?: { corpusArea?: CorpusArea; sourceId?: number }): SrdManifestEntry[] {
+    const conditions = [];
+    if (filter?.corpusArea) conditions.push(eq(srdManifestEntries.corpusArea, filter.corpusArea));
+    if (filter?.sourceId) conditions.push(eq(srdManifestEntries.sourceId, filter.sourceId));
+    if (conditions.length === 0) return db.select().from(srdManifestEntries).all();
+    return db.select().from(srdManifestEntries).where(and(...conditions)).all();
+  }
+
+  recordSourcePageRevision(input: RecordSourcePageRevisionInput): SrdSourcePageRevision {
+    return db.insert(srdSourcePageRevisions).values({
+      sourcePageKey: input.sourcePageKey,
+      revision: input.revision,
+      changedBy: input.changedBy ?? "",
+      changeReason: input.changeReason,
+      oldContentHash: input.oldContentHash ?? null,
+      newContentHash: input.newContentHash ?? null,
+    }).returning().get();
+  }
+
+  getSourcePageRevisionHistory(sourcePageKey: string): SrdSourcePageRevision[] {
+    return db.select().from(srdSourcePageRevisions)
+      .where(eq(srdSourcePageRevisions.sourcePageKey, sourcePageKey))
+      .orderBy(desc(srdSourcePageRevisions.revision))
+      .all();
   }
 
   // Campaign source selection (Task 5) — both of these are intentionally
