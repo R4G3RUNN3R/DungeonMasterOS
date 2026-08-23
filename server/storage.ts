@@ -58,6 +58,7 @@ import {
   type SourcePreset,
   type CampaignSourceContext,
 } from "@shared/rules-registry/source-enablement";
+import type { VerificationMetadata } from "@shared/rules-registry/provenance";
 import {
   canonicalRevisions,
   type CanonicalRevision,
@@ -534,6 +535,9 @@ export function runMigrations() {
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_rule_sources_ruleset_setting
     ON rule_sources(ruleset, setting);`);
 
+  addColumnIfMissing("rule_sources", "derived_from_source_id", "INTEGER");
+  addColumnIfMissing("rule_sources", "pinned_revision", "TEXT");
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS campaign_enabled_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_id INTEGER NOT NULL,
@@ -826,6 +830,8 @@ export interface IStorage {
   getRuleSourceById(id: number): RuleSource | undefined;
   listRuleSources(filter?: { ruleset?: string; setting?: string }): RuleSource[];
   updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void;
+  recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void;
+  recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void;
 
   // Campaign source selection (Task 5) — the persisted, authoritative
   // resolver for "what sources can this campaign see." getCampaignEnabledSources
@@ -1594,6 +1600,8 @@ export class DatabaseStorage implements IStorage {
       licenseClassification: entry.licenseClassification,
       publicationDate: entry.publicationDate ?? null,
       supersedesSourceId: entry.supersedesSourceId ?? null,
+      derivedFromSourceId: entry.derivedFromSourceId ?? null,
+      pinnedRevision: entry.pinnedRevision ?? null,
       createdAt: now,
       updatedAt: now,
     }).returning().get();
@@ -1621,6 +1629,34 @@ export class DatabaseStorage implements IStorage {
   updateRuleSource(sourceKey: string, updates: Partial<CreateRuleSourceInput>): void {
     db.update(ruleSources)
       .set({ ...updates, updatedAt: new Date().toISOString() })
+      .where(eq(ruleSources.sourceKey, sourceKey))
+      .run();
+  }
+
+  recordRuleSourceVerification(sourceKey: string, metadata: VerificationMetadata): void {
+    const existing = this.getRuleSource(sourceKey);
+    if (!existing) throw new Error(`Rule source "${sourceKey}" not found`);
+    db.update(ruleSources)
+      .set({
+        verificationMethod: metadata.method,
+        verifiedBy: metadata.verifiedBy ?? "",
+        verifiedAt: metadata.verifiedAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(ruleSources.sourceKey, sourceKey))
+      .run();
+  }
+
+  // Stamps a live-site source's pinnedRevision with the real UTC timestamp of
+  // an actual completed scan — never called at registration time, never
+  // hardcoded to the plan's authoring date. Storage-layer only, no HTTP
+  // route: called once, internally, by Task 9 after both completeness gates
+  // pass on the final real scan.
+  recordSourceScanRevision(sourceKey: string, pinnedRevision: string): void {
+    const existing = this.getRuleSource(sourceKey);
+    if (!existing) throw new Error(`Rule source "${sourceKey}" not found`);
+    db.update(ruleSources)
+      .set({ pinnedRevision, updatedAt: new Date().toISOString() })
       .where(eq(ruleSources.sourceKey, sourceKey))
       .run();
   }

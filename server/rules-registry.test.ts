@@ -126,6 +126,86 @@ test("recording a new revision never mutates or deletes a prior one", () => {
   assert.ok(after.some((r) => r.revision === 2), "revision 2 still present");
 });
 
+test("createRuleSource accepts derivedFromSourceId and pinnedRevision, both nullable by default", () => {
+  const original = storage.createRuleSource({
+    sourceKey: "dnd35e-srd-original-test",
+    title: "Original SRD Test",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "core-rulebook",
+    provenanceClassification: "wotc_official",
+    licenseClassification: "srd_open",
+  });
+  assert.equal(original.derivedFromSourceId, null);
+  assert.equal(original.pinnedRevision, null);
+
+  const mirror = storage.createRuleSource({
+    sourceKey: "dnd35e-srd-mirror-test",
+    title: "Mirror Test",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "web-enhancement",
+    provenanceClassification: "open_game_content",
+    licenseClassification: "srd_open",
+    derivedFromSourceId: original.id,
+    pinnedRevision: "abc123",
+  });
+  assert.equal(mirror.derivedFromSourceId, original.id);
+  assert.equal(mirror.pinnedRevision, "abc123");
+});
+
+test("recordRuleSourceVerification writes verification metadata that getRuleSource then returns", () => {
+  storage.createRuleSource({
+    sourceKey: "dnd35e-srd-v35-verify-test",
+    title: "SRD Verify Test",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "core-rulebook",
+    provenanceClassification: "open_game_content",
+    licenseClassification: "srd_open",
+  });
+
+  storage.recordRuleSourceVerification("dnd35e-srd-v35-verify-test", {
+    method: "human_review",
+    verifiedBy: "controller",
+    verifiedAt: "2026-08-22T12:00:00.000Z",
+    notes: "confirmed registration matches the intended provenance model",
+  });
+
+  const row = storage.getRuleSource("dnd35e-srd-v35-verify-test");
+  assert.equal(row?.verificationMethod, "human_review");
+  assert.equal(row?.verifiedBy, "controller");
+  assert.equal(row?.verifiedAt, "2026-08-22T12:00:00.000Z");
+});
+
+test("recordRuleSourceVerification throws for an unknown sourceKey rather than silently no-oping", () => {
+  assert.throws(() => storage.recordRuleSourceVerification("does-not-exist", {
+    method: "human_review",
+  }));
+});
+
+test("recordSourceScanRevision stamps a real scan timestamp onto an initially-null pinnedRevision", () => {
+  const created = storage.createRuleSource({
+    sourceKey: "dnd35e-srd-scan-revision-test",
+    title: "Scan Revision Test",
+    ruleset: "dnd35e",
+    setting: "generic",
+    publicationType: "web-enhancement",
+    provenanceClassification: "open_game_content",
+    licenseClassification: "srd_open",
+  });
+  assert.equal(created.pinnedRevision, null, "a live-site source must start with no pinnedRevision — nothing has been scanned yet");
+
+  storage.recordSourceScanRevision("dnd35e-srd-scan-revision-test", "live-scan-2026-08-23T14:32:07.418Z");
+
+  const reloaded = storage.getRuleSource("dnd35e-srd-scan-revision-test");
+  assert.equal(reloaded?.pinnedRevision, "live-scan-2026-08-23T14:32:07.418Z");
+});
+
+test("recordSourceScanRevision throws for an unknown sourceKey rather than silently no-oping", () => {
+  assert.throws(() => storage.recordSourceScanRevision("does-not-exist", "live-scan-2026-08-23T00:00:00.000Z"));
+});
+
 after(() => {
   for (const suffix of ["", "-wal", "-shm"]) {
     try { fs.rmSync(dbPath + suffix); } catch {}

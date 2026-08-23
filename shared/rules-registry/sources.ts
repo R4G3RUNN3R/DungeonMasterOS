@@ -44,6 +44,15 @@ export const ruleSources = sqliteTable("rule_sources", {
   licenseClassification: text("license_classification").notNull(),
   publicationDate: text("publication_date"),
   supersedesSourceId: integer("supersedes_source_id"),
+  // Added: derivedFromSourceId distinguishes "this source is a transport/mirror
+  // of that source" from supersedesSourceId (which means "this errata/update
+  // replaces that source") — deliberately separate relationships, separate
+  // columns. pinnedRevision records the immutable snapshot identifier a
+  // fetched transport was ingested at (a commit SHA for a git-hosted mirror;
+  // a documented scan-timestamp string for a live website with no version
+  // control). Both nullable — the authoritative-original row has neither.
+  derivedFromSourceId: integer("derived_from_source_id"),
+  pinnedRevision: text("pinned_revision"),
   verificationMethod: text("verification_method").notNull().default(""),
   verifiedBy: text("verified_by").notNull().default(""),
   verifiedAt: text("verified_at"),
@@ -72,4 +81,6 @@ export interface CreateRuleSourceInput {
   licenseClassification: LicenseClassification;
   publicationDate?: string;
   supersedesSourceId?: number;
+  derivedFromSourceId?: number;
+  pinnedRevision?: string;
 }
