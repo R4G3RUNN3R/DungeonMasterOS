@@ -90,6 +90,8 @@ import type { Dnd35eClassSpellList, Dnd35eClassSpellListEntry } from "@shared/ru
 import type { Dnd35eSpellClassLevel, Dnd35eSpellDefinition, Dnd35eSpellTargetKind } from "@shared/rules-registry/dnd35e/spells";
 import type {
   Dnd35eAmmunitionDefinition,
+  Dnd35eArmorCategory,
+  Dnd35eArmorDefinition,
   Dnd35eDamageTypeJoin,
   Dnd35eWeaponCost,
   Dnd35eWeaponDefinition,
@@ -782,6 +784,26 @@ export function runMigrations() {
     UNIQUE(canonical_id, cross_check_source_page_key)
   );`);
 
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_armor_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    cost_json TEXT NOT NULL DEFAULT 'null',
+    armor_or_shield_bonus INTEGER,
+    max_dex_bonus INTEGER,
+    armor_check_penalty INTEGER,
+    arcane_spell_failure_chance_percent INTEGER,
+    speed_at_30ft_base_ft INTEGER,
+    speed_at_20ft_base_ft INTEGER,
+    weight_lb REAL,
+    footnotes_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -1435,6 +1457,81 @@ function dnd35eAmmunitionStructuredContentJson(ammo: {
   });
 }
 
+// Armor and shields — mirrors the same pattern.
+export interface Dnd35eArmorDefinitionRow {
+  canonicalId: string;
+  name: string;
+  category: Dnd35eArmorCategory;
+  cost: Dnd35eWeaponCost;
+  armorOrShieldBonus: number | null;
+  maxDexBonus: number | null;
+  armorCheckPenalty: number | null;
+  arcaneSpellFailureChancePercent: number | null;
+  speedAt30FtBaseFt: number | null;
+  speedAt20FtBaseFt: number | null;
+  weightLb: number | null;
+  footnotes: string[];
+  extractionStatus: Dnd35eArmorDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eArmorDefinitionRow(row: any): Dnd35eArmorDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    category: row.category,
+    cost: JSON.parse(row.cost_json),
+    armorOrShieldBonus: row.armor_or_shield_bonus,
+    maxDexBonus: row.max_dex_bonus,
+    armorCheckPenalty: row.armor_check_penalty,
+    arcaneSpellFailureChancePercent: row.arcane_spell_failure_chance_percent,
+    speedAt30FtBaseFt: row.speed_at_30ft_base_ft,
+    speedAt20FtBaseFt: row.speed_at_20ft_base_ft,
+    weightLb: row.weight_lb,
+    footnotes: JSON.parse(row.footnotes_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eArmorStructuredContentJson(armor: {
+  name: string;
+  category: Dnd35eArmorCategory;
+  cost: Dnd35eWeaponCost;
+  armorOrShieldBonus: number | null;
+  maxDexBonus: number | null;
+  armorCheckPenalty: number | null;
+  arcaneSpellFailureChancePercent: number | null;
+  speedAt30FtBaseFt: number | null;
+  speedAt20FtBaseFt: number | null;
+  weightLb: number | null;
+  footnotes: string[];
+  extractionStatus: Dnd35eArmorDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: armor.name,
+    category: armor.category,
+    cost: armor.cost,
+    armorOrShieldBonus: armor.armorOrShieldBonus,
+    maxDexBonus: armor.maxDexBonus,
+    armorCheckPenalty: armor.armorCheckPenalty,
+    arcaneSpellFailureChancePercent: armor.arcaneSpellFailureChancePercent,
+    speedAt30FtBaseFt: armor.speedAt30FtBaseFt,
+    speedAt20FtBaseFt: armor.speedAt20FtBaseFt,
+    weightLb: armor.weightLb,
+    footnotes: armor.footnotes,
+    extractionStatus: armor.extractionStatus,
+    extractionNotes: armor.extractionNotes,
+  });
+}
+
 // Real cross-transport reconciliation result — see the table comment in
 // runMigrations() for why this is additive rather than a redesign of the
 // single-EvidenceCitation-per-entity pattern used everywhere else.
@@ -1704,6 +1801,9 @@ export interface IStorage {
   upsertDnd35eAmmunitionDefinition(ammo: Dnd35eAmmunitionDefinition, evidence: EvidenceCitation): Dnd35eAmmunitionDefinitionRow;
   getDnd35eAmmunitionDefinition(canonicalId: string): Dnd35eAmmunitionDefinitionRow | undefined;
   listDnd35eAmmunitionDefinitions(): Dnd35eAmmunitionDefinitionRow[];
+  upsertDnd35eArmorDefinition(armor: Dnd35eArmorDefinition, evidence: EvidenceCitation): Dnd35eArmorDefinitionRow;
+  getDnd35eArmorDefinition(canonicalId: string): Dnd35eArmorDefinitionRow | undefined;
+  listDnd35eArmorDefinitions(filter?: { extractionStatus?: Dnd35eArmorDefinition["extractionStatus"] }): Dnd35eArmorDefinitionRow[];
   recordDnd35eWeaponCrossCheckResult(result: {
     canonicalId: string;
     primarySourcePageKey: string;
@@ -3874,6 +3974,140 @@ export class DatabaseStorage implements IStorage {
   listDnd35eAmmunitionDefinitions(): Dnd35eAmmunitionDefinitionRow[] {
     const rows = sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions").all();
     return (rows as any[]).map(mapDnd35eAmmunitionDefinitionRow);
+  }
+
+  upsertDnd35eArmorDefinition(armor: Dnd35eArmorDefinition, evidence: EvidenceCitation): Dnd35eArmorDefinitionRow {
+    if (!isValidCanonicalId(armor.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${armor.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(armor.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "armor") {
+      throw new Error(
+        `Invalid canonicalId "${armor.canonicalId}" for upsertDnd35eArmorDefinition: expected ruleset "dnd35e" and entityType "armor", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_armor_definitions WHERE canonical_id = ?")
+      .get(armor.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_armor_definitions (
+            canonical_id, name, category, cost_json, armor_or_shield_bonus,
+            max_dex_bonus, armor_check_penalty, arcane_spell_failure_chance_percent,
+            speed_at_30ft_base_ft, speed_at_20ft_base_ft, weight_lb,
+            footnotes_json, extraction_status, extraction_notes_json,
+            evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          armor.canonicalId,
+          armor.name,
+          armor.category,
+          JSON.stringify(armor.cost),
+          armor.armorOrShieldBonus,
+          armor.maxDexBonus,
+          armor.armorCheckPenalty,
+          armor.arcaneSpellFailureChancePercent,
+          armor.speedAt30FtBaseFt,
+          armor.speedAt20FtBaseFt,
+          armor.weightLb,
+          JSON.stringify(armor.footnotes),
+          armor.extractionStatus,
+          JSON.stringify(armor.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eArmorDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_armor_definitions WHERE canonical_id = ?").get(armor.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eArmorStructuredContentJson({
+      name: existing.name,
+      category: existing.category,
+      cost: JSON.parse(existing.cost_json),
+      armorOrShieldBonus: existing.armor_or_shield_bonus,
+      maxDexBonus: existing.max_dex_bonus,
+      armorCheckPenalty: existing.armor_check_penalty,
+      arcaneSpellFailureChancePercent: existing.arcane_spell_failure_chance_percent,
+      speedAt30FtBaseFt: existing.speed_at_30ft_base_ft,
+      speedAt20FtBaseFt: existing.speed_at_20ft_base_ft,
+      weightLb: existing.weight_lb,
+      footnotes: JSON.parse(existing.footnotes_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eArmorStructuredContentJson(armor);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_armor_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, armor.canonicalId);
+      return mapDnd35eArmorDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_armor_definitions WHERE canonical_id = ?").get(armor.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_armor_definitions SET
+          name = ?, category = ?, cost_json = ?, armor_or_shield_bonus = ?,
+          max_dex_bonus = ?, armor_check_penalty = ?,
+          arcane_spell_failure_chance_percent = ?, speed_at_30ft_base_ft = ?,
+          speed_at_20ft_base_ft = ?, weight_lb = ?, footnotes_json = ?,
+          extraction_status = ?, extraction_notes_json = ?, evidence_json = ?,
+          updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        armor.name,
+        armor.category,
+        JSON.stringify(armor.cost),
+        armor.armorOrShieldBonus,
+        armor.maxDexBonus,
+        armor.armorCheckPenalty,
+        armor.arcaneSpellFailureChancePercent,
+        armor.speedAt30FtBaseFt,
+        armor.speedAt20FtBaseFt,
+        armor.weightLb,
+        JSON.stringify(armor.footnotes),
+        armor.extractionStatus,
+        JSON.stringify(armor.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        armor.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(armor.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: armor.canonicalId,
+      entityType: "armor",
+      revision: nextRevision,
+      changeReason: "structured armor content changed on re-extraction",
+      diffSummary: `structured content for ${armor.canonicalId} changed`,
+    });
+
+    return mapDnd35eArmorDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_armor_definitions WHERE canonical_id = ?").get(armor.canonicalId),
+    );
+  }
+
+  getDnd35eArmorDefinition(canonicalId: string): Dnd35eArmorDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_armor_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eArmorDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eArmorDefinitions(filter?: { extractionStatus?: Dnd35eArmorDefinition["extractionStatus"] }): Dnd35eArmorDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_armor_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_armor_definitions").all();
+    return (rows as any[]).map(mapDnd35eArmorDefinitionRow);
   }
 
   recordDnd35eWeaponCrossCheckResult(result: {

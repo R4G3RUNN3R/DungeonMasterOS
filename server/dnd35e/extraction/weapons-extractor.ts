@@ -16,13 +16,13 @@ import { buildCanonicalId } from "@shared/rules-registry/canonical-id";
 import type {
   Dnd35eAmmunitionDefinition,
   Dnd35eDamageTypeJoin,
-  Dnd35eWeaponCost,
   Dnd35eWeaponDefinition,
   Dnd35eWeaponGroup,
   Dnd35eWeaponProficiencyCategory,
 } from "@shared/rules-registry/dnd35e/equipment";
 import { kebabCase } from "./html-utils";
 import { classifyTableRows, resolveRowFootnotes, stripTfoot } from "./table-rows";
+import { parseCurrencyCost } from "./currency";
 
 const TABLE_RE = /<table id="tableWeapons"[^>]*>([\s\S]*?)<\/table>/;
 const DASH = "—";
@@ -41,26 +41,13 @@ const GROUP_LABELS: Record<string, Dnd35eWeaponGroup> = {
   "ranged weapons": "ranged",
 };
 
-const CURRENCY_TO_COPPER: Record<string, number> = { cp: 1, sp: 10, gp: 100, pp: 1000 };
-
 // Real, deliberate SRD value on a handful of weapon rows (Shield light/
 // heavy, Spiked shield light/heavy, Spiked armor) — these are shields/armor
 // pieces you can also attack with; their real cost and weight are "the same
 // as the shield/armor piece itself," not independently repeated in this
 // table. Confirmed against the real live page, not a parse failure.
-const SPECIAL_TEXT = "special";
-
-export function parseCost(text: string): { cost: Dnd35eWeaponCost; note: string | null } {
-  if (text === DASH) return { cost: { display: text, copperPieces: null }, note: null };
-  if (text.toLowerCase() === SPECIAL_TEXT) {
-    return {
-      cost: { display: text, copperPieces: null },
-      note: 'Real Cost value is "special" — this item doubles as a shield/armor piece, whose own real cost is not independently repeated on this page.',
-    };
-  }
-  const match = /^([\d.]+)\s*(cp|sp|gp|pp)$/i.exec(text);
-  if (!match) return { cost: { display: text, copperPieces: null }, note: `Unrecognized real Cost value "${text}".` };
-  return { cost: { display: text, copperPieces: Math.round(Number(match[1]) * CURRENCY_TO_COPPER[match[2].toLowerCase()]) }, note: null };
+export function parseCost(text: string) {
+  return parseCurrencyCost(text, { allowSpecial: true });
 }
 
 export function parseDamage(text: string): string | null {
@@ -85,6 +72,8 @@ export function parseRangeIncrement(text: string): { value: number | null; note:
   if (!match) return { value: null, note: `Unrecognized real Range Increment value "${text}".` };
   return { value: Number(match[1]), note: null };
 }
+
+const SPECIAL_TEXT = "special";
 
 export function parseWeight(text: string): { value: number | null; note: string | null } {
   if (text === DASH) return { value: null, note: null };

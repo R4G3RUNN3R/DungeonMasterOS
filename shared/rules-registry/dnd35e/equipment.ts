@@ -59,6 +59,40 @@ export interface Dnd35eWeaponDefinition {
   extractionNotes: string[];
 }
 
+// Real d20srd.org "Table: Armor and Shields" convention: a single-tier
+// category breakdown (unlike Weapons' two-tier Simple/Martial/Exotic ×
+// Light/One-Handed/... — Armor has no top-level category, just these five
+// real subcategory groups directly).
+export type Dnd35eArmorCategory = "light" | "medium" | "heavy" | "shield" | "extra";
+
+export interface Dnd35eArmorDefinition {
+  canonicalId: string;
+  name: string;
+  category: Dnd35eArmorCategory;
+  cost: Dnd35eWeaponCost;
+  // null for the real "—" cells (e.g. Extras like Armor spikes have no
+  // inherent AC bonus of their own — they modify a base armor/shield piece).
+  armorOrShieldBonus: number | null;
+  // null for the real "—" cells (no maximum Dexterity bonus cap).
+  maxDexBonus: number | null;
+  // null for the real "—" cells. A real, distinct third state — Gauntlet,
+  // locked's real value is the literal text "Special", disclosed via
+  // extractionNotes rather than folded into the same null as "—".
+  armorCheckPenalty: number | null;
+  // Real percentage points (0-100), null for the real "—" cells.
+  arcaneSpellFailureChancePercent: number | null;
+  // Real resulting speed in feet for a wearer whose own base speed is 30 ft.
+  // (typical Medium humanoid) or 20 ft. (typical Small humanoid/dwarf-style
+  // slow-but-steady) respectively — both null for the real "—" cells
+  // (shields and Extras don't affect speed at all).
+  speedAt30FtBaseFt: number | null;
+  speedAt20FtBaseFt: number | null;
+  weightLb: number | null;
+  footnotes: string[];
+  extractionStatus: "fully_structured" | "partially_structured" | "unresolved";
+  extractionNotes: string[];
+}
+
 export interface Dnd35eAmmunitionDefinition {
   canonicalId: string;
   name: string;
