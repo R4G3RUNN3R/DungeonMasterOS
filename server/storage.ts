@@ -85,6 +85,7 @@ import type {
   Dnd35eClassSpellcasting,
   Dnd35eSaveProgression,
 } from "@shared/rules-registry/dnd35e/classes";
+import type { Dnd35eSkillDefinition, Dnd35eSkillSection } from "@shared/rules-registry/dnd35e/skills";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
@@ -656,6 +657,23 @@ export function runMigrations() {
   // real dev DB from before this change won't have the column yet.
   addColumnIfMissing("dnd35e_class_definitions", "spellcasting_json", "TEXT NOT NULL DEFAULT 'null'");
 
+  // Skills — same pattern as the feat/race/class-definition tables above:
+  // structured-content changes recorded via recordRevision(entityType:
+  // "skill").
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_skill_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    key_ability TEXT NOT NULL,
+    trained_only INTEGER NOT NULL DEFAULT 0,
+    armor_check_penalty INTEGER NOT NULL DEFAULT 0,
+    sections_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -994,6 +1012,58 @@ function dnd35eClassStructuredContentJson(cls: {
   });
 }
 
+// Skills — mirrors the feat/race/class-definition row/mapper/structured-
+// content pattern above field-for-field.
+export interface Dnd35eSkillDefinitionRow {
+  canonicalId: string;
+  name: string;
+  keyAbility: Dnd35eSkillDefinition["keyAbility"];
+  trainedOnly: boolean;
+  armorCheckPenalty: boolean;
+  sections: Dnd35eSkillSection[];
+  extractionStatus: Dnd35eSkillDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eSkillDefinitionRow(row: any): Dnd35eSkillDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    keyAbility: row.key_ability,
+    trainedOnly: row.trained_only === 1,
+    armorCheckPenalty: row.armor_check_penalty === 1,
+    sections: JSON.parse(row.sections_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eSkillStructuredContentJson(skill: {
+  name: string;
+  keyAbility: Dnd35eSkillDefinition["keyAbility"];
+  trainedOnly: boolean;
+  armorCheckPenalty: boolean;
+  sections: Dnd35eSkillSection[];
+  extractionStatus: Dnd35eSkillDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: skill.name,
+    keyAbility: skill.keyAbility,
+    trainedOnly: skill.trainedOnly,
+    armorCheckPenalty: skill.armorCheckPenalty,
+    sections: skill.sections,
+    extractionStatus: skill.extractionStatus,
+    extractionNotes: skill.extractionNotes,
+  });
+}
+
 // ── Storage interface ──────────────────────────────────────────────────────
 export interface IStorage {
   // Users
@@ -1219,6 +1289,9 @@ export interface IStorage {
   upsertDnd35eClassDefinition(cls: Dnd35eClassDefinition, evidence: EvidenceCitation): Dnd35eClassDefinitionRow;
   getDnd35eClassDefinition(canonicalId: string): Dnd35eClassDefinitionRow | undefined;
   listDnd35eClassDefinitions(filter?: { extractionStatus?: Dnd35eClassDefinition["extractionStatus"] }): Dnd35eClassDefinitionRow[];
+  upsertDnd35eSkillDefinition(skill: Dnd35eSkillDefinition, evidence: EvidenceCitation): Dnd35eSkillDefinitionRow;
+  getDnd35eSkillDefinition(canonicalId: string): Dnd35eSkillDefinitionRow | undefined;
+  listDnd35eSkillDefinitions(filter?: { extractionStatus?: Dnd35eSkillDefinition["extractionStatus"] }): Dnd35eSkillDefinitionRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -2778,6 +2851,117 @@ export class DatabaseStorage implements IStorage {
       ? sqlite.prepare("SELECT * FROM dnd35e_class_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
       : sqlite.prepare("SELECT * FROM dnd35e_class_definitions").all();
     return (rows as any[]).map(mapDnd35eClassDefinitionRow);
+  }
+
+  upsertDnd35eSkillDefinition(skill: Dnd35eSkillDefinition, evidence: EvidenceCitation): Dnd35eSkillDefinitionRow {
+    if (!isValidCanonicalId(skill.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${skill.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(skill.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "skill") {
+      throw new Error(
+        `Invalid canonicalId "${skill.canonicalId}" for upsertDnd35eSkillDefinition: expected ruleset "dnd35e" and entityType "skill", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_skill_definitions WHERE canonical_id = ?")
+      .get(skill.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_skill_definitions (
+            canonical_id, name, key_ability, trained_only, armor_check_penalty,
+            sections_json, extraction_status, extraction_notes_json,
+            evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          skill.canonicalId,
+          skill.name,
+          skill.keyAbility,
+          skill.trainedOnly ? 1 : 0,
+          skill.armorCheckPenalty ? 1 : 0,
+          JSON.stringify(skill.sections),
+          skill.extractionStatus,
+          JSON.stringify(skill.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eSkillDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE canonical_id = ?").get(skill.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eSkillStructuredContentJson({
+      name: existing.name,
+      keyAbility: existing.key_ability,
+      trainedOnly: existing.trained_only === 1,
+      armorCheckPenalty: existing.armor_check_penalty === 1,
+      sections: JSON.parse(existing.sections_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eSkillStructuredContentJson(skill);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_skill_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, skill.canonicalId);
+      return mapDnd35eSkillDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE canonical_id = ?").get(skill.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_skill_definitions SET
+          name = ?, key_ability = ?, trained_only = ?, armor_check_penalty = ?,
+          sections_json = ?, extraction_status = ?, extraction_notes_json = ?,
+          evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        skill.name,
+        skill.keyAbility,
+        skill.trainedOnly ? 1 : 0,
+        skill.armorCheckPenalty ? 1 : 0,
+        JSON.stringify(skill.sections),
+        skill.extractionStatus,
+        JSON.stringify(skill.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        skill.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(skill.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: skill.canonicalId,
+      entityType: "skill",
+      revision: nextRevision,
+      changeReason: "structured skill content changed on re-extraction",
+      diffSummary: `structured content for ${skill.canonicalId} changed`,
+    });
+
+    return mapDnd35eSkillDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE canonical_id = ?").get(skill.canonicalId),
+    );
+  }
+
+  getDnd35eSkillDefinition(canonicalId: string): Dnd35eSkillDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eSkillDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eSkillDefinitions(filter?: { extractionStatus?: Dnd35eSkillDefinition["extractionStatus"] }): Dnd35eSkillDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_skill_definitions").all();
+    return (rows as any[]).map(mapDnd35eSkillDefinitionRow);
   }
 }
 
