@@ -1,6 +1,6 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23 → 2026-08-24)
 
-**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **4 real prepared spellcasters** — 2 full casters (Cleric, Druid) and 2 partial casters (Paladin, Ranger). The remaining 3 core classes (Bard, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk), **4 real prepared spellcasters** (Cleric, Druid, Paladin, Ranger), and **the real Sorcerer/Wizard shared page** (1 spontaneous caster, 1 prepared) — **10 of 11 core classes**. Only Bard remains — a spontaneous caster expected to reuse the Sorcerer-shaped Spells Known support with no further extractor changes, but not assumed working without checking (see "What's not covered"). It does not cover any other entity family.
 
 ## Real bug found and fixed: (Ex)/(Su)-suffixed class features were being silently dropped
 
@@ -54,6 +54,8 @@ Extracted real class "Cleric" (dnd35e:class:cleric): fully_structured, 20 level 
 Extracted real class "Druid" (dnd35e:class:druid): fully_structured, 20 level rows, 21 class features.
 Extracted real class "Paladin" (dnd35e:class:paladin): fully_structured, 20 level rows, 15 class features.
 Extracted real class "Ranger" (dnd35e:class:ranger): fully_structured, 20 level rows, 15 class features.
+Extracted real class "Sorcerer" (dnd35e:class:sorcerer): fully_structured, 20 level rows, 3 class features.
+Extracted real class "Wizard" (dnd35e:class:wizard): fully_structured, 20 level rows, 7 class features.
 ```
 
 ## Three real page-format/structure differences found and fixed during verification
@@ -134,13 +136,25 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **Class Features**: 15 real features — Weapon and Armor Proficiency, Favored Enemy (Ex), Track, Wild Empathy (Ex), Combat Style (Ex), Endurance, Animal Companion (Ex), Spells, Improved Combat Style (Ex), Woodland Stride (Ex), Swift Tracker (Ex), Evasion (Ex), Combat Style Mastery (Ex), Camouflage (Ex), Hide in Plain Sight (Ex).
 - `extractionStatus: fully_structured`, zero extraction notes.
 
+## Real verified facts (Sorcerer & Wizard — the shared page, spontaneous casting)
+
+The real `/srd/classes/sorcererWizard.htm` page covers **both classes under one `<h1>Sorcerers & Wizards</h1>`** — a genuinely different page shape from every other core class page, requiring a dedicated `extractSorcererAndWizardFromHtml()` entry point (`classes-extractor.ts`'s single-class logic was refactored into a shared `buildClassDefinition()` core reused by both entry points). Sorcerer's two tables (BAB/saves, and its own Spells Known table) sit physically *before* either class's own `<h2 id="sorcerer">`/`<h2 id="wizard">` section — located by explicit table id rather than by table-after-heading position. Wizard's own table sits inside its own `<h2>`-delimited region, same as every single-class page.
+
+**New schema addition**: `Dnd35eClassSpellcasting.spellsKnown` (`Dnd35eSpellsKnownRow[] | null`) — a real, genuinely simpler table shape than `spellsPerDay` (just `Level` + spell-level sub-columns, no BAB/Fort/Ref/Will/Special prefix at all), parsed by a dedicated `extractSpellsKnownTable()`. `null` for prepared casters.
+
+**Real bug found and fixed during verification**: `PREPARED_CASTER_RE` only matched the closing phrase "...spells **in advance**" (Cleric/Druid's real wording). Wizard's real page says "must choose and prepare her spells **ahead of time**" — same rule, different real wording — which caused Wizard to be misclassified as `spontaneous` on the first extraction attempt. Fixed by widening the pattern to accept both real phrasings. Verified the fix doesn't cause a false positive on Sorcerer's own real text ("a sorcerer **need not** prepare his spells in advance") — the regex requires the literal word "must" immediately before "prepare," which "need not prepare" doesn't contain.
+
+- **Sorcerer**: d4 hit die, half BAB, poor Fort/Ref, good Will (the classic caster save shape). Charisma/spontaneous. Real Spells Known table verified: level 1 knows 4 cantrips + 2 first-level spells; level 20 knows 9 cantrips and 3-5 spells per level 1-9. Real Spells per Day table verified separately and is a genuinely distinct number from Spells Known (level 1: base 5 cantrips/day, 3 first-level spells/day — the *daily allotment*, not the *repertoire size*). 3 class features: Weapon and Armor Proficiency, Spells, Familiar.
+- **Wizard**: d4 hit die, half BAB, poor Fort/Ref, good Will. Intelligence/prepared, no Spells Known table (`null`, correctly). 7 class features: Weapon and Armor Proficiency, Spells, Bonus Languages, Familiar, Scribe Scroll, Bonus Feats, Spellbooks.
+- Both `extractionStatus: fully_structured`, zero extraction notes.
+
 ## New schema: `Dnd35eClassSpellcasting`
 
 Added to `Dnd35eClassDefinition.spellcasting` (`null` for non-casters): `spellcastingAbility`, `type` (`"prepared"` vs `"spontaneous"` — detected from the page's own real stated rules text, not asserted per class), and `spellsPerDay: Dnd35eSpellsPerDayRow[]` (one row per level, each an array of `{spellLevel, base, bonusSlots}` entries — `base: null` for the real "—" cells, `bonusSlots` for real class-specific bonus notation like Cleric's domain spell). A real, simplifying discovery made while building this: the level-progression row-skip logic no longer assumes exactly one header `<tr>` to skip by position — it now relies purely on the existing cell-count check (a header row naturally has 0 `<td>` cells), which turned out to already correctly handle both the single-header-row standard/Monk tables and the two-header-row prepared-caster tables with no special-casing needed.
 
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **3 remaining core classes** — Bard, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Wizard is a prepared caster and should extract with the current extractor largely as-is (real, likely-cheap next win, pending real verification — never assumed working without checking). Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
+1. **Bard** — the only remaining core class. A spontaneous caster; expected to reuse the now-real Sorcerer-shaped Spells Known support with no further extractor changes, but not assumed working without real per-page verification.
 2. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
 3. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
 4. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.

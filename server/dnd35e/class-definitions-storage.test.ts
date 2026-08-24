@@ -89,11 +89,28 @@ test("getDnd35eClassDefinition round-trips a real spellcasting progression (a Cl
           ],
         },
       ],
+      spellsKnown: null,
     },
   };
   storage.upsertDnd35eClassDefinition(clericLike, REAL_EVIDENCE);
   const row = storage.getDnd35eClassDefinition("dnd35e:class:cleric");
   assert.deepEqual(row?.spellcasting, clericLike.spellcasting);
+});
+
+test("getDnd35eClassDefinition round-trips a real spontaneous-caster spellsKnown table (a Sorcerer-shaped definition)", () => {
+  const sorcererLike = {
+    ...SAMPLE_CLASS,
+    canonicalId: "dnd35e:class:sorcerer",
+    spellcasting: {
+      spellcastingAbility: "cha" as const,
+      type: "spontaneous" as const,
+      spellsPerDay: [{ level: 1, entries: [{ spellLevel: 0, base: 5, bonusSlots: 0 }] }],
+      spellsKnown: [{ level: 1, entries: [{ spellLevel: 0, known: 4 }, { spellLevel: 1, known: null }] }],
+    },
+  };
+  storage.upsertDnd35eClassDefinition(sorcererLike, REAL_EVIDENCE);
+  const row = storage.getDnd35eClassDefinition("dnd35e:class:sorcerer");
+  assert.deepEqual(row?.spellcasting, sorcererLike.spellcasting);
 });
 
 test("listDnd35eClassDefinitions filters by extractionStatus", () => {

@@ -27,6 +27,7 @@ import type {
   Dnd35eClassSkill,
   Dnd35eClassSpellcasting,
   Dnd35eSaveProgression,
+  Dnd35eSpellsKnownRow,
   Dnd35eSpellsPerDayRow,
 } from "@shared/rules-registry/dnd35e/classes";
 import { stripTags, kebabCase } from "./html-utils";
@@ -81,10 +82,13 @@ const SPECIAL_CELL_ANCHOR_RE = /href="#([a-zA-Z0-9]+)"/g;
 // signal for both spellcastingAbility and (implicitly) that this is a
 // spellcasting class at all.
 const SPELLCASTING_ABILITY_RE = /must have an? (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) score equal to at least 10 \+ the spell level/i;
-// Real, standard SRD phrasing distinguishing prepared casters ("must choose
-// and prepare spells in advance") from spontaneous casters (who instead have
-// a real "Spells Known" table — not modeled yet, see the extraction report).
-const PREPARED_CASTER_RE = /must (?:choose and )?prepare (?:his|her|its|their)?\s*spells? in advance/i;
+// Real, standard SRD phrasing distinguishing prepared casters from
+// spontaneous casters (who instead have a real "Spells Known" table). The
+// SRD uses two different real closing phrases for this across classes:
+// Cleric/Druid say "must choose and prepare spells in advance"; Wizard says
+// "must choose and prepare her spells ahead of time" — same rule, genuinely
+// different wording, both must match.
+const PREPARED_CASTER_RE = /must (?:choose and )?prepare (?:his|her|its|their)?\s*spells? (?:in advance|ahead of time)/i;
 
 const ABILITY_ABBR_TO_CODE: Record<string, Dnd35eAbilityCode> = {
   Str: "str",
@@ -212,6 +216,53 @@ function extractLevelProgression(tableHtml: string): LevelProgressionExtraction 
   return { rows, spellsPerDay: columnSet === "prepared-caster" ? spellsPerDay : null };
 }
 
+// A real "Spells Known" table (Sorcerer's, and eventually Bard's) is a
+// genuinely different, simpler shape than the BAB/save table: just a
+// rowspan-2 "Level" column plus a colspan-N "Spells Known" group label and
+// its spell-level sub-headers — no BAB/Fort/Ref/Will/Special columns at
+// all. Located by its own real table id, since (on the shared Sorcerer &
+// Wizard page) it sits physically before either class's own named section.
+function extractSpellsKnownTable(html: string, tableId: string): Dnd35eSpellsKnownRow[] {
+  const tableRe = new RegExp(`<table id="${tableId}"[^>]*>([\\s\\S]*?)</table>`);
+  const tableMatch = tableRe.exec(html);
+  if (!tableMatch) throw new Error(`No real "${tableId}" Spells Known table found on this page.`);
+  const tableHtml = tableMatch[1];
+
+  const headers: string[] = [];
+  TH_RE.lastIndex = 0;
+  let thMatch: RegExpExecArray | null;
+  while ((thMatch = TH_RE.exec(tableHtml))) headers.push(normalizeHeaderText(thMatch[1]));
+
+  if (headers[0] !== "Level" || headers[1] !== "Spells Known") {
+    throw new Error(`Unexpected "${tableId}" header order: ${JSON.stringify(headers)}, expected ["Level", "Spells Known", ...spell-level sub-headers]`);
+  }
+  const spellLevels = headers.slice(2).map((h) => {
+    const m = /^(\d+)/.exec(h);
+    if (!m) throw new Error(`Unrecognized spell-level sub-header in "${tableId}": "${h}"`);
+    return Number(m[1]);
+  });
+  const expectedCellCount = 1 + spellLevels.length;
+
+  const rows: Dnd35eSpellsKnownRow[] = [];
+  TR_RE.lastIndex = 0;
+  let trMatch: RegExpExecArray | null;
+  while ((trMatch = TR_RE.exec(tableHtml))) {
+    const cells: string[] = [];
+    TD_RE.lastIndex = 0;
+    let tdMatch: RegExpExecArray | null;
+    while ((tdMatch = TD_RE.exec(trMatch[1]))) cells.push(tdMatch[1]);
+    if (cells.length !== expectedCellCount) continue; // skips header rows and any footnote row, same as extractLevelProgression
+
+    const level = Number(stripTags(cells[0]).match(/^(\d+)/)?.[1]);
+    const entries = spellLevels.map((spellLevel, i) => {
+      const text = stripTags(cells[1 + i]).trim();
+      return { spellLevel, known: text === "—" || text === "-" ? null : Number(text) };
+    });
+    rows.push({ level, entries });
+  }
+  return rows;
+}
+
 function extractClassSkills(html: string): Dnd35eClassSkill[] {
   const sectionMatch = CLASS_SKILLS_SECTION_RE.exec(html);
   if (!sectionMatch) return [];
@@ -236,22 +287,28 @@ function extractClassFeatures(html: string): Dnd35eClassFeature[] {
   return features;
 }
 
-export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
-  const nameMatch = CLASS_NAME_RE.exec(html);
-  if (!nameMatch) throw new Error("No <h1> or <h2 id> class name found on this page — not a real class page.");
-  const name = (nameMatch[1] ?? nameMatch[2]).trim();
-
-  const tableMatch = TABLE_RE.exec(html);
-  if (!tableMatch) throw new Error(`No real level-progression table found for class "${name}".`);
-  const { rows: levelProgression, spellsPerDay } = extractLevelProgression(tableMatch[1]);
+// Shared core: builds a full Dnd35eClassDefinition from a class's name, the
+// HTML region containing its Alignment/Hit Die/Class Skills/Skill Points/
+// Class Features sections (the whole page for a normal single-class page;
+// just that class's own slice for the shared Sorcerer & Wizard page), and
+// its already-parsed level-progression table. `spellsKnown` is passed
+// separately since — on the shared page — it lives in its own named table
+// outside any single class's region.
+function buildClassDefinition(
+  name: string,
+  regionHtml: string,
+  levelProgression: Dnd35eClassLevelProgressionRow[],
+  spellsPerDay: Dnd35eSpellsPerDayRow[] | null,
+  spellsKnown: Dnd35eSpellsKnownRow[] | null,
+): Dnd35eClassDefinition {
   const level20 = levelProgression.find((r) => r.level === 20);
   if (!level20) throw new Error(`No level-20 row found in the real progression table for class "${name}".`);
 
-  const alignmentMatch = ALIGNMENT_RE.exec(html);
-  const hitDieMatch = HIT_DIE_RE.exec(html);
-  const skillPointsMatch = SKILL_POINTS_RE.exec(html);
-  const classSkills = extractClassSkills(html);
-  const classFeatures = extractClassFeatures(html);
+  const alignmentMatch = ALIGNMENT_RE.exec(regionHtml);
+  const hitDieMatch = HIT_DIE_RE.exec(regionHtml);
+  const skillPointsMatch = SKILL_POINTS_RE.exec(regionHtml);
+  const classSkills = extractClassSkills(regionHtml);
+  const classFeatures = extractClassFeatures(regionHtml);
 
   const notes: string[] = [];
   if (!alignmentMatch) notes.push("Alignment section did not match the expected real page pattern.");
@@ -262,14 +319,15 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
 
   let spellcasting: Dnd35eClassSpellcasting | null = null;
   if (spellsPerDay !== null) {
-    const abilityMatch = SPELLCASTING_ABILITY_RE.exec(html);
+    const abilityMatch = SPELLCASTING_ABILITY_RE.exec(regionHtml);
     if (!abilityMatch) {
       notes.push('This class has a real "Spells per Day" table, but no spellcasting-ability sentence matched the expected real page pattern.');
     } else {
       spellcasting = {
         spellcastingAbility: ABILITY_NAME_TO_CODE[abilityMatch[1].toLowerCase()],
-        type: PREPARED_CASTER_RE.test(html) ? "prepared" : "spontaneous",
+        type: PREPARED_CASTER_RE.test(regionHtml) ? "prepared" : "spontaneous",
         spellsPerDay,
+        spellsKnown,
       };
     }
   }
@@ -296,4 +354,57 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
     extractionStatus,
     extractionNotes: notes,
   };
+}
+
+export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
+  const nameMatch = CLASS_NAME_RE.exec(html);
+  if (!nameMatch) throw new Error("No <h1> or <h2 id> class name found on this page — not a real class page.");
+  const name = (nameMatch[1] ?? nameMatch[2]).trim();
+
+  const tableMatch = TABLE_RE.exec(html);
+  if (!tableMatch) throw new Error(`No real level-progression table found for class "${name}".`);
+  const { rows: levelProgression, spellsPerDay } = extractLevelProgression(tableMatch[1]);
+
+  return buildClassDefinition(name, html, levelProgression, spellsPerDay, null);
+}
+
+// The real d20srd.org/srd/classes/sorcererWizard.htm page covers BOTH
+// classes under one <h1>Sorcerers & Wizards</h1> — genuinely different from
+// every other core class page, which is why this needs its own entry point
+// rather than reusing extractClassFromHtml. Real, page-specific layout:
+// Sorcerer's two tables (BAB/saves, and its separate Spells Known table)
+// sit physically BEFORE either class's own <h2 id="sorcerer">/<h2 id="wizard">
+// section — located by explicit table id, not by table-after-heading
+// position. Wizard's own table sits inside its own <h2>-delimited region,
+// same as every single-class page.
+const SORCERER_H2_RE = /<h2 id="sorcerer">/;
+const WIZARD_H2_RE = /<h2 id="wizard">/;
+const FAMILIARS_H2_RE = /<h2 id="familiars">/;
+
+export function extractSorcererAndWizardFromHtml(html: string): [Dnd35eClassDefinition, Dnd35eClassDefinition] {
+  const sorcererH2 = SORCERER_H2_RE.exec(html);
+  const wizardH2 = WIZARD_H2_RE.exec(html);
+  const familiarsH2 = FAMILIARS_H2_RE.exec(html);
+  if (!sorcererH2 || !wizardH2 || !familiarsH2) {
+    throw new Error('Expected real <h2 id="sorcerer">, <h2 id="wizard">, and <h2 id="familiars"> markers on the Sorcerer & Wizard page — not found.');
+  }
+  if (!(sorcererH2.index < wizardH2.index && wizardH2.index < familiarsH2.index)) {
+    throw new Error("Sorcerer/Wizard/Familiars section markers were found out of the expected real page order.");
+  }
+
+  const sorcererRegion = html.slice(sorcererH2.index, wizardH2.index);
+  const wizardRegion = html.slice(wizardH2.index, familiarsH2.index);
+
+  const sorcererTableMatch = /<table id="tableTheSorcerer"[^>]*>([\s\S]*?)<\/table>/.exec(html);
+  if (!sorcererTableMatch) throw new Error('No real "tableTheSorcerer" level-progression table found.');
+  const { rows: sorcererLevelProgression, spellsPerDay: sorcererSpellsPerDay } = extractLevelProgression(sorcererTableMatch[1]);
+  const sorcererSpellsKnown = extractSpellsKnownTable(html, "tableSorcererSpellsKnown");
+  const sorcerer = buildClassDefinition("Sorcerer", sorcererRegion, sorcererLevelProgression, sorcererSpellsPerDay, sorcererSpellsKnown);
+
+  const wizardTableMatch = /<table id="tableTheWizard"[^>]*>([\s\S]*?)<\/table>/.exec(wizardRegion);
+  if (!wizardTableMatch) throw new Error('No real "tableTheWizard" level-progression table found.');
+  const { rows: wizardLevelProgression, spellsPerDay: wizardSpellsPerDay } = extractLevelProgression(wizardTableMatch[1]);
+  const wizard = buildClassDefinition("Wizard", wizardRegion, wizardLevelProgression, wizardSpellsPerDay, null);
+
+  return [sorcerer, wizard];
 }

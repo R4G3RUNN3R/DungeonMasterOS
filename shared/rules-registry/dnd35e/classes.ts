@@ -66,14 +66,26 @@ export interface Dnd35eSpellsPerDayRow {
   entries: Dnd35eSpellsPerDayEntry[];
 }
 
+export interface Dnd35eSpellsKnownEntry {
+  spellLevel: number;
+  known: number | null; // null = not yet available at this class level (the real page's "—")
+}
+
+export interface Dnd35eSpellsKnownRow {
+  level: number;
+  entries: Dnd35eSpellsKnownEntry[];
+}
+
 export interface Dnd35eClassSpellcasting {
   spellcastingAbility: Dnd35eAbilityCode;
   // "prepared" (Cleric/Druid/Wizard/Paladin/Ranger — chooses spells from a
   // known list before the day begins) vs "spontaneous" (Sorcerer/Bard — casts
-  // from a fixed, smaller repertoire and needs a real Spells Known table,
-  // not modeled here yet — see the extraction report's scope note).
+  // from a fixed, smaller repertoire, tracked via the real spellsKnown table).
   type: Dnd35eSpellcastingType;
   spellsPerDay: Dnd35eSpellsPerDayRow[];
+  // Only populated for spontaneous casters — their real, separate "Spells
+  // Known" table (fixed regardless of ability score, unlike spellsPerDay).
+  spellsKnown: Dnd35eSpellsKnownRow[] | null;
 }
 
 export interface Dnd35eClassDefinition {

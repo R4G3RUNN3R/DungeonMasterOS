@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractClassFromHtml } from "./classes-extractor";
+import { extractClassFromHtml, extractSorcererAndWizardFromHtml } from "./classes-extractor";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_HTML = fs.readFileSync(path.join(__dirname, "fighter-fixture.html"), "utf-8");
@@ -15,6 +15,7 @@ const CLERIC_HTML = fs.readFileSync(path.join(__dirname, "cleric-fixture.html"),
 const DRUID_HTML = fs.readFileSync(path.join(__dirname, "druid-fixture.html"), "utf-8");
 const PALADIN_HTML = fs.readFileSync(path.join(__dirname, "paladin-fixture.html"), "utf-8");
 const RANGER_HTML = fs.readFileSync(path.join(__dirname, "ranger-fixture.html"), "utf-8");
+const SORCERER_WIZARD_HTML = fs.readFileSync(path.join(__dirname, "sorcerer-wizard-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -350,4 +351,55 @@ test("Ranger: real 15 class features, including (Ex)-suffixed ones the nested-ta
   assert.ok(ranger.classFeatures.find((f) => f.slug === "favoredEnemy" && f.name === "Favored Enemy (Ex)"));
   assert.ok(ranger.classFeatures.find((f) => f.slug === "rangerEvasion" && f.name === "Evasion (Ex)"));
   assert.ok(ranger.classFeatures.find((f) => f.slug === "hideinPlainSight" && f.name === "Hide in Plain Sight (Ex)"));
+});
+
+// --- Sorcerer & Wizard: real shared page, two classes from one extraction ---
+
+test("extractSorcererAndWizardFromHtml: the real shared page (one <h1>Sorcerers & Wizards</h1>, two <h2>-delimited class sections) correctly yields two distinct real class definitions", () => {
+  const [sorcerer, wizard] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  assert.equal(sorcerer.canonicalId, "dnd35e:class:sorcerer");
+  assert.equal(wizard.canonicalId, "dnd35e:class:wizard");
+  assert.equal(sorcerer.extractionStatus, "fully_structured");
+  assert.equal(wizard.extractionStatus, "fully_structured");
+});
+
+test("Sorcerer: real d4 hit die, half BAB, poor Fort+Ref / good Will (the classic caster save shape), Charisma/spontaneous spellcasting", () => {
+  const [sorcerer] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  assert.equal(sorcerer.hitDie, 4);
+  assert.equal(sorcerer.babProgression, "half");
+  assert.deepEqual(sorcerer.saveProgression, { fort: "poor", ref: "poor", will: "good" });
+  assert.ok(sorcerer.spellcasting);
+  assert.equal(sorcerer.spellcasting!.spellcastingAbility, "cha");
+  assert.equal(sorcerer.spellcasting!.type, "spontaneous");
+});
+
+test("Sorcerer: real 'Unlike a wizard or a cleric, a sorcerer need not prepare his spells in advance' does NOT false-positive-match the prepared-caster pattern (the regex requires 'must', not 'need not')", () => {
+  const [sorcerer] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  assert.equal(sorcerer.spellcasting!.type, "spontaneous", "the negated 'need not prepare ... in advance' phrase must not be mistaken for the real 'must prepare ... ' pattern");
+});
+
+test("Sorcerer: real Spells Known table (a genuinely different shape — Level + spell-level columns only, no BAB/save columns) is parsed correctly, distinct from spellsPerDay", () => {
+  const [sorcerer] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  const known1 = sorcerer.spellcasting!.spellsKnown!.find((r) => r.level === 1)!;
+  assert.deepEqual(known1.entries[0], { spellLevel: 0, known: 4 });
+  assert.deepEqual(known1.entries[1], { spellLevel: 1, known: 2 });
+  assert.equal(known1.entries[2].known, null);
+  const perDay1 = sorcerer.spellcasting!.spellsPerDay.find((r) => r.level === 1)!;
+  assert.equal(perDay1.entries[0].base, 5, "spellsPerDay (base allotment) is a real, distinct number from spellsKnown (repertoire size)");
+});
+
+test("Wizard: real 'must choose and prepare her spells ahead of time' (a different real closing phrase than Cleric/Druid's 'in advance') is correctly recognized as prepared, not spontaneous", () => {
+  const [, wizard] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  assert.equal(wizard.spellcasting!.type, "prepared");
+  assert.equal(wizard.spellcasting!.spellcastingAbility, "int");
+  assert.equal(wizard.spellcasting!.spellsKnown, null, "Wizard is a prepared caster and has no real Spells Known table");
+});
+
+test("Wizard: real d4 hit die, half BAB, poor Fort+Ref / good Will, and real class features (Spells, Bonus Languages, Familiar, Scribe Scroll, Bonus Feats, Spellbooks)", () => {
+  const [, wizard] = extractSorcererAndWizardFromHtml(SORCERER_WIZARD_HTML);
+  assert.equal(wizard.hitDie, 4);
+  assert.equal(wizard.babProgression, "half");
+  assert.deepEqual(wizard.saveProgression, { fort: "poor", ref: "poor", will: "good" });
+  assert.equal(wizard.classFeatures.length, 7);
+  assert.ok(wizard.classFeatures.find((f) => f.slug === "spellbooks" && f.name === "Spellbooks"));
 });

@@ -6,15 +6,14 @@
 // same exclusion from the automated test suite via package.json's
 // *.test.ts glob).
 //
-// Currently extracts Fighter, Barbarian, Rogue, Monk (non-spellcasters) and
-// Cleric (the first real prepared-caster, verified against its real "Spells
-// per Day" table). The remaining 6 core classes (Bard, Druid, Paladin,
-// Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer
-// and Bard are spontaneous casters and need a real "Spells Known" table this
-// extractor doesn't parse yet. See classes.ts and the extraction report for
-// the explicit scope gap this leaves. Structured as a list so extending to
-// more class pages is a one-line addition once each is real-verified, not a
-// rewrite.
+// Extracts all 10 core classes verified so far: Fighter, Barbarian, Rogue,
+// Monk (non-spellcasters), Cleric, Druid, Paladin, Ranger (prepared
+// casters), and Sorcerer + Wizard (from their one shared real page, one
+// prepared and one spontaneous). Only Bard remains unverified — a
+// spontaneous caster expected to reuse the Sorcerer-shaped Spells Known
+// support with no further extractor changes, but not assumed working
+// without checking. See classes.ts and the extraction report for the exact
+// current scope.
 //
 // Re-run with: node --import tsx server/dnd35e/extraction/run-classes-extraction.ts
 // Targets the real dev database (server/storage.ts's default DATABASE_URL,
@@ -23,7 +22,8 @@
 
 import { createHash } from "node:crypto";
 import { storage, runMigrations } from "../../storage";
-import { extractClassFromHtml } from "./classes-extractor";
+import { extractClassFromHtml, extractSorcererAndWizardFromHtml } from "./classes-extractor";
+import type { Dnd35eClassDefinition } from "@shared/rules-registry/dnd35e/classes";
 
 const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/fighter.htm",
@@ -35,8 +35,12 @@ const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/paladin.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/ranger.htm",
 ];
+// Sorcerer and Wizard share one real page — handled separately since
+// extractSorcererAndWizardFromHtml returns two class definitions from one
+// fetch, not one.
+const SORCERER_WIZARD_SOURCE_PAGE_KEY = "dnd35e-srd-hypertext-d20::/srd/classes/sorcererWizard.htm";
 
-async function runClassExtraction(sourcePageKey: string): Promise<void> {
+async function fetchHashVerifiedHtml(sourcePageKey: string): Promise<string> {
   const manifestEntry = storage.getSrdManifestEntry(sourcePageKey);
   if (!manifestEntry) {
     throw new Error(
@@ -69,10 +73,24 @@ async function runClassExtraction(sourcePageKey: string): Promise<void> {
     );
   }
   console.log("Content hash verified — extracting from confirmed-current content.");
+  return html;
+}
 
-  const cls = extractClassFromHtml(html);
+function saveClass(cls: Dnd35eClassDefinition, sourcePageKey: string): void {
   storage.upsertDnd35eClassDefinition(cls, { kind: "open_canonical", sourcePageKey });
   console.log(`Extracted real class "${cls.name}" (${cls.canonicalId}): ${cls.extractionStatus}, ${cls.levelProgression.length} level rows, ${cls.classFeatures.length} class features.`);
+}
+
+async function runClassExtraction(sourcePageKey: string): Promise<void> {
+  const html = await fetchHashVerifiedHtml(sourcePageKey);
+  saveClass(extractClassFromHtml(html), sourcePageKey);
+}
+
+async function runSorcererAndWizardExtraction(): Promise<void> {
+  const html = await fetchHashVerifiedHtml(SORCERER_WIZARD_SOURCE_PAGE_KEY);
+  const [sorcerer, wizard] = extractSorcererAndWizardFromHtml(html);
+  saveClass(sorcerer, SORCERER_WIZARD_SOURCE_PAGE_KEY);
+  saveClass(wizard, SORCERER_WIZARD_SOURCE_PAGE_KEY);
 }
 
 async function main() {
@@ -80,6 +98,7 @@ async function main() {
   for (const sourcePageKey of CLASS_SOURCE_PAGE_KEYS) {
     await runClassExtraction(sourcePageKey);
   }
+  await runSorcererAndWizardExtraction();
 }
 
 main().catch((err) => {
