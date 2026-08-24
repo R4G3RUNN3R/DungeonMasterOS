@@ -12,6 +12,13 @@ export type PublicUpdateEntry = {
 // so a deployed release cannot rely on a separate manual database post.
 export const PUBLIC_UPDATES: readonly PublicUpdateEntry[] = [
   {
+    id: "2026-08-24-public-updates-release-sync",
+    date: "2026-08-24",
+    title: "Updates now ship with every release",
+    description:
+      "The public changelog is now part of the release itself. From now on, anything deployed to Dungeon Master OS must include its Updates entry in the same verified release, so the website cannot quietly fall behind the live game again. The standard test command has also been hardened to discover the complete nested test suite before a release is accepted.",
+  },
+  {
     id: "2026-08-24-completed-live-release",
     date: "2026-08-24",
     title: "Player Profiles, Achievements, and a major D&D 3.5e rules upgrade",
