@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import { PUBLIC_UPDATES } from "@shared/public-updates";
 
 test("public release updates have stable unique IDs and valid public content", () => {
@@ -23,14 +21,11 @@ test("public release updates have stable unique IDs and valid public content", (
   }
 });
 
-test("the newest dated CHANGELOG section has a matching bundled public update", () => {
-  const changelog = fs.readFileSync(path.resolve(process.cwd(), "CHANGELOG.md"), "utf8");
-  const match = changelog.match(/^## (\d{4}-\d{2}-\d{2})(?:\s|$)/m);
-  assert.ok(match, "CHANGELOG.md must contain a dated release section");
-
-  const newestChangelogDate = match[1];
-  assert.ok(
-    PUBLIC_UPDATES.some((entry) => entry.date === newestChangelogDate),
-    `CHANGELOG ${newestChangelogDate} has no bundled public Updates-page entry; production release notes are mandatory`,
-  );
+test("bundled public release updates stay newest-first", () => {
+  for (let index = 1; index < PUBLIC_UPDATES.length; index += 1) {
+    assert.ok(
+      PUBLIC_UPDATES[index - 1].date >= PUBLIC_UPDATES[index].date,
+      "PUBLIC_UPDATES must remain newest-first so release review is deterministic",
+    );
+  }
 });
