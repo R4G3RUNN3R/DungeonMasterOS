@@ -58,7 +58,7 @@ npm run build
 
 This outputs:
 - `dist/index.cjs` — compiled server bundle
-- `dist/public/` — compiled frontend (served as static files)
+- `dist/public/` — compiled frontend (served as static files by Express)
 
 ### 6. Start the server
 
@@ -179,6 +179,32 @@ cp data.db data.db.backup-$(date +%Y%m%d)
 # Or use sqlite3's online backup:
 sqlite3 data.db ".backup data.db.backup"
 ```
+
+---
+
+## Mandatory public changelog gate
+
+A production release is **not complete** unless the public Updates page describes what actually shipped.
+
+Before deploying any player-visible or runtime change:
+
+1. Add or update the release entry in `shared/public-updates.ts`.
+2. Keep the entry written for players: what changed, what improved, and any important compatibility note. Do not dump internal implementation noise into the public feed.
+3. Run the full test suite, typecheck, and build with that entry included.
+4. Deploy the exact verified SHA.
+5. After restart, verify that `GET /api/updates` exposes the new release entry and that `/updates` renders it publicly.
+
+The server calls `syncBundledPublicUpdates()` after database migrations on every startup. Bundled entries are inserted idempotently into the `updates` table, so publishing the website changelog is no longer a separate manual database task that can be forgotten.
+
+**Do not deploy first and “update the changelog later.”** If a release changes what users can see or what the game does, its public update entry ships in the same verified commit.
+
+Post-deploy verification example:
+
+```bash
+curl -fsS https://dungeonmaster-os.com/api/updates
+```
+
+The first relevant entry must describe the release that is actually live.
 
 ---
 
