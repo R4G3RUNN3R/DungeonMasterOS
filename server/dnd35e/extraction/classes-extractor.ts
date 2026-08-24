@@ -47,7 +47,6 @@ const TABLE_RE = /<table id="tableThe[a-zA-Z]+"[^>]*>([\s\S]*?)<\/table>/;
 // <th>Unarmed<br />Damage<sup>1</sup></th> — the <sup> tag AND its digit
 // content are stripped, not just the tag, so the real footnote number never
 // leaks into the header text being compared.
-const TH_RE = /<th[^>]*>([\s\S]*?)<\/th>/g;
 const TR_RE = /<tr>([\s\S]*?)<\/tr>/g;
 const TD_RE = /<td[^>]*>([\s\S]*?)<\/td>/g;
 
@@ -140,38 +139,76 @@ function parseSpellsPerDayCell(raw: string): { base: number | null; bonusSlots: 
 interface LevelProgressionExtraction {
   rows: Dnd35eClassLevelProgressionRow[];
   spellsPerDay: Dnd35eSpellsPerDayRow[] | null;
+  spellsKnown: Dnd35eSpellsKnownRow[] | null;
+}
+
+interface HeaderCell {
+  text: string;
+  colspan: number;
+}
+
+const TH_WITH_ATTRS_RE = /<th([^>]*)>([\s\S]*?)<\/th>/g;
+
+function collectHeaderCells(tableHtml: string): HeaderCell[] {
+  const cells: HeaderCell[] = [];
+  TH_WITH_ATTRS_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TH_WITH_ATTRS_RE.exec(tableHtml))) {
+    const colspanMatch = /colspan="(\d+)"/.exec(m[1]);
+    cells.push({ text: normalizeHeaderText(m[2]), colspan: colspanMatch ? Number(colspanMatch[1]) : 1 });
+  }
+  return cells;
+}
+
+function parseSpellLevelSubHeaders(texts: string[], context: string): number[] {
+  return texts.map((h) => {
+    const m = /^(\d+)/.exec(h);
+    if (!m) throw new Error(`Unrecognized spell-level sub-header in ${context}: "${h}"`);
+    return Number(m[1]);
+  });
 }
 
 function extractLevelProgression(tableHtml: string): LevelProgressionExtraction {
-  const headers: string[] = [];
-  let thMatch: RegExpExecArray | null;
-  TH_RE.lastIndex = 0;
-  while ((thMatch = TH_RE.exec(tableHtml))) {
-    headers.push(normalizeHeaderText(thMatch[1]));
-  }
+  const headerCells = collectHeaderCells(tableHtml);
+  const headers = headerCells.map((c) => c.text);
 
-  let columnSet: "standard" | "monk" | "prepared-caster";
-  let spellLevels: number[] = [];
-  if (headersMatch(headers.slice(0, 6), EXPECTED_HEADERS_STANDARD) && headers[6] === "Spells per Day") {
-    columnSet = "prepared-caster";
-    spellLevels = headers.slice(7).map((h) => {
-      const m = /^(\d+)/.exec(h);
-      if (!m) throw new Error(`Unrecognized spell-level sub-header in a "Spells per Day" table: "${h}"`);
-      return Number(m[1]);
-    });
+  let columnSet: "standard" | "monk" | "caster";
+  let spellsPerDayLevels: number[] = [];
+  let spellsKnownLevels: number[] = [];
+  let hasSpellsKnownGroup = false;
+
+  // A caster table's colspan-N "Spells per Day" group (and, on Bard's real
+  // page, a second adjacent "Spells Known" group in the SAME table — a
+  // genuinely different real layout from Sorcerer's separate standalone
+  // Spells Known table) always sits right after the standard 6 columns.
+  if (headersMatch(headers.slice(0, 6), EXPECTED_HEADERS_STANDARD) && headerCells[6]?.text === "Spells per Day") {
+    columnSet = "caster";
+    const perDayColspan = headerCells[6].colspan;
+    let subHeaderStartIndex = 7;
+    if (headerCells[7]?.text === "Spells Known") {
+      hasSpellsKnownGroup = true;
+      const knownColspan = headerCells[7].colspan;
+      subHeaderStartIndex = 8;
+      const subHeaders = headers.slice(subHeaderStartIndex);
+      spellsPerDayLevels = parseSpellLevelSubHeaders(subHeaders.slice(0, perDayColspan), '"Spells per Day"');
+      spellsKnownLevels = parseSpellLevelSubHeaders(subHeaders.slice(perDayColspan, perDayColspan + knownColspan), '"Spells Known"');
+    } else {
+      spellsPerDayLevels = parseSpellLevelSubHeaders(headers.slice(subHeaderStartIndex, subHeaderStartIndex + perDayColspan), '"Spells per Day"');
+    }
   } else if (headersMatch(headers, EXPECTED_HEADERS_STANDARD)) {
     columnSet = "standard";
   } else if (headersMatch(headers, EXPECTED_HEADERS_MONK)) {
     columnSet = "monk";
   } else {
     throw new Error(
-      `Unexpected class progression table header order: ${JSON.stringify(headers)}, expected the standard 6-column set, Monk's 10-column set, or a "Spells per Day" prepared-caster table`,
+      `Unexpected class progression table header order: ${JSON.stringify(headers)}, expected the standard 6-column set, Monk's 10-column set, or a "Spells per Day" caster table`,
     );
   }
-  const expectedCellCount = columnSet === "prepared-caster" ? 6 + spellLevels.length : headers.length;
+  const expectedCellCount = columnSet === "caster" ? 6 + spellsPerDayLevels.length + spellsKnownLevels.length : headers.length;
 
   const rows: Dnd35eClassLevelProgressionRow[] = [];
   const spellsPerDay: Dnd35eSpellsPerDayRow[] = [];
+  const spellsKnown: Dnd35eSpellsKnownRow[] = [];
   let trMatch: RegExpExecArray | null;
   TR_RE.lastIndex = 0;
   while ((trMatch = TR_RE.exec(tableHtml))) {
@@ -205,15 +242,28 @@ function extractLevelProgression(tableHtml: string): LevelProgressionExtraction 
     }
     rows.push(row);
 
-    if (columnSet === "prepared-caster") {
-      const entries = spellLevels.map((spellLevel, i) => {
+    if (columnSet === "caster") {
+      const perDayEntries = spellsPerDayLevels.map((spellLevel, i) => {
         const { base, bonusSlots } = parseSpellsPerDayCell(cells[6 + i]);
         return { spellLevel, base, bonusSlots };
       });
-      spellsPerDay.push({ level, entries });
+      spellsPerDay.push({ level, entries: perDayEntries });
+
+      if (hasSpellsKnownGroup) {
+        const knownOffset = 6 + spellsPerDayLevels.length;
+        const knownEntries = spellsKnownLevels.map((spellLevel, i) => {
+          const text = stripTags(cells[knownOffset + i]).trim();
+          return { spellLevel, known: text === "—" || text === "-" ? null : Number(text) };
+        });
+        spellsKnown.push({ level, entries: knownEntries });
+      }
     }
   }
-  return { rows, spellsPerDay: columnSet === "prepared-caster" ? spellsPerDay : null };
+  return {
+    rows,
+    spellsPerDay: columnSet === "caster" ? spellsPerDay : null,
+    spellsKnown: columnSet === "caster" && hasSpellsKnownGroup ? spellsKnown : null,
+  };
 }
 
 // A real "Spells Known" table (Sorcerer's, and eventually Bard's) is a
@@ -228,10 +278,7 @@ function extractSpellsKnownTable(html: string, tableId: string): Dnd35eSpellsKno
   if (!tableMatch) throw new Error(`No real "${tableId}" Spells Known table found on this page.`);
   const tableHtml = tableMatch[1];
 
-  const headers: string[] = [];
-  TH_RE.lastIndex = 0;
-  let thMatch: RegExpExecArray | null;
-  while ((thMatch = TH_RE.exec(tableHtml))) headers.push(normalizeHeaderText(thMatch[1]));
+  const headers = collectHeaderCells(tableHtml).map((c) => c.text);
 
   if (headers[0] !== "Level" || headers[1] !== "Spells Known") {
     throw new Error(`Unexpected "${tableId}" header order: ${JSON.stringify(headers)}, expected ["Level", "Spells Known", ...spell-level sub-headers]`);
@@ -363,9 +410,9 @@ export function extractClassFromHtml(html: string): Dnd35eClassDefinition {
 
   const tableMatch = TABLE_RE.exec(html);
   if (!tableMatch) throw new Error(`No real level-progression table found for class "${name}".`);
-  const { rows: levelProgression, spellsPerDay } = extractLevelProgression(tableMatch[1]);
+  const { rows: levelProgression, spellsPerDay, spellsKnown } = extractLevelProgression(tableMatch[1]);
 
-  return buildClassDefinition(name, html, levelProgression, spellsPerDay, null);
+  return buildClassDefinition(name, html, levelProgression, spellsPerDay, spellsKnown);
 }
 
 // The real d20srd.org/srd/classes/sorcererWizard.htm page covers BOTH

@@ -16,6 +16,7 @@ const DRUID_HTML = fs.readFileSync(path.join(__dirname, "druid-fixture.html"), "
 const PALADIN_HTML = fs.readFileSync(path.join(__dirname, "paladin-fixture.html"), "utf-8");
 const RANGER_HTML = fs.readFileSync(path.join(__dirname, "ranger-fixture.html"), "utf-8");
 const SORCERER_WIZARD_HTML = fs.readFileSync(path.join(__dirname, "sorcerer-wizard-fixture.html"), "utf-8");
+const BARD_HTML = fs.readFileSync(path.join(__dirname, "bard-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -402,4 +403,58 @@ test("Wizard: real d4 hit die, half BAB, poor Fort+Ref / good Will, and real cla
   assert.deepEqual(wizard.saveProgression, { fort: "poor", ref: "poor", will: "good" });
   assert.equal(wizard.classFeatures.length, 7);
   assert.ok(wizard.classFeatures.find((f) => f.slug === "spellbooks" && f.name === "Spellbooks"));
+});
+
+// --- Bard: real single table with BOTH "Spells per Day" AND "Spells Known" ---
+// (a genuinely different real layout from Sorcerer's separate standalone table)
+
+test("Bard: real single table with two adjacent colspan groups ('Spells per Day' colspan=7, 'Spells Known' colspan=7) is recognized and both groups parsed correctly from the same rows", () => {
+  const bard = extractClassFromHtml(BARD_HTML);
+  assert.equal(bard.canonicalId, "dnd35e:class:bard");
+  assert.equal(bard.extractionStatus, "fully_structured");
+  assert.ok(bard.spellcasting);
+  assert.equal(bard.spellcasting!.type, "spontaneous");
+  assert.equal(bard.spellcasting!.spellcastingAbility, "cha");
+  assert.equal(bard.spellcasting!.spellsPerDay[0].entries.length, 7);
+  assert.equal(bard.spellcasting!.spellsKnown!.length, 20);
+  assert.equal(bard.spellcasting!.spellsKnown![0].entries.length, 7);
+});
+
+test("Bard: real level-1 row — 2 cantrips/day, 4 cantrips known, nothing at 1st level yet (both tables' real '—' cells agree); level-20 row — 4/day across all levels, known counts matching the real live page", () => {
+  const bard = extractClassFromHtml(BARD_HTML);
+  const level1PerDay = bard.spellcasting!.spellsPerDay.find((r) => r.level === 1)!;
+  const level1Known = bard.spellcasting!.spellsKnown!.find((r) => r.level === 1)!;
+  assert.deepEqual(level1PerDay.entries[0], { spellLevel: 0, base: 2, bonusSlots: 0 });
+  assert.deepEqual(level1Known.entries[0], { spellLevel: 0, known: 4 });
+  assert.equal(level1PerDay.entries[1].base, null, "no 1st-level spells per day yet at bard level 1");
+  assert.equal(level1Known.entries[1].known, null, "no 1st-level spells known yet at bard level 1");
+
+  const level20PerDay = bard.spellcasting!.spellsPerDay.find((r) => r.level === 20)!;
+  const level20Known = bard.spellcasting!.spellsKnown!.find((r) => r.level === 20)!;
+  assert.ok(level20PerDay.entries.every((e) => e.base === 4), "bard caps at 4 spells/day per level at level 20");
+  assert.deepEqual(level20Known.entries[0], { spellLevel: 0, known: 6 });
+  assert.deepEqual(level20Known.entries[6], { spellLevel: 6, known: 4 });
+});
+
+test("Bard: real d6 hit die, three-quarter BAB, poor Fort / good Ref+Will, 'Any nonlawful' alignment, 6+Int skill points, 23 real class skills, 13 real class features including (Su)/(Sp)-suffixed ones", () => {
+  const bard = extractClassFromHtml(BARD_HTML);
+  assert.equal(bard.hitDie, 6);
+  assert.equal(bard.babProgression, "three-quarter");
+  assert.deepEqual(bard.saveProgression, { fort: "poor", ref: "good", will: "good" });
+  assert.equal(bard.alignment, "Any nonlawful.");
+  assert.equal(bard.skillPointsBase, 6);
+  assert.equal(bard.classSkills.length, 23);
+  assert.equal(bard.classFeatures.length, 13);
+  assert.ok(bard.classFeatures.find((f) => f.slug === "fascinate" && f.name === "Fascinate (Sp)"));
+  assert.ok(bard.classFeatures.find((f) => f.slug === "inspireCourage" && f.name === "Inspire Courage (Su)"));
+});
+
+test("real non-caster/single-group-caster classes still have spellsKnown: null after the multi-group header rewrite (no regression)", () => {
+  for (const html of [FIXTURE_HTML, BARBARIAN_HTML, ROGUE_HTML, MONK_HTML]) {
+    assert.equal(extractClassFromHtml(html).spellcasting, null);
+  }
+  for (const html of [CLERIC_HTML, DRUID_HTML, PALADIN_HTML, RANGER_HTML]) {
+    const cls = extractClassFromHtml(html);
+    assert.equal(cls.spellcasting!.spellsKnown, null, `${cls.name} is a single-group prepared caster and must not have a spellsKnown table`);
+  }
 });

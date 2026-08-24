@@ -1,6 +1,6 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23 → 2026-08-24)
 
-**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk), **4 real prepared spellcasters** (Cleric, Druid, Paladin, Ranger), and **the real Sorcerer/Wizard shared page** (1 spontaneous caster, 1 prepared) — **10 of 11 core classes**. Only Bard remains — a spontaneous caster expected to reuse the Sorcerer-shaped Spells Known support with no further extractor changes, but not assumed working without checking (see "What's not covered"). It does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **all 11 core D&D 3.5e base classes** — Fighter, Barbarian, Rogue, Monk (non-spellcasters); Cleric, Druid, Paladin, Ranger (prepared casters); Bard (spontaneous, real combined Spells-per-Day/Spells-Known table); and Sorcerer + Wizard (from their one shared real page, one spontaneous and one prepared). It does **not** cover prestige classes, spell lists/spell descriptions themselves (a separate future entity family), or any other entity family (see "What's not covered" for the complete, honest list of real remaining gaps within this scope).
 
 ## Real bug found and fixed: (Ex)/(Su)-suffixed class features were being silently dropped
 
@@ -56,7 +56,10 @@ Extracted real class "Paladin" (dnd35e:class:paladin): fully_structured, 20 leve
 Extracted real class "Ranger" (dnd35e:class:ranger): fully_structured, 20 level rows, 15 class features.
 Extracted real class "Sorcerer" (dnd35e:class:sorcerer): fully_structured, 20 level rows, 3 class features.
 Extracted real class "Wizard" (dnd35e:class:wizard): fully_structured, 20 level rows, 7 class features.
+Extracted real class "Bard" (dnd35e:class:bard): fully_structured, 20 level rows, 13 class features.
 ```
+
+All 11 core classes: `fully_structured`, zero extraction notes.
 
 ## Three real page-format/structure differences found and fixed during verification
 
@@ -148,15 +151,27 @@ The real `/srd/classes/sorcererWizard.htm` page covers **both classes under one 
 - **Wizard**: d4 hit die, half BAB, poor Fort/Ref, good Will. Intelligence/prepared, no Spells Known table (`null`, correctly). 7 class features: Weapon and Armor Proficiency, Spells, Bonus Languages, Familiar, Scribe Scroll, Bonus Feats, Spellbooks.
 - Both `extractionStatus: fully_structured`, zero extraction notes.
 
+## Real verified facts (Bard — the last core class, a third real spellcasting-table shape)
+
+Bard's real page turned out to have a **third distinct spellcasting-table shape**: unlike Sorcerer (a separate standalone Spells Known table) or Cleric-style single-group casters, Bard's `tableTheBard` has **both** a colspan-7 "Spells per Day" group **and** a colspan-7 "Spells Known" group as two adjacent column groups within the *same* table. This required generalizing `extractLevelProgression`'s header parsing from "does header[6] say Spells per Day" to a real colspan-aware multi-group parser (`collectHeaderCells()` now captures each `<th>`'s `colspan` attribute, not just its text, so consecutive group labels and their sub-header spans can be told apart deterministically). `extractSpellsKnownTable()` (Sorcerer's standalone-table parser) was refactored to reuse the same `collectHeaderCells()` helper for consistency. Verified this generalization causes **zero regressions** on all 8 previously-verified single-table classes plus Sorcerer/Wizard.
+
+- **BAB progression**: `three-quarter`. **Save progression**: Fort `poor`, Ref `good`, Will `good`. **Hit die**: d6. **Alignment**: "Any nonlawful." **Skill points**: base 6. **Class skills**: 23 real skills (second-largest list after Rogue's 28).
+- **Spellcasting**: ability `cha`, type `spontaneous`. Real level-1 row: 2 cantrips/day, 4 cantrips known, nothing at 1st level yet (both tables' real "—" cells agree). Real level-20 row: 4 spells/day at every level 0-6; known counts 6/5/5/5/5/5/4 — verified against the live page exactly.
+- **Class Features**: 13 real features, including 7 real (Su)/(Sp)-suffixed Bardic Music abilities (Countersong, Fascinate, Inspire Courage, Inspire Competence, Suggestion, Inspire Greatness, Song of Freedom, Inspire Heroics, Mass Suggestion) — all correctly captured by the earlier nested-tag fix, applied here without any further change.
+- `extractionStatus: fully_structured`, zero extraction notes.
+
+**This completes all 11 core D&D 3.5e base classes.**
+
 ## New schema: `Dnd35eClassSpellcasting`
 
 Added to `Dnd35eClassDefinition.spellcasting` (`null` for non-casters): `spellcastingAbility`, `type` (`"prepared"` vs `"spontaneous"` — detected from the page's own real stated rules text, not asserted per class), and `spellsPerDay: Dnd35eSpellsPerDayRow[]` (one row per level, each an array of `{spellLevel, base, bonusSlots}` entries — `base: null` for the real "—" cells, `bonusSlots` for real class-specific bonus notation like Cleric's domain spell). A real, simplifying discovery made while building this: the level-progression row-skip logic no longer assumes exactly one header `<tr>` to skip by position — it now relies purely on the existing cell-count check (a header row naturally has 0 `<td>` cells), which turned out to already correctly handle both the single-header-row standard/Monk tables and the two-header-row prepared-caster tables with no special-casing needed.
 
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **Bard** — the only remaining core class. A spontaneous caster; expected to reuse the now-real Sorcerer-shaped Spells Known support with no further extractor changes, but not assumed working without real per-page verification.
-2. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
-3. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
-4. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.
+1. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
+2. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
+3. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.
+4. **Class features are preserved as real text, not further decomposed into typed mechanical effects** — same honest scope boundary as Races' `special_ability` catch-all. A future pass could structure recurring shapes (flat numeric bonuses, DR, resistances) the way Feats' Benefit-effect patterns were deepened, but that's separate, real follow-on work.
+5. **Bard/Sorcerer/Wizard/Cleric/Druid/Paladin/Ranger's actual spell lists are not modeled at all** — this entity family covers class *progression* (who casts what level of spell when), not the spells themselves. Spells/Spellcasting is its own separate step later in the 21-step order.
 
 None of the above is claimed as done — this section names real, concrete follow-on work, not a completion promise.

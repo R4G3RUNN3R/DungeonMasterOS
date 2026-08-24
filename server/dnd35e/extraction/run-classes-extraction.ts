@@ -6,14 +6,12 @@
 // same exclusion from the automated test suite via package.json's
 // *.test.ts glob).
 //
-// Extracts all 10 core classes verified so far: Fighter, Barbarian, Rogue,
-// Monk (non-spellcasters), Cleric, Druid, Paladin, Ranger (prepared
-// casters), and Sorcerer + Wizard (from their one shared real page, one
-// prepared and one spontaneous). Only Bard remains unverified — a
-// spontaneous caster expected to reuse the Sorcerer-shaped Spells Known
-// support with no further extractor changes, but not assumed working
-// without checking. See classes.ts and the extraction report for the exact
-// current scope.
+// Extracts all 11 core classes: Fighter, Barbarian, Rogue, Monk
+// (non-spellcasters); Cleric, Druid, Paladin, Ranger (prepared casters);
+// Bard (spontaneous, its own single table with both Spells per Day and
+// Spells Known columns); and Sorcerer + Wizard (from their one shared real
+// page). Prestige classes remain entirely out of scope. See classes.ts and
+// the extraction report for the exact current scope and known gaps.
 //
 // Re-run with: node --import tsx server/dnd35e/extraction/run-classes-extraction.ts
 // Targets the real dev database (server/storage.ts's default DATABASE_URL,
@@ -34,6 +32,7 @@ const CLASS_SOURCE_PAGE_KEYS = [
   "dnd35e-srd-hypertext-d20::/srd/classes/druid.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/paladin.htm",
   "dnd35e-srd-hypertext-d20::/srd/classes/ranger.htm",
+  "dnd35e-srd-hypertext-d20::/srd/classes/bard.htm",
 ];
 // Sorcerer and Wizard share one real page — handled separately since
 // extractSorcererAndWizardFromHtml returns two class definitions from one
