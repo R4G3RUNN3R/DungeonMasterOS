@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-22
+- Scaffolded player profile, achievement collection, achievement showcase selector, and dashboard Community surfaces for later backend/DM integration; no public data exposure or social persistence was added.
+
 ## 2026-08-18 (Phase 6)
 - In-game UI redesign: implemented Phase 6 (encumbrance/item integration) of the immersive live-play shell on `feature/immersive-ingame-ui-redesign`, per design spec §16 — the final phase of the redesign's original phased sequence.
 - **Scope note:** the design spec gated this phase on "reconciling with the master item compendium/inventory work." That branch (`feature/master-item-compendium`) turned out to be a public, read-only item catalogue/browsing UI (cover flow, provenance, source links) — not a character-inventory/weight/carrying-capacity backend. Neither branch had any weight, container, or carrying-capacity data model, so this phase is new backend work rather than a merge, per explicit user decision after the gap was surfaced.

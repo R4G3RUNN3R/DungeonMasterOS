@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { resetPreferencesForNewIdentity } from "@/lib/personalPreferences";
+import { CommunitySection } from "@/components/profile/CommunitySection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -462,6 +463,8 @@ export default function Dashboard() {
             )}
           </section>
         )}
+
+        <CommunitySection recentAchievements={[]} newAdventurers={[]} />
 
         {/* Quick join */}
         <section className="border-t border-border pt-10">
