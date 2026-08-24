@@ -7,6 +7,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
 import { initializeCompendium } from "./compendium";
+import { syncBundledPublicUpdates } from "./public-updates";
 
 const app = express();
 const httpServer = createServer(app);
@@ -75,6 +76,12 @@ app.use((req, res, next) => {
   try {
     runMigrations();
     log("Database migrations complete", "db");
+
+    const publicUpdates = syncBundledPublicUpdates();
+    log(
+      `Public updates synchronized: ${publicUpdates.inserted} new of ${publicUpdates.totalBundled} bundled release entries`,
+      "updates",
+    );
 
     const compendium = await initializeCompendium();
     log(
