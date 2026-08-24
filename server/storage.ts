@@ -88,6 +88,14 @@ import type {
 import type { Dnd35eSkillDefinition, Dnd35eSkillSection } from "@shared/rules-registry/dnd35e/skills";
 import type { Dnd35eClassSpellList, Dnd35eClassSpellListEntry } from "@shared/rules-registry/dnd35e/class-spell-lists";
 import type { Dnd35eSpellClassLevel, Dnd35eSpellDefinition, Dnd35eSpellTargetKind } from "@shared/rules-registry/dnd35e/spells";
+import type {
+  Dnd35eAmmunitionDefinition,
+  Dnd35eDamageTypeJoin,
+  Dnd35eWeaponCost,
+  Dnd35eWeaponDefinition,
+  Dnd35eWeaponGroup,
+  Dnd35eWeaponProficiencyCategory,
+} from "@shared/rules-registry/dnd35e/equipment";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
@@ -717,6 +725,63 @@ export function runMigrations() {
   );`);
   addColumnIfMissing("dnd35e_spell_definitions", "inherits_from_canonical_id", "TEXT");
 
+  // Mundane weapons and ammunition — first Equipment entity families. Same
+  // upsert-when-changed/recordRevision pattern as every table above.
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_weapon_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    proficiency_category TEXT NOT NULL,
+    weapon_group TEXT NOT NULL,
+    cost_json TEXT NOT NULL DEFAULT 'null',
+    damage_small TEXT,
+    damage_medium TEXT,
+    critical_threat_range_low INTEGER,
+    critical_multiplier INTEGER,
+    range_increment_ft INTEGER,
+    weight_lb REAL,
+    damage_types_json TEXT NOT NULL DEFAULT '[]',
+    damage_type_join TEXT,
+    footnotes_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_ammunition_definitions (
+    canonical_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    weapon_group TEXT NOT NULL,
+    cost_json TEXT NOT NULL DEFAULT 'null',
+    quantity_per_purchase INTEGER,
+    weight_lb REAL,
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
+  // Real, additive cross-transport reconciliation record — Equipment is the
+  // first entity family where two independently-registered real sources
+  // (d20srd.org and the olimot/srd-v3.5 mirror) cover overlapping real
+  // content. This does NOT replace per-entity evidence (still one primary
+  // EvidenceCitation per definition, same as every table above) — it
+  // records the *result* of comparing the primary extraction against a
+  // second real transport for the same canonical entity, so reconciliation
+  // is itself inspectable rather than silent.
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_weapon_cross_check_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_id TEXT NOT NULL,
+    primary_source_page_key TEXT NOT NULL,
+    cross_check_source_page_key TEXT NOT NULL,
+    agreement_status TEXT NOT NULL,
+    conflicting_fields_json TEXT NOT NULL DEFAULT '[]',
+    checked_at TEXT NOT NULL,
+    UNIQUE(canonical_id, cross_check_source_page_key)
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -1235,6 +1300,168 @@ function dnd35eSpellStructuredContentJson(spell: {
   });
 }
 
+// Mundane weapons — mirrors the row/mapper/structured-content pattern above
+// field-for-field.
+export interface Dnd35eWeaponDefinitionRow {
+  canonicalId: string;
+  name: string;
+  proficiencyCategory: Dnd35eWeaponProficiencyCategory;
+  weaponGroup: Dnd35eWeaponGroup;
+  cost: Dnd35eWeaponCost;
+  damageSmall: string | null;
+  damageMedium: string | null;
+  criticalThreatRangeLow: number | null;
+  criticalMultiplier: number | null;
+  rangeIncrementFt: number | null;
+  weightLb: number | null;
+  damageTypes: string[];
+  damageTypeJoin: Dnd35eDamageTypeJoin;
+  footnotes: string[];
+  extractionStatus: Dnd35eWeaponDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eWeaponDefinitionRow(row: any): Dnd35eWeaponDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    proficiencyCategory: row.proficiency_category,
+    weaponGroup: row.weapon_group,
+    cost: JSON.parse(row.cost_json),
+    damageSmall: row.damage_small,
+    damageMedium: row.damage_medium,
+    criticalThreatRangeLow: row.critical_threat_range_low,
+    criticalMultiplier: row.critical_multiplier,
+    rangeIncrementFt: row.range_increment_ft,
+    weightLb: row.weight_lb,
+    damageTypes: JSON.parse(row.damage_types_json),
+    damageTypeJoin: row.damage_type_join,
+    footnotes: JSON.parse(row.footnotes_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eWeaponStructuredContentJson(weapon: {
+  name: string;
+  proficiencyCategory: Dnd35eWeaponProficiencyCategory;
+  weaponGroup: Dnd35eWeaponGroup;
+  cost: Dnd35eWeaponCost;
+  damageSmall: string | null;
+  damageMedium: string | null;
+  criticalThreatRangeLow: number | null;
+  criticalMultiplier: number | null;
+  rangeIncrementFt: number | null;
+  weightLb: number | null;
+  damageTypes: string[];
+  damageTypeJoin: Dnd35eDamageTypeJoin;
+  footnotes: string[];
+  extractionStatus: Dnd35eWeaponDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: weapon.name,
+    proficiencyCategory: weapon.proficiencyCategory,
+    weaponGroup: weapon.weaponGroup,
+    cost: weapon.cost,
+    damageSmall: weapon.damageSmall,
+    damageMedium: weapon.damageMedium,
+    criticalThreatRangeLow: weapon.criticalThreatRangeLow,
+    criticalMultiplier: weapon.criticalMultiplier,
+    rangeIncrementFt: weapon.rangeIncrementFt,
+    weightLb: weapon.weightLb,
+    damageTypes: weapon.damageTypes,
+    damageTypeJoin: weapon.damageTypeJoin,
+    footnotes: weapon.footnotes,
+    extractionStatus: weapon.extractionStatus,
+    extractionNotes: weapon.extractionNotes,
+  });
+}
+
+// Ammunition — mirrors the same pattern.
+export interface Dnd35eAmmunitionDefinitionRow {
+  canonicalId: string;
+  name: string;
+  weaponGroup: Dnd35eWeaponGroup;
+  cost: Dnd35eWeaponCost;
+  quantityPerPurchase: number | null;
+  weightLb: number | null;
+  extractionStatus: Dnd35eAmmunitionDefinition["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eAmmunitionDefinitionRow(row: any): Dnd35eAmmunitionDefinitionRow {
+  return {
+    canonicalId: row.canonical_id,
+    name: row.name,
+    weaponGroup: row.weapon_group,
+    cost: JSON.parse(row.cost_json),
+    quantityPerPurchase: row.quantity_per_purchase,
+    weightLb: row.weight_lb,
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eAmmunitionStructuredContentJson(ammo: {
+  name: string;
+  weaponGroup: Dnd35eWeaponGroup;
+  cost: Dnd35eWeaponCost;
+  quantityPerPurchase: number | null;
+  weightLb: number | null;
+  extractionStatus: Dnd35eAmmunitionDefinition["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    name: ammo.name,
+    weaponGroup: ammo.weaponGroup,
+    cost: ammo.cost,
+    quantityPerPurchase: ammo.quantityPerPurchase,
+    weightLb: ammo.weightLb,
+    extractionStatus: ammo.extractionStatus,
+    extractionNotes: ammo.extractionNotes,
+  });
+}
+
+// Real cross-transport reconciliation result — see the table comment in
+// runMigrations() for why this is additive rather than a redesign of the
+// single-EvidenceCitation-per-entity pattern used everywhere else.
+export type Dnd35eWeaponCrossCheckAgreementStatus = "matches" | "conflicts" | "not_found_in_cross_check";
+
+export interface Dnd35eWeaponCrossCheckResultRow {
+  id: number;
+  canonicalId: string;
+  primarySourcePageKey: string;
+  crossCheckSourcePageKey: string;
+  agreementStatus: Dnd35eWeaponCrossCheckAgreementStatus;
+  conflictingFields: string[];
+  checkedAt: string;
+}
+
+function mapDnd35eWeaponCrossCheckResultRow(row: any): Dnd35eWeaponCrossCheckResultRow {
+  return {
+    id: row.id,
+    canonicalId: row.canonical_id,
+    primarySourcePageKey: row.primary_source_page_key,
+    crossCheckSourcePageKey: row.cross_check_source_page_key,
+    agreementStatus: row.agreement_status,
+    conflictingFields: JSON.parse(row.conflicting_fields_json),
+    checkedAt: row.checked_at,
+  };
+}
+
 // ── Storage interface ──────────────────────────────────────────────────────
 export interface IStorage {
   // Users
@@ -1469,6 +1696,22 @@ export interface IStorage {
   upsertDnd35eSpellDefinition(spell: Dnd35eSpellDefinition, evidence: EvidenceCitation): Dnd35eSpellDefinitionRow;
   getDnd35eSpellDefinition(canonicalId: string): Dnd35eSpellDefinitionRow | undefined;
   listDnd35eSpellDefinitions(filter?: { extractionStatus?: Dnd35eSpellDefinition["extractionStatus"] }): Dnd35eSpellDefinitionRow[];
+
+  // Equipment: mundane weapons and ammunition
+  upsertDnd35eWeaponDefinition(weapon: Dnd35eWeaponDefinition, evidence: EvidenceCitation): Dnd35eWeaponDefinitionRow;
+  getDnd35eWeaponDefinition(canonicalId: string): Dnd35eWeaponDefinitionRow | undefined;
+  listDnd35eWeaponDefinitions(filter?: { extractionStatus?: Dnd35eWeaponDefinition["extractionStatus"] }): Dnd35eWeaponDefinitionRow[];
+  upsertDnd35eAmmunitionDefinition(ammo: Dnd35eAmmunitionDefinition, evidence: EvidenceCitation): Dnd35eAmmunitionDefinitionRow;
+  getDnd35eAmmunitionDefinition(canonicalId: string): Dnd35eAmmunitionDefinitionRow | undefined;
+  listDnd35eAmmunitionDefinitions(): Dnd35eAmmunitionDefinitionRow[];
+  recordDnd35eWeaponCrossCheckResult(result: {
+    canonicalId: string;
+    primarySourcePageKey: string;
+    crossCheckSourcePageKey: string;
+    agreementStatus: Dnd35eWeaponCrossCheckAgreementStatus;
+    conflictingFields: string[];
+  }): Dnd35eWeaponCrossCheckResultRow;
+  getDnd35eWeaponCrossCheckResults(canonicalId: string): Dnd35eWeaponCrossCheckResultRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -3381,6 +3624,298 @@ export class DatabaseStorage implements IStorage {
       ? sqlite.prepare("SELECT * FROM dnd35e_spell_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
       : sqlite.prepare("SELECT * FROM dnd35e_spell_definitions").all();
     return (rows as any[]).map(mapDnd35eSpellDefinitionRow);
+  }
+
+  upsertDnd35eWeaponDefinition(weapon: Dnd35eWeaponDefinition, evidence: EvidenceCitation): Dnd35eWeaponDefinitionRow {
+    if (!isValidCanonicalId(weapon.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${weapon.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(weapon.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "weapon") {
+      throw new Error(
+        `Invalid canonicalId "${weapon.canonicalId}" for upsertDnd35eWeaponDefinition: expected ruleset "dnd35e" and entityType "weapon", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_weapon_definitions WHERE canonical_id = ?")
+      .get(weapon.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_weapon_definitions (
+            canonical_id, name, proficiency_category, weapon_group, cost_json,
+            damage_small, damage_medium, critical_threat_range_low,
+            critical_multiplier, range_increment_ft, weight_lb,
+            damage_types_json, damage_type_join, footnotes_json,
+            extraction_status, extraction_notes_json, evidence_json,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          weapon.canonicalId,
+          weapon.name,
+          weapon.proficiencyCategory,
+          weapon.weaponGroup,
+          JSON.stringify(weapon.cost),
+          weapon.damageSmall,
+          weapon.damageMedium,
+          weapon.criticalThreatRangeLow,
+          weapon.criticalMultiplier,
+          weapon.rangeIncrementFt,
+          weapon.weightLb,
+          JSON.stringify(weapon.damageTypes),
+          weapon.damageTypeJoin,
+          JSON.stringify(weapon.footnotes),
+          weapon.extractionStatus,
+          JSON.stringify(weapon.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eWeaponDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions WHERE canonical_id = ?").get(weapon.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eWeaponStructuredContentJson({
+      name: existing.name,
+      proficiencyCategory: existing.proficiency_category,
+      weaponGroup: existing.weapon_group,
+      cost: JSON.parse(existing.cost_json),
+      damageSmall: existing.damage_small,
+      damageMedium: existing.damage_medium,
+      criticalThreatRangeLow: existing.critical_threat_range_low,
+      criticalMultiplier: existing.critical_multiplier,
+      rangeIncrementFt: existing.range_increment_ft,
+      weightLb: existing.weight_lb,
+      damageTypes: JSON.parse(existing.damage_types_json),
+      damageTypeJoin: existing.damage_type_join,
+      footnotes: JSON.parse(existing.footnotes_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eWeaponStructuredContentJson(weapon);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_weapon_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, weapon.canonicalId);
+      return mapDnd35eWeaponDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions WHERE canonical_id = ?").get(weapon.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_weapon_definitions SET
+          name = ?, proficiency_category = ?, weapon_group = ?, cost_json = ?,
+          damage_small = ?, damage_medium = ?, critical_threat_range_low = ?,
+          critical_multiplier = ?, range_increment_ft = ?, weight_lb = ?,
+          damage_types_json = ?, damage_type_join = ?, footnotes_json = ?,
+          extraction_status = ?, extraction_notes_json = ?, evidence_json = ?,
+          updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        weapon.name,
+        weapon.proficiencyCategory,
+        weapon.weaponGroup,
+        JSON.stringify(weapon.cost),
+        weapon.damageSmall,
+        weapon.damageMedium,
+        weapon.criticalThreatRangeLow,
+        weapon.criticalMultiplier,
+        weapon.rangeIncrementFt,
+        weapon.weightLb,
+        JSON.stringify(weapon.damageTypes),
+        weapon.damageTypeJoin,
+        JSON.stringify(weapon.footnotes),
+        weapon.extractionStatus,
+        JSON.stringify(weapon.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        weapon.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(weapon.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: weapon.canonicalId,
+      entityType: "weapon",
+      revision: nextRevision,
+      changeReason: "structured weapon content changed on re-extraction",
+      diffSummary: `structured content for ${weapon.canonicalId} changed`,
+    });
+
+    return mapDnd35eWeaponDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions WHERE canonical_id = ?").get(weapon.canonicalId),
+    );
+  }
+
+  getDnd35eWeaponDefinition(canonicalId: string): Dnd35eWeaponDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eWeaponDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eWeaponDefinitions(filter?: { extractionStatus?: Dnd35eWeaponDefinition["extractionStatus"] }): Dnd35eWeaponDefinitionRow[] {
+    const rows = filter?.extractionStatus
+      ? sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
+      : sqlite.prepare("SELECT * FROM dnd35e_weapon_definitions").all();
+    return (rows as any[]).map(mapDnd35eWeaponDefinitionRow);
+  }
+
+  upsertDnd35eAmmunitionDefinition(ammo: Dnd35eAmmunitionDefinition, evidence: EvidenceCitation): Dnd35eAmmunitionDefinitionRow {
+    if (!isValidCanonicalId(ammo.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${ammo.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(ammo.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "ammunition") {
+      throw new Error(
+        `Invalid canonicalId "${ammo.canonicalId}" for upsertDnd35eAmmunitionDefinition: expected ruleset "dnd35e" and entityType "ammunition", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_ammunition_definitions WHERE canonical_id = ?")
+      .get(ammo.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_ammunition_definitions (
+            canonical_id, name, weapon_group, cost_json,
+            quantity_per_purchase, weight_lb, extraction_status,
+            extraction_notes_json, evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          ammo.canonicalId,
+          ammo.name,
+          ammo.weaponGroup,
+          JSON.stringify(ammo.cost),
+          ammo.quantityPerPurchase,
+          ammo.weightLb,
+          ammo.extractionStatus,
+          JSON.stringify(ammo.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eAmmunitionDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions WHERE canonical_id = ?").get(ammo.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eAmmunitionStructuredContentJson({
+      name: existing.name,
+      weaponGroup: existing.weapon_group,
+      cost: JSON.parse(existing.cost_json),
+      quantityPerPurchase: existing.quantity_per_purchase,
+      weightLb: existing.weight_lb,
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eAmmunitionStructuredContentJson(ammo);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_ammunition_definitions SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, ammo.canonicalId);
+      return mapDnd35eAmmunitionDefinitionRow(
+        sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions WHERE canonical_id = ?").get(ammo.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_ammunition_definitions SET
+          name = ?, weapon_group = ?, cost_json = ?, quantity_per_purchase = ?,
+          weight_lb = ?, extraction_status = ?, extraction_notes_json = ?,
+          evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        ammo.name,
+        ammo.weaponGroup,
+        JSON.stringify(ammo.cost),
+        ammo.quantityPerPurchase,
+        ammo.weightLb,
+        ammo.extractionStatus,
+        JSON.stringify(ammo.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        ammo.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(ammo.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: ammo.canonicalId,
+      entityType: "ammunition",
+      revision: nextRevision,
+      changeReason: "structured ammunition content changed on re-extraction",
+      diffSummary: `structured content for ${ammo.canonicalId} changed`,
+    });
+
+    return mapDnd35eAmmunitionDefinitionRow(
+      sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions WHERE canonical_id = ?").get(ammo.canonicalId),
+    );
+  }
+
+  getDnd35eAmmunitionDefinition(canonicalId: string): Dnd35eAmmunitionDefinitionRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eAmmunitionDefinitionRow(row) : undefined;
+  }
+
+  listDnd35eAmmunitionDefinitions(): Dnd35eAmmunitionDefinitionRow[] {
+    const rows = sqlite.prepare("SELECT * FROM dnd35e_ammunition_definitions").all();
+    return (rows as any[]).map(mapDnd35eAmmunitionDefinitionRow);
+  }
+
+  recordDnd35eWeaponCrossCheckResult(result: {
+    canonicalId: string;
+    primarySourcePageKey: string;
+    crossCheckSourcePageKey: string;
+    agreementStatus: Dnd35eWeaponCrossCheckAgreementStatus;
+    conflictingFields: string[];
+  }): Dnd35eWeaponCrossCheckResultRow {
+    const now = new Date().toISOString();
+    sqlite
+      .prepare(`
+        INSERT INTO dnd35e_weapon_cross_check_results (
+          canonical_id, primary_source_page_key, cross_check_source_page_key,
+          agreement_status, conflicting_fields_json, checked_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(canonical_id, cross_check_source_page_key) DO UPDATE SET
+          primary_source_page_key = excluded.primary_source_page_key,
+          agreement_status = excluded.agreement_status,
+          conflicting_fields_json = excluded.conflicting_fields_json,
+          checked_at = excluded.checked_at
+      `)
+      .run(
+        result.canonicalId,
+        result.primarySourcePageKey,
+        result.crossCheckSourcePageKey,
+        result.agreementStatus,
+        JSON.stringify(result.conflictingFields),
+        now,
+      );
+    return mapDnd35eWeaponCrossCheckResultRow(
+      sqlite
+        .prepare("SELECT * FROM dnd35e_weapon_cross_check_results WHERE canonical_id = ? AND cross_check_source_page_key = ?")
+        .get(result.canonicalId, result.crossCheckSourcePageKey),
+    );
+  }
+
+  getDnd35eWeaponCrossCheckResults(canonicalId: string): Dnd35eWeaponCrossCheckResultRow[] {
+    const rows = sqlite
+      .prepare("SELECT * FROM dnd35e_weapon_cross_check_results WHERE canonical_id = ?")
+      .all(canonicalId);
+    return (rows as any[]).map(mapDnd35eWeaponCrossCheckResultRow);
   }
 }
 
