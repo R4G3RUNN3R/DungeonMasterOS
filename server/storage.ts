@@ -86,6 +86,7 @@ import type {
   Dnd35eSaveProgression,
 } from "@shared/rules-registry/dnd35e/classes";
 import type { Dnd35eSkillDefinition, Dnd35eSkillSection } from "@shared/rules-registry/dnd35e/skills";
+import type { Dnd35eClassSpellList, Dnd35eClassSpellListEntry } from "@shared/rules-registry/dnd35e/class-spell-lists";
 import type { EvidenceCitation } from "@shared/rules-registry/evidence";
 import {
   srdManifestEntries,
@@ -674,6 +675,20 @@ export function runMigrations() {
     updated_at TEXT NOT NULL
   );`);
 
+  // Class Spell Lists — which real spells a class can cast, and at what
+  // level. Same pattern as the tables above: structured-content changes
+  // recorded via recordRevision(entityType: "class-spell-list").
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS dnd35e_class_spell_lists (
+    canonical_id TEXT PRIMARY KEY,
+    class_canonical_id TEXT NOT NULL,
+    entries_json TEXT NOT NULL DEFAULT '[]',
+    extraction_status TEXT NOT NULL DEFAULT 'unresolved',
+    extraction_notes_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT 'null',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS srd_manifest_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_page_key TEXT NOT NULL UNIQUE,
@@ -1064,6 +1079,46 @@ function dnd35eSkillStructuredContentJson(skill: {
   });
 }
 
+// Class Spell Lists — mirrors the row/mapper/structured-content pattern
+// above field-for-field.
+export interface Dnd35eClassSpellListRow {
+  canonicalId: string;
+  classCanonicalId: string;
+  entries: Dnd35eClassSpellListEntry[];
+  extractionStatus: Dnd35eClassSpellList["extractionStatus"];
+  extractionNotes: string[];
+  evidence: EvidenceCitation;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDnd35eClassSpellListRow(row: any): Dnd35eClassSpellListRow {
+  return {
+    canonicalId: row.canonical_id,
+    classCanonicalId: row.class_canonical_id,
+    entries: JSON.parse(row.entries_json),
+    extractionStatus: row.extraction_status,
+    extractionNotes: JSON.parse(row.extraction_notes_json),
+    evidence: JSON.parse(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dnd35eClassSpellListStructuredContentJson(list: {
+  classCanonicalId: string;
+  entries: Dnd35eClassSpellListEntry[];
+  extractionStatus: Dnd35eClassSpellList["extractionStatus"];
+  extractionNotes: string[];
+}): string {
+  return JSON.stringify({
+    classCanonicalId: list.classCanonicalId,
+    entries: list.entries,
+    extractionStatus: list.extractionStatus,
+    extractionNotes: list.extractionNotes,
+  });
+}
+
 // ── Storage interface ──────────────────────────────────────────────────────
 export interface IStorage {
   // Users
@@ -1292,6 +1347,9 @@ export interface IStorage {
   upsertDnd35eSkillDefinition(skill: Dnd35eSkillDefinition, evidence: EvidenceCitation): Dnd35eSkillDefinitionRow;
   getDnd35eSkillDefinition(canonicalId: string): Dnd35eSkillDefinitionRow | undefined;
   listDnd35eSkillDefinitions(filter?: { extractionStatus?: Dnd35eSkillDefinition["extractionStatus"] }): Dnd35eSkillDefinitionRow[];
+  upsertDnd35eClassSpellList(list: Dnd35eClassSpellList, evidence: EvidenceCitation): Dnd35eClassSpellListRow;
+  getDnd35eClassSpellList(canonicalId: string): Dnd35eClassSpellListRow | undefined;
+  listDnd35eClassSpellLists(): Dnd35eClassSpellListRow[];
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -2962,6 +3020,104 @@ export class DatabaseStorage implements IStorage {
       ? sqlite.prepare("SELECT * FROM dnd35e_skill_definitions WHERE extraction_status = ?").all(filter.extractionStatus)
       : sqlite.prepare("SELECT * FROM dnd35e_skill_definitions").all();
     return (rows as any[]).map(mapDnd35eSkillDefinitionRow);
+  }
+
+  upsertDnd35eClassSpellList(list: Dnd35eClassSpellList, evidence: EvidenceCitation): Dnd35eClassSpellListRow {
+    if (!isValidCanonicalId(list.canonicalId)) {
+      throw new Error(`Invalid canonicalId "${list.canonicalId}": must match ruleset:entityType:slug`);
+    }
+    const parsed = parseCanonicalId(list.canonicalId);
+    if (!parsed || parsed.ruleset !== "dnd35e" || parsed.entityType !== "class-spell-list") {
+      throw new Error(
+        `Invalid canonicalId "${list.canonicalId}" for upsertDnd35eClassSpellList: expected ruleset "dnd35e" and entityType "class-spell-list", got ruleset "${parsed?.ruleset}" and entityType "${parsed?.entityType}"`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existing = sqlite
+      .prepare("SELECT * FROM dnd35e_class_spell_lists WHERE canonical_id = ?")
+      .get(list.canonicalId) as any;
+
+    if (!existing) {
+      sqlite
+        .prepare(`
+          INSERT INTO dnd35e_class_spell_lists (
+            canonical_id, class_canonical_id, entries_json, extraction_status,
+            extraction_notes_json, evidence_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          list.canonicalId,
+          list.classCanonicalId,
+          JSON.stringify(list.entries),
+          list.extractionStatus,
+          JSON.stringify(list.extractionNotes),
+          JSON.stringify(evidence),
+          now,
+          now,
+        );
+      return mapDnd35eClassSpellListRow(
+        sqlite.prepare("SELECT * FROM dnd35e_class_spell_lists WHERE canonical_id = ?").get(list.canonicalId),
+      );
+    }
+
+    const existingStructuredJson = dnd35eClassSpellListStructuredContentJson({
+      classCanonicalId: existing.class_canonical_id,
+      entries: JSON.parse(existing.entries_json),
+      extractionStatus: existing.extraction_status,
+      extractionNotes: JSON.parse(existing.extraction_notes_json),
+    });
+    const newStructuredJson = dnd35eClassSpellListStructuredContentJson(list);
+
+    if (existingStructuredJson === newStructuredJson) {
+      sqlite
+        .prepare("UPDATE dnd35e_class_spell_lists SET evidence_json = ?, updated_at = ? WHERE canonical_id = ?")
+        .run(JSON.stringify(evidence), now, list.canonicalId);
+      return mapDnd35eClassSpellListRow(
+        sqlite.prepare("SELECT * FROM dnd35e_class_spell_lists WHERE canonical_id = ?").get(list.canonicalId),
+      );
+    }
+
+    sqlite
+      .prepare(`
+        UPDATE dnd35e_class_spell_lists SET
+          class_canonical_id = ?, entries_json = ?, extraction_status = ?,
+          extraction_notes_json = ?, evidence_json = ?, updated_at = ?
+        WHERE canonical_id = ?
+      `)
+      .run(
+        list.classCanonicalId,
+        JSON.stringify(list.entries),
+        list.extractionStatus,
+        JSON.stringify(list.extractionNotes),
+        JSON.stringify(evidence),
+        now,
+        list.canonicalId,
+      );
+
+    const priorRevisions = this.getRevisionHistory(list.canonicalId);
+    const nextRevision = (priorRevisions[0]?.revision ?? 0) + 1;
+    this.recordRevision({
+      canonicalId: list.canonicalId,
+      entityType: "class-spell-list",
+      revision: nextRevision,
+      changeReason: "structured class spell list content changed on re-extraction",
+      diffSummary: `structured content for ${list.canonicalId} changed`,
+    });
+
+    return mapDnd35eClassSpellListRow(
+      sqlite.prepare("SELECT * FROM dnd35e_class_spell_lists WHERE canonical_id = ?").get(list.canonicalId),
+    );
+  }
+
+  getDnd35eClassSpellList(canonicalId: string): Dnd35eClassSpellListRow | undefined {
+    const row = sqlite.prepare("SELECT * FROM dnd35e_class_spell_lists WHERE canonical_id = ?").get(canonicalId);
+    return row ? mapDnd35eClassSpellListRow(row) : undefined;
+  }
+
+  listDnd35eClassSpellLists(): Dnd35eClassSpellListRow[] {
+    const rows = sqlite.prepare("SELECT * FROM dnd35e_class_spell_lists").all();
+    return (rows as any[]).map(mapDnd35eClassSpellListRow);
   }
 }
 
