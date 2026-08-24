@@ -20,6 +20,8 @@ import Account from "@/pages/account";
 import CompendiumPage from "@/pages/compendium";
 import CompendiumItemPage from "@/pages/compendium-item";
 import UpdatesPage from "@/pages/updates";
+import PlayerProfileRoute from "@/pages/player-profile";
+import AchievementsRoute from "@/pages/achievements";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -50,6 +52,8 @@ function AppRouter() {
       <Route path="/dashboard">{() => <ProtectedRoute component={Dashboard} />}</Route>
       <Route path="/billing">{() => <ProtectedRoute component={Billing} />}</Route>
       <Route path="/account">{() => <ProtectedRoute component={Account} />}</Route>
+      <Route path="/player-profile">{() => <ProtectedRoute component={PlayerProfileRoute} />}</Route>
+      <Route path="/achievements">{() => <ProtectedRoute component={AchievementsRoute} />}</Route>
       <Route path="/home">{() => <ProtectedRoute component={Home} />}</Route>
       <Route path="/campaign/:id" component={CampaignPage} />
       <Route path="/character-sheet/:characterId">{() => <ProtectedRoute component={CharacterSheetPage} />}</Route>

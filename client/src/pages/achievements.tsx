@@ -1,14 +1,19 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Award } from "lucide-react";
 import type { AchievementCategory } from "@shared/achievements";
+import type { UserAchievement } from "@shared/schema";
 import {
   EMPTY_ACHIEVEMENTS_PAGE_MODEL,
   type AchievementsPageModel,
   type PublicAchievementSummary,
+  calculateTurnsEarned,
   normalizeShowcaseSelection,
   visibleAchievementDefinitions,
 } from "@shared/player-profile";
 
+import { useAuth } from "@/hooks/use-auth";
+import { getQueryFn } from "@/lib/queryClient";
 import { AchievementMedalCard } from "@/components/profile/AchievementMedalCard";
 import { AchievementShowcase } from "@/components/profile/AchievementShowcase";
 import { AchievementShowcaseSelector } from "@/components/profile/AchievementShowcaseSelector";
@@ -47,7 +52,7 @@ function toPublicAchievementSummary(
   };
 }
 
-export default function AchievementsPage({ model = EMPTY_ACHIEVEMENTS_PAGE_MODEL }: AchievementsPageProps) {
+export function AchievementsPage({ model = EMPTY_ACHIEVEMENTS_PAGE_MODEL }: AchievementsPageProps) {
   const [activeFilter, setActiveFilter] = useState<AchievementFilter>("all");
   const [editShowcaseOpen, setEditShowcaseOpen] = useState(false);
   const [localShowcaseIds, setLocalShowcaseIds] = useState<string[]>(() => normalizeShowcaseSelection(model.showcasedAchievementIds));
@@ -169,4 +174,33 @@ export default function AchievementsPage({ model = EMPTY_ACHIEVEMENTS_PAGE_MODEL
       ) : null}
     </main>
   );
+}
+
+// Route-level container: wires the presentational AchievementsPage above to
+// real, already-existing backend data (GET /api/achievements) via this app's
+// established react-query pattern. A persisted showcase selection has no
+// backend support yet, so it starts as a real, honest empty state rather
+// than an invented default — the owner can still build one locally via the
+// existing AchievementShowcaseSelector, exactly as before.
+export default function AchievementsRoute() {
+  const { user, isLoading: userLoading } = useAuth();
+  const { data: userAchievements, isLoading: achievementsLoading } = useQuery<UserAchievement[]>({
+    queryKey: ["/api/achievements"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!user,
+  });
+
+  if (userLoading || (!!user && achievementsLoading)) {
+    return <main className="min-h-screen bg-background" />;
+  }
+
+  const unlockedAchievementIds = (userAchievements ?? []).map((a) => a.achievementId);
+  const model: AchievementsPageModel = {
+    unlockedAchievementIds,
+    showcasedAchievementIds: [],
+    turnsEarned: calculateTurnsEarned(unlockedAchievementIds),
+    viewerIsOwner: !!user,
+  };
+
+  return <AchievementsPage model={model} />;
 }

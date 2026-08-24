@@ -14,6 +14,7 @@ import {
   Swords, Plus, Users, Clock, LogOut, Crown, AlertTriangle,
   CheckCircle, Loader2, Hash, Archive, BarChart3, Settings,
   BookOpen, Sparkles, ChevronRight, Gift, RefreshCw, X,
+  UserRound, Award,
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
 import type { Campaign } from "@shared/schema";
@@ -324,6 +325,16 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+            <Link href="/player-profile">
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5">
+                <UserRound className="w-3.5 h-3.5" /><span className="hidden sm:block">Profile</span>
+              </Button>
+            </Link>
+            <Link href="/achievements">
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5">
+                <Award className="w-3.5 h-3.5" /><span className="hidden sm:block">Achievements</span>
+              </Button>
+            </Link>
             <Link href="/billing">
               <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5">
                 <Settings className="w-3.5 h-3.5" /><span className="hidden sm:block">Billing</span>

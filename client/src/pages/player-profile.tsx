@@ -1,7 +1,13 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { PublicAchievementSummary, PublicPlayerProfileSummary } from "@shared/player-profile";
+import { calculateTurnsEarned } from "@shared/player-profile";
+import { ACHIEVEMENT_MAP } from "@shared/achievements";
+import type { UserAchievement } from "@shared/schema";
 import { Award, Pencil, Sparkles, UserRound } from "lucide-react";
 
+import { useAuth } from "@/hooks/use-auth";
+import { getQueryFn } from "@/lib/queryClient";
 import { AchievementShowcase } from "@/components/profile/AchievementShowcase";
 import { AchievementShowcaseSelector } from "@/components/profile/AchievementShowcaseSelector";
 import { MostRecentCharacterCard } from "@/components/profile/MostRecentCharacterCard";
@@ -54,7 +60,7 @@ function memberSinceYear(memberSince: string): number | null {
   return Number.isFinite(year) ? year : null;
 }
 
-export default function PlayerProfilePage({
+export function PlayerProfilePage({
   profile,
   unlockedAchievements,
 }: PlayerProfilePageProps) {
@@ -208,6 +214,64 @@ export default function PlayerProfilePage({
       ) : null}
     </main>
   );
+}
+
+// Route-level container: wires the presentational PlayerProfilePage above to
+// real, already-existing backend data (GET /api/auth/me, GET /api/achievements)
+// via this app's established react-query pattern. Fields with no persisted
+// backend support yet (a showcase selection, a cross-campaign "most recent
+// character" query) are left as their real, honest empty/null state rather
+// than invented — the owner can still populate a showcase locally via the
+// existing AchievementShowcaseSelector, exactly as before.
+export default function PlayerProfileRoute() {
+  const { user, isLoading: userLoading } = useAuth();
+  const { data: userAchievements, isLoading: achievementsLoading } = useQuery<UserAchievement[]>({
+    queryKey: ["/api/achievements"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!user,
+  });
+
+  if (userLoading || (!!user && achievementsLoading)) {
+    return <main className="min-h-screen bg-background" />;
+  }
+  if (!user) {
+    return <PlayerProfilePage profile={null} />;
+  }
+
+  const unlockedIds = (userAchievements ?? []).map((a) => a.achievementId);
+  const unlockedSummaries: PublicAchievementSummary[] = unlockedIds.flatMap((id) => {
+    const def = ACHIEVEMENT_MAP[id];
+    if (!def) return [];
+    const rewardTurns = def.rewardTurns ?? 0;
+    return [{
+      id: def.id,
+      name: def.name,
+      description: def.description,
+      icon: def.icon,
+      category: def.category,
+      unlocked: true,
+      ...(rewardTurns > 0 ? { rewardTurns } : {}),
+    }];
+  });
+
+  const profile: PublicPlayerProfileSummary = {
+    username: user.username,
+    avatarUrl: user.avatarUrl,
+    memberSince: user.createdAt,
+    achievementsUnlocked: unlockedSummaries.length,
+    turnsEarned: calculateTurnsEarned(unlockedIds),
+    // No showcase-selection persistence exists yet — honest empty state,
+    // not a guessed default. The owner can still pick a local showcase via
+    // the selector below, which is already fully wired to real unlocked
+    // achievements.
+    showcasedAchievements: [],
+    // No cross-campaign "most recent character" query exists yet — honest
+    // null, which PlayerProfilePage already renders as a real empty state.
+    mostRecentCharacter: null,
+    viewerIsOwner: true,
+  };
+
+  return <PlayerProfilePage profile={profile} unlockedAchievements={unlockedSummaries} />;
 }
 
 export const __testing__ = {
