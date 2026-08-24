@@ -13,6 +13,8 @@ const ROGUE_HTML = fs.readFileSync(path.join(__dirname, "rogue-fixture.html"), "
 const MONK_HTML = fs.readFileSync(path.join(__dirname, "monk-fixture.html"), "utf-8");
 const CLERIC_HTML = fs.readFileSync(path.join(__dirname, "cleric-fixture.html"), "utf-8");
 const DRUID_HTML = fs.readFileSync(path.join(__dirname, "druid-fixture.html"), "utf-8");
+const PALADIN_HTML = fs.readFileSync(path.join(__dirname, "paladin-fixture.html"), "utf-8");
+const RANGER_HTML = fs.readFileSync(path.join(__dirname, "ranger-fixture.html"), "utf-8");
 
 test("Fighter: real canonical ID, name, alignment, hit die", () => {
   const fighter = extractClassFromHtml(FIXTURE_HTML);
@@ -294,4 +296,58 @@ test("Cleric: real 8 class features (the nested-tag bug used to only see 6, sile
   assert.equal(cleric.classFeatures.length, 8);
   assert.ok(cleric.classFeatures.find((f) => f.slug === "aura" && f.name === "Aura (Ex)"));
   assert.ok(cleric.classFeatures.find((f) => f.slug === "turnorRebukeUndead" && f.name === "Turn or Rebuke Undead (Su)"));
+});
+
+// --- Paladin: real partial-caster table (4 spell-level columns, no cantrips) ---
+
+test("Paladin: real 4-column 'Spells per Day' table (1st-4th level only, no cantrip column) is recognized and parsed correctly — the generic prepared-caster detection needed no changes for this partial-caster shape", () => {
+  const paladin = extractClassFromHtml(PALADIN_HTML);
+  assert.equal(paladin.canonicalId, "dnd35e:class:paladin");
+  assert.equal(paladin.extractionStatus, "fully_structured");
+  assert.ok(paladin.spellcasting);
+  assert.equal(paladin.spellcasting!.spellsPerDay[0].entries.length, 4);
+  assert.deepEqual(paladin.spellcasting!.spellsPerDay[0].entries.map((e) => e.spellLevel), [1, 2, 3, 4]);
+});
+
+test("Paladin: real level-1-3 rows have no spellcasting at all (real '—'), level 4 has a real '0' entry (caster level high enough but base allotment is 0 — distinct from unavailable), matching the live page exactly", () => {
+  const paladin = extractClassFromHtml(PALADIN_HTML);
+  const level3 = paladin.spellcasting!.spellsPerDay.find((r) => r.level === 3)!;
+  const level4 = paladin.spellcasting!.spellsPerDay.find((r) => r.level === 4)!;
+  assert.ok(level3.entries.every((e) => e.base === null), "level 3 Paladin has no real spellcasting yet");
+  assert.deepEqual(level4.entries[0], { spellLevel: 1, base: 0, bonusSlots: 0 }, "level 4 first-level spells: a real 0, not null/unavailable");
+  assert.equal(level4.entries[1].base, null, "level 4 second-level spells still unavailable");
+});
+
+test("Paladin: real d10 hit die, full BAB, good Fort / poor Ref+Will, 'Lawful good' fixed alignment, real 15 class features including (Ex)/(Sp)/(Su)-suffixed ones", () => {
+  const paladin = extractClassFromHtml(PALADIN_HTML);
+  assert.equal(paladin.hitDie, 10);
+  assert.equal(paladin.babProgression, "full");
+  assert.deepEqual(paladin.saveProgression, { fort: "good", ref: "poor", will: "poor" });
+  assert.equal(paladin.alignment, "Lawful good.");
+  assert.equal(paladin.classFeatures.length, 15);
+  assert.ok(paladin.classFeatures.find((f) => f.slug === "smiteEvil" && f.name === "Smite Evil (Su)"));
+  assert.ok(paladin.classFeatures.find((f) => f.slug === "detectEvil" && f.name === "Detect Evil (Sp)"));
+});
+
+// --- Ranger: real partial-caster, real full BAB (unusual for a caster) ----
+
+test("Ranger: real full BAB (unusual among casters — every other caster in this pass is three-quarter or full-but-non-caster), good Fort+Ref / poor Will, d8, 'Any' alignment, wis/prepared spellcasting", () => {
+  const ranger = extractClassFromHtml(RANGER_HTML);
+  assert.equal(ranger.canonicalId, "dnd35e:class:ranger");
+  assert.equal(ranger.extractionStatus, "fully_structured");
+  assert.equal(ranger.babProgression, "full");
+  assert.deepEqual(ranger.saveProgression, { fort: "good", ref: "good", will: "poor" });
+  assert.equal(ranger.hitDie, 8);
+  assert.equal(ranger.alignment, "Any.");
+  assert.ok(ranger.spellcasting);
+  assert.equal(ranger.spellcasting!.spellcastingAbility, "wis");
+  assert.equal(ranger.spellcasting!.type, "prepared");
+});
+
+test("Ranger: real 15 class features, including (Ex)-suffixed ones the nested-tag bug used to drop (Favored Enemy, Wild Empathy, Combat Style, Animal Companion, Evasion, Camouflage, Hide in Plain Sight)", () => {
+  const ranger = extractClassFromHtml(RANGER_HTML);
+  assert.equal(ranger.classFeatures.length, 15);
+  assert.ok(ranger.classFeatures.find((f) => f.slug === "favoredEnemy" && f.name === "Favored Enemy (Ex)"));
+  assert.ok(ranger.classFeatures.find((f) => f.slug === "rangerEvasion" && f.name === "Evasion (Ex)"));
+  assert.ok(ranger.classFeatures.find((f) => f.slug === "hideinPlainSight" && f.name === "Hide in Plain Sight (Ex)"));
 });

@@ -1,6 +1,6 @@
 # D&D 3.5e Classes/Progression Extraction Report (real run: 2026-08-23 → 2026-08-24)
 
-**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **2 real prepared spellcasters (Cleric, Druid)**. The remaining 4 core classes (Bard, Paladin, Ranger, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
+**Scope note, stated explicitly:** this covers **all 4 non-spellcasting core classes** (Fighter, Barbarian, Rogue, Monk) plus **4 real prepared spellcasters** — 2 full casters (Cleric, Druid) and 2 partial casters (Paladin, Ranger). The remaining 3 core classes (Bard, Sorcerer, Wizard) still need real per-page verification — Sorcerer and Bard are spontaneous casters and need a real "Spells Known" table this extractor doesn't parse yet (see "What's not covered"). It does not cover any other entity family.
 
 ## Real bug found and fixed: (Ex)/(Su)-suffixed class features were being silently dropped
 
@@ -52,6 +52,8 @@ Extracted real class "Rogue" (dnd35e:class:rogue): fully_structured, 20 level ro
 Extracted real class "Monk" (dnd35e:class:monk): fully_structured, 20 level rows, 21 class features.
 Extracted real class "Cleric" (dnd35e:class:cleric): fully_structured, 20 level rows, 8 class features.
 Extracted real class "Druid" (dnd35e:class:druid): fully_structured, 20 level rows, 21 class features.
+Extracted real class "Paladin" (dnd35e:class:paladin): fully_structured, 20 level rows, 15 class features.
+Extracted real class "Ranger" (dnd35e:class:ranger): fully_structured, 20 level rows, 15 class features.
 ```
 
 ## Three real page-format/structure differences found and fixed during verification
@@ -116,13 +118,29 @@ Each was caught by the extractor's fail-closed design (it threw rather than sile
 - **Class Features**: 21 real features, including the exact (Ex)/(Su)-suffixed set the nested-tag bug used to drop (Animal Companion, Nature Sense, Wild Empathy, Woodland Stride, Trackless Step, Resist Nature's Lure, Wild Shape, Venom Immunity, A Thousand Faces, Timeless Body), plus Weapon and Armor Proficiency, Spells, Spontaneous Casting, Chaotic/Evil/Good/Lawful Spells, Bonus Languages, Animal Companion Basics, and 5 real table-row-group headings from the Animal Companion-by-level table ("4th Level or Higher (Level −3)" etc.) that are honestly captured as their own named entries even though they function more as table row labels than freestanding class features — a known, disclosed quirk, not a miscategorization worth blocking on.
 - `extractionStatus: fully_structured`, zero extraction notes.
 
+## Real verified facts (Paladin — first real partial caster)
+
+- **BAB progression**: `full`. **Save progression**: Fort `good`, Ref/Will `poor`. **Hit die**: d10. **Alignment**: "Lawful good." — a real single fixed value (unlike Barbarian/Druid's compound restrictions). **Skill points**: base 2.
+- **Spellcasting**: ability `wis`, type `prepared`. **Spells per Day table has only 4 spell-level columns (1st-4th, no cantrip column)** — Paladins never cast spells above 4th level and have no 0-level spells at all. The generic prepared-caster detection (built for Cleric's 10-column table) needed **zero code changes** to correctly recognize and parse this narrower real shape.
+- **Real "0" vs "—" distinction verified**: levels 1-3 show real `—` (no spellcasting at all yet) for every spell level; level 4 shows a real `0` for 1st-level spells specifically (the class table says a level-4 Paladin *can* have caster level for 1st-level spells, but the base allotment is 0 — a real, meaningful RAW distinction from "unavailable"). At level 20, all 4 spell levels show `3`.
+- **Class Features**: 15 real features — Weapon and Armor Proficiency, Aura of Good (Ex), Detect Evil (Sp), Smite Evil (Su), Divine Grace (Su), Lay on Hands (Su), Aura of Courage (Su), Divine Health (Ex), Turn Undead (Su), Spells, Special Mount (Sp), Remove Disease (Sp), Code of Conduct, Associates, Paladin's Mount Basics.
+- `extractionStatus: fully_structured`, zero extraction notes.
+
+## Real verified facts (Ranger)
+
+- **BAB progression**: `full` — real and correct; unlike every other spellcaster extracted so far, Ranger genuinely gets full BAB progression despite being a caster.
+- **Save progression**: Fort `good`, Ref `good`, Will `poor`. **Hit die**: d8. **Alignment**: "Any." **Skill points**: base 6 (the highest of any class extracted so far). **Class skills**: 16 real skills.
+- **Spellcasting**: ability `wis`, type `prepared` (same partial-caster 4-column shape as Paladin, real-verified separately).
+- **Class Features**: 15 real features — Weapon and Armor Proficiency, Favored Enemy (Ex), Track, Wild Empathy (Ex), Combat Style (Ex), Endurance, Animal Companion (Ex), Spells, Improved Combat Style (Ex), Woodland Stride (Ex), Swift Tracker (Ex), Evasion (Ex), Combat Style Mastery (Ex), Camouflage (Ex), Hide in Plain Sight (Ex).
+- `extractionStatus: fully_structured`, zero extraction notes.
+
 ## New schema: `Dnd35eClassSpellcasting`
 
 Added to `Dnd35eClassDefinition.spellcasting` (`null` for non-casters): `spellcastingAbility`, `type` (`"prepared"` vs `"spontaneous"` — detected from the page's own real stated rules text, not asserted per class), and `spellsPerDay: Dnd35eSpellsPerDayRow[]` (one row per level, each an array of `{spellLevel, base, bonusSlots}` entries — `base: null` for the real "—" cells, `bonusSlots` for real class-specific bonus notation like Cleric's domain spell). A real, simplifying discovery made while building this: the level-progression row-skip logic no longer assumes exactly one header `<tr>` to skip by position — it now relies purely on the existing cell-count check (a header row naturally has 0 `<td>` cells), which turned out to already correctly handle both the single-header-row standard/Monk tables and the two-header-row prepared-caster tables with no special-casing needed.
 
 ## What's not covered (explicit follow-on work, not implied by this report)
 
-1. **4 remaining core classes** — Bard, Paladin, Ranger, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Wizard is a prepared caster and should extract with the current extractor largely as-is (real, likely-cheap next win, pending real verification — never assumed working without checking). Paladin and Ranger are partial casters (spellcasting starts at level 4, only reaches spell level 4) — their real table shape is not yet inspected. Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
+1. **3 remaining core classes** — Bard, Sorcerer, Wizard (Sorcerer and Wizard share one real page, `sorcererWizard.htm`) still need real per-page verification against the live pages. Wizard is a prepared caster and should extract with the current extractor largely as-is (real, likely-cheap next win, pending real verification — never assumed working without checking). Sorcerer and Bard are spontaneous casters and need a real `spellsKnown` table (a second grouped-column section on their real page) this extractor doesn't parse yet — deliberately not guessed or stubbed ahead of doing it for real.
 2. **Prestige classes** are entirely out of scope for this pass (core base classes only, per the design doc's Phase 2B-1 scope boundary carried forward).
 3. **No runtime consumer yet** — like Races, there is no character-sheet/progression-application code wired to this table yet; that's real, separate future integration work (steps 15-18 of the 21-step order).
 4. **Bonus spells from high ability scores** (the real, separate "bonus spell" table keyed to ability-score-to-bonus-spell mapping) are not modeled — a caster's real total spells-per-day is `spellsPerDay.base` plus this ability-score bonus, which is not yet structured anywhere in this schema.
