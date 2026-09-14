@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Router, Redirect, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -6,17 +7,18 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
-import CampaignPage from "@/pages/campaign";
-import CharacterSheetPage from "@/pages/character-sheet";
-import Landing from "@/pages/landing";
-import AuthPage from "@/pages/auth";
-import Dashboard from "@/pages/dashboard";
-import Pricing from "@/pages/pricing";
-import HowItWorks from "@/pages/how-it-works";
-import Billing from "@/pages/billing";
-import Account from "@/pages/account";
+
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Home = lazy(() => import("@/pages/home"));
+const CampaignPage = lazy(() => import("@/pages/campaign"));
+const CharacterSheetPage = lazy(() => import("@/pages/character-sheet"));
+const Landing = lazy(() => import("@/pages/landing"));
+const AuthPage = lazy(() => import("@/pages/auth"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Pricing = lazy(() => import("@/pages/pricing"));
+const HowItWorks = lazy(() => import("@/pages/how-it-works"));
+const Billing = lazy(() => import("@/pages/billing"));
+const Account = lazy(() => import("@/pages/account"));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -83,7 +85,9 @@ function App() {
         <Toaster />
         <Router hook={useHashLocation}>
           <CampaignCharacterSheetLauncher />
-          <AppRouter />
+          <Suspense fallback={null}>
+            <AppRouter />
+          </Suspense>
         </Router>
       </TooltipProvider>
     </QueryClientProvider>
