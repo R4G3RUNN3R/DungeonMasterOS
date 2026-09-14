@@ -1,6 +1,16 @@
 # Changelog
 
 ## 2026-09-14
+- V1 stabilization: restored the verified DungeonMaster authentication/admin implementation lost in an earlier source-sync regression, including production `JWT_SECRET` fail-closed behavior, DungeonMaster grant/revoke middleware and entitlement bypass rules.
+- V1 security: authenticated WebSocket upgrades from the signed session cookie, removed client-supplied user authority, introduced durable campaign membership, and locked campaign/message/character access to authenticated owners and members. Existing live characters are account-linked and migrate safely into membership.
+- V1 billing: added persisted Stripe webhook event idempotency so replayed checkout/top-up and subscription events cannot apply twice; subscription deletion also prevents stale invoice events from resurrecting access.
+- V1 AI integrity: added atomic turn reservations/refunds, bounded Anthropic timeouts with SDK retries disabled, truthful provider-unavailable paths, consolidated narration state projection, and item-use protection so failed AI calls do not consume turns or consumables.
+- V1 gameplay/state: activated campaign currencies and character wallets, atomic shop purchases, structured AI-created shops, campaign recovery snapshots, restart persistence, multiplayer reconnect/resubscribe coverage, and verified SQLite migration/backup/restore paths.
+- V1 build hygiene: committed deterministic dependency resolution, upgraded runtime `drizzle-orm` to 0.45.2 to close the high-severity SQL-identifier injection advisory, upgraded `drizzle-kit` to 0.31.10, added the automated regression suite, and fixed D&D 3.5e feat typing.
+- V1 client performance: route-split the browser application and removed the PostCSS provenance warning without suppressing diagnostics.
+- V1 operations: replaced stale PM2/in-place deployment guidance with the actual systemd + immutable-release + shared-state model, and added integrity-checked SQLite online backup/restore tooling and rollback guidance.
+- Password recovery truthfulness: production no longer claims to send a reset email when no DMOS mail transport is configured. The endpoint fails closed with a clear unavailable response until a dedicated DungeonMasterOS sending domain and mail transport are provisioned; development reset-token testing remains available.
+- Verification: the isolated V1 suite covers auth, campaign authorization, WebSockets, Stripe replay/lifecycle, AI concurrency/failure/timeouts, narrative projection, wallets/shops, snapshots, migration, backup/restore, restart persistence and client-build constraints; production dependency audit is zero vulnerabilities. Development-only Drizzle CLI dependencies still report moderate esbuild advisories and are not part of the runtime dependency set.
 - SEO: added a descriptive public title and meta description, canonical URL, robots directive, Open Graph/Twitter metadata, and SoftwareApplication structured data to the HTML shell.
 - SEO structured data: added the verified Voidsmith Industries logo URL to the publisher Organization schema so search-audit validation no longer reports a missing publisher logo.
 - SEO discovery: added real `client/public/robots.txt` and `client/public/sitemap.xml` files so `/robots.txt` and `/sitemap.xml` can be served as crawler resources rather than falling through to the SPA shell after deployment.
