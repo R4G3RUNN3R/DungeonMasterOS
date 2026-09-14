@@ -253,3 +253,19 @@
     inset: -1px;
   }
 }
+
+
+/* Avatar border overlay kept in authored CSS so PostCSS retains source provenance. */
+.avatar-border-overlay::after {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  border: 1px solid rgb(0 0 0 / 0.10);
+}
+
+.dark .avatar-border-overlay::after {
+  border-color: rgb(255 255 255 / 0.10);
+}
