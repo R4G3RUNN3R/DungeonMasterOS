@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://dungeonmaster-os.com/sitemap.xml
