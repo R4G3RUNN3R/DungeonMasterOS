@@ -2,6 +2,7 @@
 
 ## 2026-09-14
 - SEO: added a descriptive public title and meta description, canonical URL, robots directive, Open Graph/Twitter metadata, and SoftwareApplication structured data to the HTML shell.
+- SEO structured data: added the verified Voidsmith Industries logo URL to the publisher Organization schema so search-audit validation no longer reports a missing publisher logo.
 - SEO discovery: added real `client/public/robots.txt` and `client/public/sitemap.xml` files so `/robots.txt` and `/sitemap.xml` can be served as crawler resources rather than falling through to the SPA shell after deployment.
 - Sitemap scope: intentionally lists only the canonical public root while the current hash-based marketing/game routes remain outside the XML sitemap.
 - Risk: low. No authentication, campaign, gameplay, billing, API, WebSocket, database, or routing behaviour changed.
