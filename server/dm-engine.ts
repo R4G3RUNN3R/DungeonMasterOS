@@ -5,10 +5,6 @@ import type { Campaign, Character, Message, CampaignCurrency } from "../shared/s
 // AI CLIENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const DEFAULT_ANTHROPIC_FALLBACK_MODELS = [
   "claude-sonnet-4-5-20250929",
@@ -23,6 +19,16 @@ const ANTHROPIC_FALLBACK_MODELS = (
   .filter(Boolean);
 const ANTHROPIC_RETRY_ATTEMPTS = Number(process.env.ANTHROPIC_RETRY_ATTEMPTS || 3);
 const ANTHROPIC_RETRY_BASE_MS = Number(process.env.ANTHROPIC_RETRY_BASE_MS || 750);
+const configuredTimeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 60_000);
+const ANTHROPIC_TIMEOUT_MS = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+  ? configuredTimeoutMs
+  : 60_000;
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  timeout: ANTHROPIC_TIMEOUT_MS,
+  maxRetries: 0,
+});
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -323,7 +329,7 @@ export function extractShopStateFromNarration(text: string) {
       const [name, price, stock, desc] = line.split("|").map((x) => x.trim());
 
       return {
-        name,
+        name: name.replace(/^[-*]\s*/, "").trim(),
         description: desc || "",
         itemType: "gear",
         stock: Number(stock?.replace(/\D/g, "")) || 1,

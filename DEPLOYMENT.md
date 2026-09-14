@@ -30,9 +30,13 @@ cd /opt/dungeon-master-os
 
 ### 3. Install dependencies
 
+Use the committed lockfile so release dependency resolution is deterministic:
+
 ```bash
-npm install
+npm ci
 ```
+
+Do not use `npm install` as the production release step. If dependencies need to change, update and verify the lockfile in the testing/review workflow first.
 
 ### 4. Configure environment
 
@@ -71,24 +75,40 @@ The server runs on port 5000 by default. Set `PORT=` in `.env` to change.
 
 ---
 
-## Running with PM2 (recommended for production)
+## Running with systemd
+
+Voidsmith production uses systemd for DMOS. Keep the application release immutable and keep writable state outside the release directory.
+
+Example unit shape:
+
+```ini
+[Unit]
+Description=Dungeon Master OS
+After=network.target
+
+[Service]
+Type=simple
+User=dmos
+Group=dmos
+WorkingDirectory=/srv/dmos/app/current
+EnvironmentFile=/srv/dmos/shared/dmos.env
+ExecStart=/usr/bin/node /srv/dmos/app/current/dist/index.cjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Operational commands:
 
 ```bash
-npm install -g pm2
-
-# Start
-pm2 start dist/index.cjs --name dmos --env production
-
-# Auto-restart on reboot
-pm2 startup
-pm2 save
-
-# View logs
-pm2 logs dmos
-
-# Restart after update
-npm run build && pm2 restart dmos
+sudo systemctl status dmos
+sudo systemctl restart dmos
+sudo journalctl -u dmos --since "10 minutes ago"
 ```
+
+Do not edit the active release in place. Build and verify a new immutable release, then move the `current` pointer only after all release gates pass.
 
 ---
 
@@ -173,23 +193,55 @@ To use a different path:
 DATABASE_URL=/var/data/dmos/data.db
 ```
 
-To backup the database:
+Use SQLite online backup semantics rather than copying a live WAL-mode database file directly:
+
 ```bash
-cp data.db data.db.backup-$(date +%Y%m%d)
-# Or use sqlite3's online backup:
-sqlite3 data.db ".backup data.db.backup"
+npx tsx script/backup-database.ts \
+  --source /path/to/data.db \
+  --output /path/to/backups/data.db.$(date +%Y%m%dT%H%M%S).sqlite
 ```
+
+The backup command checks the source database, performs SQLite's online backup, then verifies the resulting backup with `PRAGMA quick_check`.
+
+Restore into a **new target path** first; the restore tool deliberately refuses to overwrite an existing database:
+
+```bash
+npx tsx script/restore-database.ts \
+  --backup /path/to/backups/data.db.YYYYMMDDTHHMMSS.sqlite \
+  --target /path/to/restore-check/data.db
+```
+
+Verify the restored database before any production cutover. Never replace the live database merely because a backup command returned success.
 
 ---
 
-## Updating
+## Updating / releasing V1
+
+Production releases are immutable. Do not `git pull` into the active release and do not rebuild in place.
+
+Before a release candidate can be promoted, verify it from a clean install:
 
 ```bash
-git pull
-npm install
+npm ci
+npm test
+npm run typecheck
 npm run build
-pm2 restart dmos
+npm audit --omit=dev --audit-level=high
 ```
+
+Then:
+
+1. Create a verified online backup of the production SQLite database.
+2. Record the current `app/current` release target and bundle checksum as the rollback target.
+3. Materialize the new release into a new immutable release directory.
+4. Point the release at the existing shared environment/database paths without copying writable state into the release.
+5. Run migrations and smoke checks against the intended release path before cutover where the deployment workflow supports it.
+6. Atomically move the `current` symlink to the new release.
+7. Restart `dmos.service`.
+8. Verify service status, HTTPS readback, authentication, campaign access, WebSocket subscription, AI availability and billing configuration.
+9. If a release gate fails, immediately restore the previous `current` pointer and restart the service. Restore the database only if the failed release performed a destructive/incompatible data change and the verified backup is required.
+
+The application rollback and database rollback are separate decisions. Do not roll back user data merely to roll back application code.
 
 ---
 
