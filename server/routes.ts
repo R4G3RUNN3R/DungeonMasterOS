@@ -1,8 +1,13 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage";
-import { generateDMResponse, generateOpeningScene, extractWorldState } from "./dm-engine";
+import { applyWebhookEventOnce, storage } from "./storage";
+import {
+  generateDMResponse,
+  generateOpeningScene,
+  extractWorldState,
+  extractShopStateFromNarration,
+} from "./dm-engine";
 import {
   createCampaignFormSchema,
   createCharacterFormSchema,
@@ -10,6 +15,9 @@ import {
   registerSchema,
   loginSchema,
   dungeonMasterTargetSchema,
+  createShopItemSchema,
+  buyShopItemSchema,
+  type Item,
 } from "@shared/schema";
 import {
   hashPassword,
@@ -19,10 +27,11 @@ import {
   attachUser,
   requireAuth,
   requireDungeonMaster,
+  verifyToken,
   requireCanPlay,
   checkCampaignLimit,
-  checkTurnLimit,
-  incrementTurnCount,
+  claimTurn,
+  releaseTurnClaim,
   grantDungeonMasterAccess,
   revokeDungeonMasterAccess,
   toPublicUser,
@@ -34,8 +43,17 @@ import { TIERS, TURN_PACKS, TRIAL_DAYS, type TierName } from "../shared/tiers";
 import { ACHIEVEMENT_MAP, checkAchievements, scanDMResponseForAchievements } from "../shared/achievements";
 
 // ── Clients ────────────────────────────────────────────────────────────────
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const configuredAnthropicTimeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 60_000);
+const AUX_ANTHROPIC_TIMEOUT_MS =
+  Number.isFinite(configuredAnthropicTimeoutMs) && configuredAnthropicTimeoutMs > 0
+    ? configuredAnthropicTimeoutMs
+    : 60_000;
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  timeout: AUX_ANTHROPIC_TIMEOUT_MS,
+  maxRetries: 0,
+});
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
@@ -72,6 +90,81 @@ function getVisitorId(req: Request): string {
   return req.headers["x-visitor-id"] as string || `anon-${randomBytes(8).toString("hex")}`;
 }
 
+function getWebSocketUserId(cookieHeader: string | undefined): number | null {
+  if (!cookieHeader) return null;
+  const sessionPart = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("dmos_session="));
+  if (!sessionPart) return null;
+
+  const rawToken = sessionPart.slice("dmos_session=".length);
+  if (!rawToken) return null;
+
+  let token: string;
+  try {
+    token = decodeURIComponent(rawToken);
+  } catch {
+    return null;
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) return null;
+  return storage.getUser(payload.sub)?.id ?? null;
+}
+
+function userCanAccessCampaign(userId: number, campaignId: number): boolean {
+  const campaign = storage.getCampaign(campaignId);
+  if (!campaign) return false;
+  return campaign.userId === userId || storage.isCampaignMember(campaignId, userId);
+}
+
+function requireCampaignAccess(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Sign in to continue.", code: "UNAUTHENTICATED" });
+  }
+
+  const campaignId = Number(req.params.id);
+  if (!Number.isInteger(campaignId) || campaignId <= 0) {
+    return res.status(400).json({ message: "Invalid campaign id." });
+  }
+
+  const campaign = storage.getCampaign(campaignId);
+  if (!campaign) {
+    return res.status(404).json({ message: "Campaign not found" });
+  }
+
+  if (!userCanAccessCampaign(req.user.id, campaignId)) {
+    return res.status(403).json({ message: "You do not have access to this campaign." });
+  }
+
+  next();
+}
+
+function requireCharacterDetailAccess(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Sign in to continue.", code: "UNAUTHENTICATED" });
+  }
+
+  const characterId = Number(req.params.characterId);
+  if (!Number.isInteger(characterId) || characterId <= 0) {
+    return res.status(400).json({ message: "Invalid character id." });
+  }
+
+  const character = storage.getCharacter(characterId);
+  if (!character) {
+    return res.status(404).json({ message: "Character not found" });
+  }
+
+  const campaign = storage.getCampaign(character.campaignId);
+  const mayInspect = character.userId === req.user.id || campaign?.userId === req.user.id;
+  if (!mayInspect) {
+    return res.status(403).json({ message: "You do not have access to this character." });
+  }
+
+  next();
+}
+
 function getActionContent(body: any): string {
   if (!body || typeof body !== "object") return "";
   const candidates = [body.content, body.action, body.message, body.text];
@@ -102,9 +195,76 @@ Whatever happens next, your action has pushed the moment forward.
 **What do you do now?**`;
 }
 
+function projectShopFromNarration(
+  campaignId: number,
+  narration: string,
+): { cleanContent: string; shopId: number | null } {
+  const shopState = extractShopStateFromNarration(narration);
+  const cleanContent = narration
+    .replace(/\[SHOP\][\s\S]*?\[\/SHOP\]/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!shopState) return { cleanContent: narration.trim(), shopId: null };
+
+  const currencies = storage.getCampaignCurrencies(campaignId);
+  const currencyByCode = new Map(currencies.map((currency) => [currency.code.toLowerCase(), currency.code]));
+  const currencyCode = currencyByCode.get(String(shopState.currencyCode || "").toLowerCase());
+  if (!currencyCode) return { cleanContent, shopId: null };
+
+  const stock = (shopState.items || [])
+    .filter((item: any) => typeof item?.name === "string" && item.name.trim())
+    .map((item: any, index: number) => ({
+      itemKey: `${item.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "item"}_${index + 1}`,
+      name: item.name.trim(),
+      description: String(item.description || ""),
+      itemType: String(item.itemType || "gear"),
+      quantityPerPurchase: 1,
+      stock: Math.max(0, Number(item.stock) || 0),
+      priceAmount: Math.max(0, Number(item.priceAmount) || 0),
+      priceCurrencyCode:
+        currencyByCode.get(String(item.priceCurrencyCode || currencyCode).toLowerCase()) || currencyCode,
+      metadata: "{}",
+    }));
+
+  const opened = storage.openShop({
+    campaignId,
+    merchantName: String(shopState.merchantName || "Merchant").trim() || "Merchant",
+    merchantDescription: "",
+    currencyCode,
+    title: "Merchant Stock",
+    isOpen: true,
+    metadata: "{}",
+  }, stock);
+
+  return { cleanContent, shopId: opened.shop.id };
+}
+
 function getAIServiceIssue(error: unknown): { title: string; detail: string } | null {
   const status = Number((error as any)?.status);
   const message = String((error as any)?.message || "");
+  const name = String((error as any)?.name || "");
+
+  if (/timeout|timed out/i.test(message) || /timeout/i.test(name) || status === 408 || status === 504) {
+    return {
+      title: "Anthropic request timed out",
+      detail: "The Dungeon Master AI did not respond within the configured request window.",
+    };
+  }
+
+  if (status === 429 || status === 529 || /rate limit|overloaded/i.test(message)) {
+    return {
+      title: "Anthropic temporarily unavailable",
+      detail: "The Dungeon Master AI is temporarily rate-limited or overloaded. Your turn was not charged.",
+    };
+  }
+
+  if ([500, 502, 503].includes(status) || /econnreset|socket hang up|network|fetch failed/i.test(message)) {
+    return {
+      title: "Anthropic service unavailable",
+      detail: "The Dungeon Master AI service could not complete the request. Your turn was not charged.",
+    };
+  }
 
   if (/credit balance is too low|purchase credits|plans & billing/i.test(message)) {
     return {
@@ -163,118 +323,273 @@ ${issueDetail}
 Top up the Anthropic account credits or replace the Anthropic API key, then try again. This is a real service-status message, not part of the story.`;
 }
 
-// ── AI extractors ───────────────────────────────────────────────────────────
-async function extractAbilitiesFromNarration(
+// ── AI state projection ─────────────────────────────────────────────────────
+type NarrationProjectionItem = {
+  name: string;
+  description: string;
+  itemType: string;
+  quantity: number;
+  consumable: boolean;
+  identified: boolean;
+};
+
+type NarrationProjectionCurrency = {
+  currencyCode: string;
+  amountDelta: number;
+};
+
+type NarrationProjectionAbility = {
+  name: string;
+  description: string;
+  category: string;
+};
+
+type NarrationProjection = {
+  items: NarrationProjectionItem[];
+  currencies: NarrationProjectionCurrency[];
+  abilities: NarrationProjectionAbility[];
+};
+
+const EMPTY_NARRATION_PROJECTION: NarrationProjection = {
+  items: [],
+  currencies: [],
+  abilities: [],
+};
+
+async function extractStateProjectionFromNarration(
   narration: string,
-  _campaignId: number,
-  _characterId: number,
-): Promise<Array<{ name: string; description: string; category: string }>> {
-  const grantKeywords =
-    /\b(learns?|learns? to|gains? the ability|gains? access to|awakens?|unlocks?|masters?|receives? the|is granted|manifests?|activates?|teaches? you|your body remembers|the power of|acquire[sd]?|bestow[sd]?)\b/i;
-  if (!grantKeywords.test(narration)) return [];
+  campaignId: number,
+): Promise<NarrationProjection> {
+  const stateChangeKeywords =
+    /\b(gives?|hands?|grants?|receives?|finds?|picks? up|obtains?|discovers?|rewards?|loot|presses? .{0,30}(into|to)|passes? .{0,30}to you|pays?|paid|earns?|gold|coins?|silver|gp|learns?|gains? the ability|gains? access to|awakens?|unlocks?|masters?|is granted|bestow[sd]?)\b/i;
+  if (!stateChangeKeywords.test(narration)) return EMPTY_NARRATION_PROJECTION;
+
+  const currencies = storage.getCampaignCurrencies(campaignId);
+  const currencyCodes = currencies.map((currency) => currency.code);
 
   try {
     const response = await anthropic.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 512,
-      system: `You are an ability extractor for a narrative RPG. Given DM narration, identify any abilities, powers, spells, techniques, or capabilities that were NEWLY GRANTED to the player character RIGHT NOW.
+      max_tokens: 900,
+      system: `You are a state projection extractor for a narrative RPG. Read the Dungeon Master's narration and identify ONLY state changes that happened to the current player character in this scene.
 
-This covers ALL systems: D&D spells, anime jutsu (Sharingan, Rasengan, Shadow Clone), devil fruit powers, isekai cheat skills, homebrew abilities, racial abilities, class features, etc.
+Return ONLY one JSON object with this exact shape:
+{
+  "items": [
+    {
+      "name": "newly acquired item",
+      "description": "brief factual description",
+      "itemType": "consumable|weapon|armor|gear|tool|magic|misc|property|vehicle|vessel|mount|creature|retainer|key",
+      "quantity": 1,
+      "consumable": false,
+      "identified": true
+    }
+  ],
+  "currencies": [
+    {
+      "currencyCode": "one of the allowed campaign codes",
+      "amountDelta": 50
+    }
+  ],
+  "abilities": [
+    {
+      "name": "newly granted ability",
+      "description": "what it does",
+      "category": "spell|jutsu|devil_fruit|isekai_skill|racial|class_feature|homebrew|passive|active|transformation"
+    }
+  ]
+}
 
-Return a JSON array (may be empty []):
-[
-  {
-    "name": "exact name of the ability as stated or implied",
-    "description": "what the ability does, based on what the narration describes. Be specific and preserve any game system's vocabulary. 2-3 sentences max.",
-    "category": "spell|jutsu|devil_fruit|isekai_skill|racial|class_feature|homebrew|passive|active|transformation"
-  }
-]
+Allowed campaign currency codes: ${currencyCodes.length ? currencyCodes.join(", ") : "none"}
 
-Only include abilities EXPLICITLY granted in this scene. Do not include abilities the character already had.
-Return ONLY the JSON array. No explanation.`,
+Rules:
+- Items: only things explicitly acquired or taken NOW. Do not turn currency into an item.
+- Currencies: positive means gained; negative means spent/lost/paid. Use ONLY an allowed campaign currency code. Do not invent exchange rates.
+- Abilities: only powers, spells, techniques, class/racial features, or capabilities newly granted NOW.
+- Never repeat possessions or abilities merely mentioned in narration.
+- If a category has no change, return an empty array for it.
+- Return JSON only. No markdown and no commentary.`,
       messages: [{ role: "user", content: narration }],
     });
 
     const raw = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    const cleaned = raw.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/m, "").trim();
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim();
+    let cleaned = raw.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/m, "").trim();
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    const validItemTypes = new Set([
+      "consumable", "weapon", "armor", "gear", "tool", "magic", "misc",
+      "property", "vehicle", "vessel", "mount", "creature", "retainer", "key",
+    ]);
+    const currencyByCode = new Map(
+      currencies.map((currency) => [currency.code.toLowerCase(), currency.code]),
+    );
+
+    const items: NarrationProjectionItem[] = Array.isArray(parsed.items)
+      ? parsed.items.flatMap((candidate: any) => {
+          const name = typeof candidate?.name === "string" ? candidate.name.trim().slice(0, 100) : "";
+          if (!name) return [];
+          const rawType = typeof candidate?.itemType === "string"
+            ? candidate.itemType.trim().toLowerCase()
+            : "misc";
+          const itemType = validItemTypes.has(rawType) ? rawType : "misc";
+          const rawQuantity = Number(candidate?.quantity);
+          const quantity = Number.isFinite(rawQuantity)
+            ? Math.max(1, Math.min(999, Math.trunc(rawQuantity)))
+            : 1;
+          return [{
+            name,
+            description: typeof candidate?.description === "string"
+              ? candidate.description.trim().slice(0, 1000)
+              : "",
+            itemType,
+            quantity,
+            consumable: Boolean(candidate?.consumable),
+            identified: candidate?.identified !== false,
+          }];
+        })
+      : [];
+
+    const currencyChanges: NarrationProjectionCurrency[] = Array.isArray(parsed.currencies)
+      ? parsed.currencies.flatMap((candidate: any) => {
+          const rawCode = typeof candidate?.currencyCode === "string"
+            ? candidate.currencyCode.trim().toLowerCase()
+            : "";
+          const currencyCode = currencyByCode.get(rawCode);
+          const rawDelta = Number(candidate?.amountDelta);
+          if (!currencyCode || !Number.isFinite(rawDelta)) return [];
+          const amountDelta = Math.trunc(rawDelta);
+          if (amountDelta === 0) return [];
+          return [{ currencyCode, amountDelta }];
+        })
+      : [];
+
+    const abilities: NarrationProjectionAbility[] = Array.isArray(parsed.abilities)
+      ? parsed.abilities.flatMap((candidate: any) => {
+          const name = typeof candidate?.name === "string" ? candidate.name.trim().slice(0, 120) : "";
+          if (!name) return [];
+          return [{
+            name,
+            description: typeof candidate?.description === "string"
+              ? candidate.description.trim().slice(0, 1000)
+              : "",
+            category: typeof candidate?.category === "string" && candidate.category.trim()
+              ? candidate.category.trim().slice(0, 64)
+              : "homebrew",
+          }];
+        })
+      : [];
+
+    return { items, currencies: currencyChanges, abilities };
+  } catch (error) {
+    console.error("Narration state projection failed:", error);
+    return EMPTY_NARRATION_PROJECTION;
   }
 }
 
-async function extractItemsFromNarration(
-  narration: string,
+function applyNarrationProjection(
   campaignId: number,
   characterId: number,
-): Promise<any[]> {
-  const grantKeywords =
-    /\b(gives?|hands?|grants?|receives?|finds?|picks? up|obtains?|discovers?|rewards?|loot|opens? .{0,20}chest|inside .{0,20}(bag|chest|pack|pouch)|tucks? .{0,30}(into|away)|presses? .{0,20}into|slips? .{0,20}(into|to)|places? .{0,20}in your hand|passes? .{0,20}to you)\b/i;
-  if (!grantKeywords.test(narration)) return [];
-
-  try {
-    const response = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 512,
-      system: `You are an item extractor for a tabletop RPG. Given DM narration, identify any items that were NEWLY GRANTED to the player character in this scene.
-
-Only extract items that were explicitly given/found/received RIGHT NOW in this narration. Do not list items the character already owns.
-
-Return a JSON array (may be empty []) of objects:
-[
-  {
-    "name": "display name (use 'X (Unidentified)' format if it seems mysterious or magical but unnamed)",
-    "description": "one sentence describing what it is, or empty string if unidentified",
-    "itemType": "consumable|weapon|armor|gear|magic|key|currency|misc|mount|vessel|property|vehicle|creature|retainer",
-    "quantity": 1,
-    "consumable": true or false,
-    "identified": true or false (false if it's mysterious, glowing, unexamined, or described vaguely)
-  }
-]
-
-Rules:
-- Currency mentioned (gold, coins, silver) = itemType "currency"
-- Potions, scrolls, bombs = consumable true
-- Weapons, armor = consumable false
-- If the item seems magical but its nature is unclear = identified false
-- If nothing was granted, return []
-- Return ONLY the JSON array. No explanation.`,
-      messages: [{ role: "user", content: narration }],
-    });
-
-    const raw = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    const cleaned = raw.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/m, "").trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.map((item: any) => ({
+  projection: NarrationProjection,
+): { createdItems: Item[]; currencyChanged: boolean; abilitiesAdded: NarrationProjectionAbility[] } {
+  const createdItems: Item[] = [];
+  for (const item of projection.items) {
+    createdItems.push(storage.createItem({
       campaignId,
       characterId,
-      name: item.name || "Unknown Item",
+      name: item.name,
       trueName: "",
-      description: item.description || "",
+      description: item.description,
       trueDescription: "",
-      itemType: item.itemType || "misc",
-      quantity: item.quantity || 1,
+      itemType: item.itemType,
+      quantity: item.quantity,
       charges: null,
       maxCharges: null,
-      identified: item.identified !== false,
-      consumable: !!item.consumable,
+      identified: item.identified,
+      consumable: item.consumable,
       equipped: false,
       locationNote: "",
-      source: "dm",
+      source: "dm_state_projection",
       statMods: "[]",
     }));
-  } catch {
-    return [];
   }
+
+  let currencyChanged = false;
+  for (const change of projection.currencies) {
+    if (storage.adjustCharacterCurrency(
+      campaignId,
+      characterId,
+      change.currencyCode,
+      change.amountDelta,
+    )) {
+      currencyChanged = true;
+    }
+  }
+
+  const abilitiesAdded: NarrationProjectionAbility[] = [];
+  if (projection.abilities.length) {
+    const character = storage.getCharacter(characterId);
+    if (character) {
+      try {
+        const characterData = JSON.parse(character.characterData || "{}");
+        if (!Array.isArray(characterData.sections)) characterData.sections = [];
+        let section = characterData.sections.find((entry: any) => entry?.label === "Granted Abilities");
+        if (!section) {
+          section = { label: "Granted Abilities", type: "abilities", entries: [] };
+          characterData.sections.push(section);
+        }
+        if (!Array.isArray(section.entries)) section.entries = [];
+
+        for (const ability of projection.abilities) {
+          const exists = section.entries.some((entry: any) =>
+            String(entry?.key || entry?.name || "").toLowerCase() === ability.name.toLowerCase(),
+          );
+          if (exists) continue;
+          section.entries.push({
+            key: ability.name,
+            name: ability.name,
+            value: `[${ability.category}] ${ability.description}`,
+            description: ability.description,
+          });
+          abilitiesAdded.push(ability);
+        }
+
+        if (abilitiesAdded.length) {
+          storage.updateCharacter(characterId, { characterData: JSON.stringify(characterData) } as any);
+        }
+      } catch (error) {
+        console.error("Ability projection persistence failed:", error);
+      }
+    }
+  }
+
+  if (createdItems.length) {
+    for (const item of createdItems) {
+      broadcastToCampaign(campaignId, { type: "item_granted", item });
+    }
+    broadcastToCampaign(campaignId, { type: "items_updated", characterId });
+  }
+  if (currencyChanged) {
+    broadcastToCampaign(campaignId, { type: "currencies_updated", characterId });
+  }
+  if (abilitiesAdded.length) {
+    broadcastToCampaign(campaignId, {
+      type: "abilities_granted",
+      characterId,
+      abilities: abilitiesAdded,
+    });
+    broadcastToCampaign(campaignId, { type: "character_updated", characterId });
+  }
+
+  return { createdItems, currencyChanged, abilitiesAdded };
 }
 
 // ── Stripe helpers ──────────────────────────────────────────────────────────
@@ -492,6 +807,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required." });
 
+    // V1 has no production mail transport yet. Fail truthfully before creating
+    // a token instead of claiming a reset email was delivered when it was not.
+    if (process.env.NODE_ENV === "production") {
+      return res.status(503).json({
+        message: "Password reset email is temporarily unavailable. Please contact DungeonMasterOS support.",
+        code: "PASSWORD_RESET_EMAIL_UNAVAILABLE",
+      });
+    }
+
     const user = storage.getUserByEmail(email);
     if (!user) return res.json({ ok: true, message: "If that email exists, a reset link has been sent." });
 
@@ -570,25 +894,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!userId) break;
 
           if (topUpTurns > 0) {
-            const user = storage.getUser(userId);
-            if (user) {
-              storage.updateUser(userId, {
-                bonusTurns: (user.bonusTurns ?? 0) + topUpTurns,
-              } as any);
-            }
+            applyWebhookEventOnce(event.id, event.type, () => {
+              const user = storage.getUser(userId);
+              if (user) {
+                storage.updateUser(userId, {
+                  bonusTurns: (user.bonusTurns ?? 0) + topUpTurns,
+                } as any);
+              }
+            });
           } else if (tier && session.subscription) {
             const sub = await stripe.subscriptions.retrieve(session.subscription as string);
             const periodEnd = new Date((sub as any).current_period_end * 1000);
 
-            storage.updateUser(userId, {
-              tier,
-              subscriptionStatus: "active",
-              stripeCustomerId: session.customer as string,
-              stripeSubscriptionId: session.subscription as string,
-              stripePriceId: (sub.items.data[0]?.price?.id) || null,
-              stripeBillingInterval: interval || "monthly",
-              subscriptionCurrentPeriodEnd: periodEnd.toISOString(),
-            } as any);
+            applyWebhookEventOnce(event.id, event.type, () => {
+              storage.updateUser(userId, {
+                tier,
+                subscriptionStatus: "active",
+                stripeCustomerId: session.customer as string,
+                stripeSubscriptionId: session.subscription as string,
+                stripePriceId: (sub.items.data[0]?.price?.id) || null,
+                stripeBillingInterval: interval || "monthly",
+                subscriptionCurrentPeriodEnd: periodEnd.toISOString(),
+              } as any);
+            });
+          } else {
+            applyWebhookEventOnce(event.id, event.type, () => {});
           }
           break;
         }
@@ -621,13 +951,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             }
           }
 
-          storage.updateUser(user.id, {
-            tier,
-            subscriptionStatus: status,
-            stripeSubscriptionId: sub.id,
-            stripePriceId: priceId || null,
-            subscriptionCurrentPeriodEnd: periodEnd.toISOString(),
-          } as any);
+          applyWebhookEventOnce(event.id, event.type, () => {
+            storage.updateUser(user.id, {
+              tier,
+              subscriptionStatus: status,
+              stripeSubscriptionId: sub.id,
+              stripePriceId: priceId || null,
+              subscriptionCurrentPeriodEnd: periodEnd.toISOString(),
+            } as any);
+          });
           break;
         }
 
@@ -636,12 +968,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const user = storage.getUserByStripeSubscriptionId(sub.id);
           if (!user) break;
 
-          storage.updateUser(user.id, {
-            subscriptionStatus: "expired",
-            tier: "free",
-            stripeSubscriptionId: null,
-            stripePriceId: null,
-          } as any);
+          applyWebhookEventOnce(event.id, event.type, () => {
+            storage.updateUser(user.id, {
+              subscriptionStatus: "expired",
+              tier: "free",
+              stripeSubscriptionId: null,
+              stripePriceId: null,
+            } as any);
+          });
           break;
         }
 
@@ -650,7 +984,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!invoice.subscription) break;
           const user = storage.getUserByStripeSubscriptionId(invoice.subscription as string);
           if (!user) break;
-          storage.updateUser(user.id, { subscriptionStatus: "past_due" } as any);
+          applyWebhookEventOnce(event.id, event.type, () => {
+            storage.updateUser(user.id, { subscriptionStatus: "past_due" } as any);
+          });
           break;
         }
 
@@ -663,11 +999,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           nextReset.setMonth(nextReset.getMonth() + 1);
           nextReset.setDate(1);
           nextReset.setHours(0, 0, 0, 0);
-          storage.updateUser(user.id, {
-            subscriptionStatus: "active",
-            aiTurnsUsedThisMonth: 0,
-            usageResetAt: nextReset.toISOString(),
-          } as any);
+          applyWebhookEventOnce(event.id, event.type, () => {
+            storage.updateUser(user.id, {
+              subscriptionStatus: "active",
+              aiTurnsUsedThisMonth: 0,
+              usageResetAt: nextReset.toISOString(),
+            } as any);
+          });
           break;
         }
 
@@ -676,6 +1014,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     } catch (err: any) {
       console.error("Error processing Stripe webhook:", err);
+      return res.status(500).json({ message: "Webhook processing failed." });
     }
 
     return res.json({ received: true });
@@ -868,7 +1207,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/my-campaigns", requireAuth, (req, res) => {
-    const campaigns = storage.getCampaignsByUser(req.user!.id);
+    const campaigns = storage.getCampaignsAccessibleByUser(req.user!.id);
     return res.json(campaigns);
   });
 
@@ -884,8 +1223,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const inviteCode = randomBytes(4).toString("hex");
-    const campaign = storage.createCampaign({
-      ...parsed.data,
+    const { currencies, ...campaignSettings } = parsed.data;
+    const campaign = storage.createCampaignWithCurrencies({
+      ...campaignSettings,
       inviteCode,
       hostVisitorId: visitorId,
       userId: req.user!.id,
@@ -896,7 +1236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         flags: [],
         currentScene: "",
       }),
-    });
+    }, currencies);
 
     const unlockedIds = storage.getUnlockedAchievementIds(req.user!.id);
     tryUnlockAchievements(req.user!.id, campaign.id, null, {
@@ -915,16 +1255,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.status(201).json(campaign);
   });
 
-  app.get("/api/campaigns/invite/:code", (req, res) => {
+  app.get("/api/campaigns/invite/:code", requireAuth, (req, res) => {
     const campaign = storage.getCampaignByInviteCode(req.params.code);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    return res.json({ id: campaign.id, name: campaign.name });
+  });
+
+  app.post("/api/campaigns/join", requireAuth, requireCanPlay, (req, res) => {
+    const inviteCode = typeof req.body?.inviteCode === "string" ? req.body.inviteCode.trim() : "";
+    if (!inviteCode) return res.status(400).json({ message: "Invite code is required." });
+
+    const campaign = storage.getCampaignByInviteCode(inviteCode);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    storage.addCampaignMember(campaign.id, req.user!.id);
     return res.json(campaign);
   });
 
-  app.get("/api/campaigns/:id", (req, res) => {
-    const campaign = storage.getCampaign(Number(req.params.id));
-    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    return res.json(campaign);
+  app.get("/api/campaigns/:id", requireAuth, requireCampaignAccess, (req, res) => {
+    return res.json(storage.getCampaign(Number(req.params.id)));
   });
 
   app.patch("/api/campaigns/:id/archive", requireAuth, (req, res) => {
@@ -937,7 +1286,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(storage.getCampaign(campaignId));
   });
 
-  app.patch("/api/campaigns/:id", (req, res) => {
+  app.get("/api/campaigns/:id/snapshots", requireAuth, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (campaign.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the campaign owner can view recovery points." });
+    }
+    return res.json(storage.getCampaignSnapshots(campaignId));
+  });
+
+  app.post("/api/campaigns/:id/snapshots", requireAuth, requireCanPlay, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (campaign.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the campaign owner can create recovery points." });
+    }
+
+    const state = storage.buildCampaignSnapshot(campaignId);
+    if (!state) return res.status(500).json({ message: "Could not build campaign recovery point." });
+    const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+    const snapshot = storage.createCampaignSnapshot({
+      campaignId,
+      label: (rawLabel || "Manual Save Point").slice(0, 120),
+      reason: "manual",
+      snapshotData: JSON.stringify(state),
+    });
+    return res.status(201).json(snapshot);
+  });
+
+  app.post("/api/campaigns/:id/restore/:snapshotId", requireAuth, requireCanPlay, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const snapshotId = Number(req.params.snapshotId);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (campaign.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the campaign owner can restore a recovery point." });
+    }
+
+    const snapshot = storage.getCampaignSnapshot(snapshotId);
+    if (!snapshot || snapshot.campaignId !== campaignId) {
+      return res.status(404).json({ message: "Recovery point not found for this campaign." });
+    }
+
+    const restored = storage.restoreCampaignSnapshot(snapshotId);
+    if (!restored) {
+      return res.status(500).json({ message: "Campaign recovery failed without changing the saved recovery point." });
+    }
+
+    broadcastToCampaign(campaignId, { type: "campaign_restored", campaignId, snapshotId });
+    return res.json(restored);
+  });
+
+  app.patch("/api/campaigns/:id", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -980,21 +1382,133 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
-  // Frontend currently expects these endpoints.
-  // Return safe empty data instead of pointless 404 spam.
-  app.get("/api/campaigns/:id/currencies", (_req, res) => {
-    return res.json([]);
+  app.get("/api/campaigns/:id/currencies", requireAuth, requireCampaignAccess, (req, res) => {
+    return res.json(storage.getCampaignCurrencies(Number(req.params.id)));
   });
 
-  app.get("/api/campaigns/:id/shop", (_req, res) => {
-    return res.json({ shop: null, items: [] });
+  app.get("/api/campaigns/:id/shop", requireAuth, requireCampaignAccess, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const shop = storage.getActiveShopByCampaign(campaignId);
+    if (!shop) return res.json({ shop: null, items: [] });
+    return res.json({ shop, items: storage.getShopItemsByShop(shop.id) });
+  });
+
+  app.post("/api/campaigns/:id/shop/open", requireAuth, requireCanPlay, requireCampaignAccess, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (campaign.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the campaign owner can open a shop." });
+    }
+
+    const merchantName = typeof req.body?.merchantName === "string" ? req.body.merchantName.trim() : "";
+    const merchantDescription = typeof req.body?.merchantDescription === "string" ? req.body.merchantDescription.trim() : "";
+    const title = typeof req.body?.title === "string" && req.body.title.trim() ? req.body.title.trim() : "Merchant Stock";
+    const requestedCurrency = typeof req.body?.currencyCode === "string" ? req.body.currencyCode.trim() : "";
+    const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+
+    if (!merchantName) return res.status(400).json({ message: "merchantName is required." });
+    if (!requestedCurrency) return res.status(400).json({ message: "currencyCode is required." });
+
+    const currencies = storage.getCampaignCurrencies(campaignId);
+    const currencyByCode = new Map(currencies.map((currency) => [currency.code.toLowerCase(), currency.code]));
+    const currencyCode = currencyByCode.get(requestedCurrency.toLowerCase());
+    if (!currencyCode) return res.status(400).json({ message: "Shop currency is not defined for this campaign." });
+
+    const stock = [];
+    for (const candidate of requestedItems) {
+      const parsed = createShopItemSchema.safeParse(candidate);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0].message });
+      }
+      const priceCurrencyCode = currencyByCode.get(parsed.data.priceCurrencyCode.toLowerCase());
+      if (!priceCurrencyCode) {
+        return res.status(400).json({ message: `Unknown campaign currency: ${parsed.data.priceCurrencyCode}` });
+      }
+      stock.push({
+        itemKey: parsed.data.itemKey,
+        name: parsed.data.name,
+        description: parsed.data.description,
+        itemType: parsed.data.itemType,
+        quantityPerPurchase: parsed.data.quantityPerPurchase,
+        stock: parsed.data.stock,
+        priceAmount: parsed.data.priceAmount,
+        priceCurrencyCode,
+        metadata: JSON.stringify(parsed.data.metadata || {}),
+      });
+    }
+
+    const opened = storage.openShop({
+      campaignId,
+      merchantName,
+      merchantDescription,
+      currencyCode,
+      title,
+      isOpen: true,
+      metadata: "{}",
+    }, stock);
+
+    broadcastToCampaign(campaignId, { type: "shop_updated", shopId: opened.shop.id });
+    return res.status(201).json(opened);
+  });
+
+  app.post("/api/campaigns/:id/shop/close", requireAuth, requireCanPlay, requireCampaignAccess, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const campaign = storage.getCampaign(campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (campaign.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the campaign owner can close a shop." });
+    }
+    const shop = storage.getActiveShopByCampaign(campaignId);
+    if (shop) {
+      storage.closeActiveShop(shop.id);
+      broadcastToCampaign(campaignId, { type: "shop_closed", shopId: shop.id });
+    }
+    return res.json({ ok: true });
+  });
+
+  app.post("/api/campaigns/:id/shop/buy", requireAuth, requireCanPlay, requireCampaignAccess, (req, res) => {
+    const campaignId = Number(req.params.id);
+    const character = storage.getCharacterByVisitor(campaignId, getVisitorId(req));
+    if (!character) return res.status(403).json({ message: "You do not have a character in this campaign." });
+
+    const parsed = buyShopItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    const shopItem = storage.getShopItem(parsed.data.shopItemId);
+    const result = storage.purchaseShopItem(campaignId, character.id, parsed.data.shopItemId, parsed.data.quantity);
+    if (!result.ok) {
+      if (result.reason === "stock") return res.status(400).json({ message: "The vendor does not have enough stock." });
+      if (result.reason === "funds") return res.status(400).json({ message: "Not enough currency." });
+      return res.status(404).json({ message: "Shop item not found." });
+    }
+
+    if (shopItem) {
+      const totalCost = shopItem.priceAmount * parsed.data.quantity;
+      const systemMessage = storage.createMessage({
+        campaignId,
+        sender: "System",
+        senderType: "system",
+        content: `${character.name} buys ${parsed.data.quantity} × ${shopItem.name} for ${totalCost} ${shopItem.priceCurrencyCode}.`,
+        messageType: "system",
+      });
+      broadcastToCampaign(campaignId, { type: "message", message: systemMessage });
+    }
+
+    broadcastToCampaign(campaignId, { type: "shop_updated" });
+    broadcastToCampaign(campaignId, { type: "items_updated", characterId: character.id });
+    broadcastToCampaign(campaignId, { type: "currencies_updated", characterId: character.id });
+
+    return res.json({ ok: true, remainingStock: result.remainingStock, wallet: result.wallet });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CHARACTER ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  app.post("/api/campaigns/:id/characters", (req, res) => {
+  app.post("/api/campaigns/:id/characters", requireAuth, requireCampaignAccess, (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -1028,6 +1542,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       characterData,
     } as any);
 
+    const campaignCurrencies = storage.getCampaignCurrencies(campaignId);
+    storage.replaceCharacterCurrencies(
+      campaignId,
+      character.id,
+      campaignCurrencies.map((currency) => ({ currencyCode: currency.code, amount: 0 })),
+    );
+
     broadcastToCampaign(campaignId, { type: "character_joined", character });
 
     const joinMsg = storage.createMessage({
@@ -1042,7 +1563,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.status(201).json(character);
   });
 
-  app.post("/api/parse-character", async (req, res) => {
+  app.post("/api/parse-character", requireAuth, requireCanPlay, async (req, res) => {
     const { text } = req.body;
     if (!text || typeof text !== "string" || text.trim().length < 5) {
       return res.status(400).json({ message: "Please provide character text to parse" });
@@ -1171,18 +1692,18 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     }
   });
 
-  app.get("/api/campaigns/:id/characters", (req, res) => {
+  app.get("/api/campaigns/:id/characters", requireAuth, requireCampaignAccess, (req, res) => {
     return res.json(storage.getCharactersByCampaign(Number(req.params.id)));
   });
 
-  app.get("/api/campaigns/:id/my-character", (req, res) => {
+  app.get("/api/campaigns/:id/my-character", requireAuth, requireCampaignAccess, (req, res) => {
     const visitorId = getVisitorId(req);
     const char = storage.getCharacterByVisitor(Number(req.params.id), visitorId);
     if (!char) return res.status(404).json({ message: "No character found" });
     return res.json(char);
   });
 
-  app.patch("/api/characters/:id/spell-data", (req, res) => {
+  app.patch("/api/characters/:id/spell-data", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.id);
     const character = storage.getCharacter(characterId);
@@ -1195,7 +1716,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json({ ok: true });
   });
 
-  app.patch("/api/characters/:id/hp", (req, res) => {
+  app.patch("/api/characters/:id/hp", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.id);
     const character = storage.getCharacter(characterId);
@@ -1209,19 +1730,19 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json({ hp: clamped });
   });
 
-  app.get("/api/characters/:characterId/currencies", (_req, res) => {
-    return res.json([]);
+  app.get("/api/characters/:characterId/currencies", requireAuth, requireCharacterDetailAccess, (req, res) => {
+    return res.json(storage.getCharacterCurrencies(Number(req.params.characterId)));
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ITEM ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  app.get("/api/characters/:characterId/items", (req, res) => {
+  app.get("/api/characters/:characterId/items", requireAuth, requireCharacterDetailAccess, (req, res) => {
     return res.json(storage.getItemsByCharacter(Number(req.params.characterId)));
   });
 
-  app.post("/api/characters/:characterId/items", (req, res) => {
+  app.post("/api/characters/:characterId/items", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.characterId);
     const character = storage.getCharacter(characterId);
@@ -1252,7 +1773,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.status(201).json(item);
   });
 
-  app.patch("/api/items/:id", (req, res) => {
+  app.patch("/api/items/:id", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const itemId = Number(req.params.id);
     const item = storage.getItem(itemId);
@@ -1277,7 +1798,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json(storage.getItem(itemId));
   });
 
-  app.post("/api/items/:id/use", async (req, res) => {
+  app.post("/api/items/:id/use", requireAuth, requireCanPlay, async (req, res) => {
     const visitorId = getVisitorId(req);
     const itemId = Number(req.params.id);
     const item = storage.getItem(itemId);
@@ -1290,6 +1811,11 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
 
     const campaign = storage.getCampaign(item.campaignId);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+    const turnClaim = claimTurn(req.user!);
+    if (!turnClaim.ok) {
+      return res.status(403).json(turnClaim.body);
+    }
 
     const displayName = item.identified ? item.name : `${item.name} (Unidentified)`;
     const useAction = req.body.customAction || `${character.name} uses ${displayName}.`;
@@ -1304,18 +1830,23 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     broadcastToCampaign(item.campaignId, { type: "message", message: playerMsg });
 
     let remaining: any = item;
-    if (item.consumable) {
-      remaining = storage.decrementItem(itemId);
-    }
-    broadcastToCampaign(item.campaignId, { type: "items_updated", characterId: item.characterId });
 
     try {
       broadcastToCampaign(item.campaignId, { type: "dm_thinking", thinking: true });
       const history = storage.getMessagesByCampaign(item.campaignId);
       const chars = storage.getCharactersByCampaign(item.campaignId);
+      const currencies = storage.getCampaignCurrencies(item.campaignId);
 
-      const rawResponse = await generateDMResponse(campaign, chars, history, useAction, character.name);
+      const rawResponse = await generateDMResponse(
+        campaign,
+        chars,
+        history,
+        useAction,
+        character.name,
+        currencies,
+      );
       const { cleanContent, worldState } = extractWorldState(rawResponse);
+      const shopProjection = projectShopFromNarration(item.campaignId, cleanContent);
 
       if (worldState) {
         try {
@@ -1324,28 +1855,40 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         } catch {}
       }
 
-      const newItems = await extractItemsFromNarration(cleanContent, item.campaignId, item.characterId);
-      for (const newItem of newItems) {
-        const created = storage.createItem(newItem);
-        broadcastToCampaign(item.campaignId, { type: "item_granted", item: created });
-      }
-      if (newItems.length) {
-        broadcastToCampaign(item.campaignId, { type: "items_updated", characterId: item.characterId });
+      const finalContent = shopProjection.cleanContent || buildFallbackActionResponse(character.name, useAction);
+      const stateProjection = await extractStateProjectionFromNarration(finalContent, item.campaignId);
+      const projected = applyNarrationProjection(item.campaignId, character.id, stateProjection);
+      if (projected.abilitiesAdded.length && req.user) {
+        const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
+        tryUnlockAchievements(req.user.id, item.campaignId, character.id, {
+          type: "ability_granted",
+          unlockedIds,
+        });
       }
 
       const dmMsg = storage.createMessage({
         campaignId: item.campaignId,
         sender: "Dungeon Master",
         senderType: "dm",
-        content: cleanContent,
+        content: finalContent,
         messageType: "narration",
       });
+
+      if (item.consumable) {
+        remaining = storage.decrementItem(itemId);
+        broadcastToCampaign(item.campaignId, { type: "items_updated", characterId: item.characterId });
+      }
+
       broadcastToCampaign(item.campaignId, { type: "dm_thinking", thinking: false });
       broadcastToCampaign(item.campaignId, { type: "message", message: dmMsg });
+      if (shopProjection.shopId) {
+        broadcastToCampaign(item.campaignId, { type: "shop_updated", shopId: shopProjection.shopId });
+      }
 
-      if (req.user) incrementTurnCount(req.user.id);
+
     } catch (err) {
       broadcastToCampaign(item.campaignId, { type: "dm_thinking", thinking: false });
+      releaseTurnClaim(req.user!.id, turnClaim.claim);
       console.error("DM item-use error:", err);
 
       const aiIssue = getAIServiceIssue(err);
@@ -1362,7 +1905,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json({ used: displayName, remaining });
   });
 
-  app.post("/api/items/:id/identify", (req, res) => {
+  app.post("/api/items/:id/identify", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const itemId = Number(req.params.id);
     const item = storage.getItem(itemId);
@@ -1382,7 +1925,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.json(storage.getItem(itemId));
   });
 
-  app.delete("/api/items/:id", (req, res) => {
+  app.delete("/api/items/:id", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const itemId = Number(req.params.id);
     const item = storage.getItem(itemId);
@@ -1402,11 +1945,11 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
   // ACTIVE EFFECTS ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  app.get("/api/characters/:characterId/effects", (req, res) => {
+  app.get("/api/characters/:characterId/effects", requireAuth, requireCharacterDetailAccess, (req, res) => {
     return res.json(storage.getActiveEffectsByCharacter(Number(req.params.characterId)));
   });
 
-  app.post("/api/characters/:characterId/effects", (req, res) => {
+  app.post("/api/characters/:characterId/effects", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const characterId = Number(req.params.characterId);
     const character = storage.getCharacter(characterId);
@@ -1450,7 +1993,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     return res.status(201).json({ effect, droppedConcentration });
   });
 
-  app.delete("/api/effects/:id", (req, res) => {
+  app.delete("/api/effects/:id", requireAuth, (req, res) => {
     const visitorId = getVisitorId(req);
     const effectId = Number(req.params.id);
     const effect = storage.getActiveEffect(effectId);
@@ -1468,11 +2011,11 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
   // MESSAGE / GAME ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  app.get("/api/campaigns/:id/messages", (req, res) => {
+  app.get("/api/campaigns/:id/messages", requireAuth, requireCampaignAccess, (req, res) => {
     return res.json(storage.getMessagesByCampaign(Number(req.params.id)));
   });
 
-  app.post("/api/campaigns/:id/action", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
+  app.post("/api/campaigns/:id/action", requireAuth, requireCanPlay, requireCampaignAccess, async (req, res) => {
     const visitorId = getVisitorId(req);
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
@@ -1495,6 +2038,11 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       return res.status(400).json({ message: "Action content is required" });
     }
 
+    const turnClaim = claimTurn(req.user!);
+    if (!turnClaim.ok) {
+      return res.status(403).json(turnClaim.body);
+    }
+
     const playerMsg = storage.createMessage({
       campaignId,
       sender: character.name,
@@ -1510,15 +2058,18 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
 
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: true });
 
+      const currencies = storage.getCampaignCurrencies(campaignId);
       const rawResponse = await generateDMResponse(
         campaign,
         chars,
         history,
         content,
         character.name,
+        currencies,
       );
 
       const { cleanContent, worldState } = extractWorldState(rawResponse);
+      const shopProjection = projectShopFromNarration(campaignId, cleanContent);
 
       if (worldState) {
         try {
@@ -1537,7 +2088,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
         } catch {}
       }
 
-      const finalContent = cleanContent?.trim() || buildFallbackActionResponse(character.name, content);
+      const finalContent = shopProjection.cleanContent || buildFallbackActionResponse(character.name, content);
 
       const dmMsg = storage.createMessage({
         campaignId,
@@ -1549,100 +2100,65 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
 
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
+      if (shopProjection.shopId) {
+        broadcastToCampaign(campaignId, { type: "shop_updated", shopId: shopProjection.shopId });
+      }
 
-      incrementTurnCount(req.user!.id);
+      const stateProjection = await extractStateProjectionFromNarration(finalContent, campaignId);
+      const projected = applyNarrationProjection(campaignId, character.id, stateProjection);
 
-      Promise.all([
-        extractItemsFromNarration(finalContent, campaignId, character.id),
-        extractAbilitiesFromNarration(finalContent, campaignId, character.id),
-      ]).then(([newItems, newAbilities]) => {
-        for (const newItem of newItems) {
-          const created = storage.createItem(newItem);
-          broadcastToCampaign(campaignId, { type: "item_granted", item: created });
-        }
-        if (newItems.length) {
-          broadcastToCampaign(campaignId, { type: "items_updated", characterId: character.id });
-        }
+      if (projected.abilitiesAdded.length && req.user) {
+        const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
+        tryUnlockAchievements(req.user.id, campaignId, character.id, {
+          type: "ability_granted",
+          unlockedIds,
+        });
+      }
 
-        if (newAbilities.length > 0) {
-          const freshChar = storage.getCharacter(character.id);
-          if (freshChar) {
-            try {
-              const cd = JSON.parse((freshChar as any).characterData || "{}");
-              if (!cd.sections) cd.sections = [];
-              let abSec = cd.sections.find((s: any) => s.label === "Granted Abilities");
-              if (!abSec) {
-                abSec = { label: "Granted Abilities", entries: [] };
-                cd.sections.push(abSec);
-              }
-              for (const ab of newAbilities) {
-                if (!abSec.entries.find((e: any) => e.key === ab.name)) {
-                  abSec.entries.push({ key: ab.name, value: `[${ab.category}] ${ab.description}` });
-                }
-              }
-              storage.updateCharacter(character.id, { characterData: JSON.stringify(cd) } as any);
-              broadcastToCampaign(campaignId, {
-                type: "abilities_granted",
-                characterId: character.id,
-                abilities: newAbilities,
-              });
-              broadcastToCampaign(campaignId, { type: "character_updated", characterId: character.id });
-
-              if (req.user) {
-                const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
-                tryUnlockAchievements(req.user.id, campaignId, character.id, {
-                  type: "ability_granted",
-                  unlockedIds,
-                });
-              }
-            } catch {}
-          }
-        }
-
-        const expired = storage.tickEffects(character.id);
-        if (expired.length > 0) {
-          broadcastToCampaign(campaignId, {
-            type: "effects_updated",
-            characterId: character.id,
-            expired: expired.map((e) => ({ id: e.id, name: e.name })),
+      const expired = storage.tickEffects(character.id);
+      if (expired.length > 0) {
+        broadcastToCampaign(campaignId, {
+          type: "effects_updated",
+          characterId: character.id,
+          expired: expired.map((effect) => ({ id: effect.id, name: effect.name })),
+        });
+        for (const effect of expired) {
+          const expiryMessage = storage.createMessage({
+            campaignId,
+            sender: "System",
+            senderType: "system",
+            content: `${character.name}'s **${effect.name}** has expired.`,
+            messageType: "system",
           });
-          for (const e of expired) {
-            const expMsg = storage.createMessage({
-              campaignId,
-              sender: "System",
-              senderType: "system",
-              content: `${character.name}'s **${e.name}** has expired.`,
-              messageType: "system",
-            });
-            broadcastToCampaign(campaignId, { type: "message", message: expMsg });
-          }
+          broadcastToCampaign(campaignId, { type: "message", message: expiryMessage });
         }
+      }
 
-        if (req.user) {
-          const freshChar2 = storage.getCharacter(character.id);
-          const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
-          const dmFlags = scanDMResponseForAchievements(finalContent, {
-            hp: freshChar2?.hp ?? character.hp,
-            maxHp: freshChar2?.maxHp ?? character.maxHp,
-          });
-          tryUnlockAchievements(req.user.id, campaignId, character.id, {
-            type: "dm_response",
-            dm: dmFlags,
-            campaign: {
-              id: campaignId,
-              messageCount: storage.countMessagesByCampaign(campaignId),
-              epicMode: campaign.epicMode,
-              homebrewRules: campaign.homebrewRules,
-              animeWorldSource: campaign.animeWorldSource,
-              animeWorldMode: campaign.animeWorldMode,
-            },
-            unlockedIds,
-          });
-        }
-      }).catch((err) => console.error("Post-action extraction error:", err));
+      if (req.user) {
+        const freshCharacter = storage.getCharacter(character.id);
+        const unlockedIds = storage.getUnlockedAchievementIds(req.user.id);
+        const dmFlags = scanDMResponseForAchievements(finalContent, {
+          hp: freshCharacter?.hp ?? character.hp,
+          maxHp: freshCharacter?.maxHp ?? character.maxHp,
+        });
+        tryUnlockAchievements(req.user.id, campaignId, character.id, {
+          type: "dm_response",
+          dm: dmFlags,
+          campaign: {
+            id: campaignId,
+            messageCount: storage.countMessagesByCampaign(campaignId),
+            epicMode: campaign.epicMode,
+            homebrewRules: campaign.homebrewRules,
+            animeWorldSource: campaign.animeWorldSource,
+            animeWorldMode: campaign.animeWorldMode,
+          },
+          unlockedIds,
+        });
+      }
 
       return res.json({ playerMessage: playerMsg, dmMessage: dmMsg });
     } catch (error: any) {
+      releaseTurnClaim(req.user!.id, turnClaim.claim);
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("DM Engine error:", error);
 
@@ -1666,7 +2182,7 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     }
   });
 
-  app.post("/api/campaigns/:id/start", requireAuth, requireCanPlay, checkTurnLimit, async (req, res) => {
+  app.post("/api/campaigns/:id/start", requireAuth, requireCanPlay, requireCampaignAccess, async (req, res) => {
     const campaignId = Number(req.params.id);
     const campaign = storage.getCampaign(campaignId);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
@@ -1674,17 +2190,24 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
     const chars = storage.getCharactersByCampaign(campaignId);
     if (chars.length === 0) return res.status(400).json({ message: "Need at least one character to start" });
 
+    const turnClaim = claimTurn(req.user!);
+    if (!turnClaim.ok) {
+      return res.status(403).json(turnClaim.body);
+    }
+
     try {
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: true });
 
-      const rawResponse = await generateOpeningScene(campaign, chars);
+      const currencies = storage.getCampaignCurrencies(campaignId);
+      const rawResponse = await generateOpeningScene(campaign, chars, currencies);
       const { cleanContent, worldState } = extractWorldState(rawResponse);
+      const shopProjection = projectShopFromNarration(campaignId, cleanContent);
 
       if (worldState) {
         storage.updateWorldState(campaignId, JSON.stringify(worldState));
       }
 
-      const finalContent = cleanContent?.trim() || buildFallbackOpeningScene(campaign.name, chars);
+      const finalContent = shopProjection.cleanContent || buildFallbackOpeningScene(campaign.name, chars);
 
       const dmMsg = storage.createMessage({
         campaignId,
@@ -1697,11 +2220,13 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       broadcastToCampaign(campaignId, { type: "message", message: dmMsg });
       broadcastToCampaign(campaignId, { type: "campaign_started" });
-
-      incrementTurnCount(req.user!.id);
+      if (shopProjection.shopId) {
+        broadcastToCampaign(campaignId, { type: "shop_updated", shopId: shopProjection.shopId });
+      }
 
       return res.json({ message: dmMsg });
     } catch (error: any) {
+      releaseTurnClaim(req.user!.id, turnClaim.claim);
       broadcastToCampaign(campaignId, { type: "dm_thinking", thinking: false });
       console.error("Opening scene error:", error);
 
@@ -1731,41 +2256,58 @@ Return ONLY the JSON object. No explanation. No markdown fences. No raw source t
 
   httpServer.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url || "", `http://${request.headers.host}`);
-    if (url.pathname === "/ws") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
+    if (url.pathname !== "/ws") return;
+
+    const userId = getWebSocketUserId(request.headers.cookie);
+    if (!userId) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
     }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      (ws as any)._userId = userId;
+      wss.emit("connection", ws, request);
+    });
   });
 
   wss.on("connection", (ws) => {
     let subscribedCampaignId: number | null = null;
+    const userId = Number((ws as any)._userId);
 
     ws.on("message", (raw) => {
       try {
         const data = JSON.parse(raw.toString());
         if (data.type === "subscribe" && data.campaignId) {
+          const nextCampaignId = Number(data.campaignId);
+          if (!Number.isInteger(nextCampaignId) || nextCampaignId <= 0) {
+            ws.close(1008, "Invalid campaign subscription");
+            return;
+          }
+          if (!userCanAccessCampaign(userId, nextCampaignId)) {
+            ws.close(1008, "Forbidden campaign subscription");
+            return;
+          }
           if (subscribedCampaignId !== null) {
             campaignClients.get(subscribedCampaignId)?.delete(ws);
-          }
-          const nextCampaignId = Number(data.campaignId);
-          if (!Number.isInteger(nextCampaignId)) {
-            return;
           }
           subscribedCampaignId = nextCampaignId;
           if (!campaignClients.has(nextCampaignId)) {
             campaignClients.set(nextCampaignId, new Set());
           }
           campaignClients.get(nextCampaignId)!.add(ws);
-          if (data.userId) (ws as any)._userId = data.userId;
           ws.send(JSON.stringify({ type: "subscribed", campaignId: subscribedCampaignId }));
         }
-      } catch {}
+      } catch {
+        ws.close(1008, "Invalid WebSocket message");
+      }
     });
 
     ws.on("close", () => {
       if (subscribedCampaignId !== null) {
-        campaignClients.get(subscribedCampaignId)?.delete(ws);
+        const clients = campaignClients.get(subscribedCampaignId);
+        clients?.delete(ws);
+        if (clients?.size === 0) campaignClients.delete(subscribedCampaignId);
       }
     });
   });

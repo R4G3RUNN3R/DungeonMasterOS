@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type {
   Dnd35Ability,
   Dnd35CharacterSheetData,
+  Dnd35FeatEntry,
   Dnd35SkillEntry,
   Dnd35SpellcastingBlock,
 } from "@shared/dnd35-character-sheet";
@@ -350,7 +351,7 @@ export default function CharacterSheetPage() {
     return rows;
   }, [sheet, rules, scores, character]);
 
-  const feats = useMemo(() => sheet?.feats?.length ? sheet.feats : (rules?.feats || []).map((name: string) => ({ name, source: "Feat" })), [sheet, rules]);
+  const feats = useMemo<Dnd35FeatEntry[]>(() => sheet?.feats?.length ? sheet.feats : (rules?.feats || []).map((name: string) => ({ name, source: "Feat" })), [sheet, rules]);
   const specials = useMemo(() => {
     if (sheet?.specialAbilities?.length) return sheet.specialAbilities;
     return [

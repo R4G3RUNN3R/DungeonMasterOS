@@ -11,6 +11,8 @@ import {
   type Character,
   type InsertCharacter,
   characters,
+  type CharacterCurrency,
+  characterCurrencies,
   type Message,
   type InsertMessage,
   messages,
@@ -20,9 +22,14 @@ import {
   type ActiveEffect,
   type InsertActiveEffect,
   activeEffects,
+  type CampaignSnapshot,
+  type InsertCampaignSnapshot,
+  campaignSnapshots,
   type ActiveShop,
+  type InsertActiveShop,
   activeShops,
   type ShopItem,
+  type InsertShopItem,
   shopItems,
   type UserAchievement,
   type InsertUserAchievement,
@@ -32,7 +39,7 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, or } from "drizzle-orm";
 import path from "path";
 
 const dbPath = process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db");
@@ -41,6 +48,76 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite);
+
+export type AiTurnReservation = "regular" | "bonus";
+
+export type ShopPurchaseResult =
+  | { ok: true; wallet: CharacterCurrency; remainingStock: number; item: Item }
+  | { ok: false; reason: "not_found" | "stock" | "funds" };
+
+export function reserveAiTurn(userId: number, regularLimit: number): AiTurnReservation | null {
+  const transaction = sqlite.transaction(() => {
+    const row = sqlite
+      .prepare("SELECT ai_turns_used_this_month AS used, bonus_turns AS bonus FROM users WHERE id = ?")
+      .get(userId) as { used: number; bonus: number } | undefined;
+
+    if (!row) return null;
+
+    if (regularLimit < 0 || row.used < regularLimit) {
+      sqlite
+        .prepare("UPDATE users SET ai_turns_used_this_month = ai_turns_used_this_month + 1 WHERE id = ?")
+        .run(userId);
+      return "regular" as const;
+    }
+
+    if (row.bonus > 0) {
+      sqlite
+        .prepare("UPDATE users SET ai_turns_used_this_month = ai_turns_used_this_month + 1, bonus_turns = bonus_turns - 1 WHERE id = ?")
+        .run(userId);
+      return "bonus" as const;
+    }
+
+    return null;
+  });
+
+  return transaction();
+}
+
+export function refundAiTurn(userId: number, reservation: AiTurnReservation): void {
+  const transaction = sqlite.transaction(() => {
+    if (reservation === "bonus") {
+      sqlite
+        .prepare("UPDATE users SET ai_turns_used_this_month = MAX(0, ai_turns_used_this_month - 1), bonus_turns = bonus_turns + 1 WHERE id = ?")
+        .run(userId);
+      return;
+    }
+
+    sqlite
+      .prepare("UPDATE users SET ai_turns_used_this_month = MAX(0, ai_turns_used_this_month - 1) WHERE id = ?")
+      .run(userId);
+  });
+
+  transaction();
+}
+
+export function applyWebhookEventOnce(
+  eventId: string,
+  eventType: string,
+  apply: () => void,
+): boolean {
+  const transaction = sqlite.transaction(() => {
+    const claim = sqlite
+      .prepare("INSERT OR IGNORE INTO stripe_webhook_events (event_id, event_type) VALUES (?, ?)")
+      .run(eventId, eventType);
+
+    if (claim.changes === 0) return false;
+
+    apply();
+    return true;
+  });
+
+  return transaction();
+}
 
 function columnExists(tableName: string, columnName: string): boolean {
   const rows = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
@@ -88,6 +165,12 @@ export function runMigrations() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS campaigns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -114,6 +197,15 @@ export function runMigrations() {
       active_shop_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS campaign_members (
+      campaign_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (campaign_id, user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_campaign_members_user_id ON campaign_members(user_id);
 
     CREATE TABLE IF NOT EXISTS characters (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -290,7 +382,30 @@ export function runMigrations() {
 
   addColumnIfMissing("messages", "metadata", "TEXT NOT NULL DEFAULT '{}'");
   addColumnIfMissing("items", "stat_mods", "TEXT NOT NULL DEFAULT '[]'");
-  addColumnIfMissing("items", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  if (!columnExists("items", "updated_at")) {
+    // SQLite ALTER TABLE rejects non-constant defaults such as datetime('now').
+    // Add a safe constant default, then backfill old rows. New Drizzle inserts
+    // supply updated_at from the schema's application-side $defaultFn.
+    sqlite.exec("ALTER TABLE items ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''");
+    sqlite.exec(`
+      UPDATE items
+      SET updated_at = CASE
+        WHEN created_at IS NOT NULL AND created_at <> '' THEN created_at
+        ELSE datetime('now')
+      END
+      WHERE updated_at = '';
+    `);
+  }
+
+  // Preserve access for existing authenticated players when introducing the
+  // explicit membership ledger. Character ownership is the strongest existing
+  // evidence that a user already belongs to a campaign.
+  sqlite.exec(`
+    INSERT OR IGNORE INTO campaign_members (campaign_id, user_id)
+    SELECT DISTINCT campaign_id, user_id
+    FROM characters
+    WHERE user_id IS NOT NULL;
+  `);
 }
 
 // ── Storage interface ──────────────────────────────────────────────────────
@@ -314,14 +429,35 @@ export interface IStorage {
   getCampaign(id: number): Campaign | undefined;
   getCampaignByInviteCode(code: string): Campaign | undefined;
   getCampaignsByUser(userId: number): Campaign[];
+  getCampaignsAccessibleByUser(userId: number): Campaign[];
+  isCampaignMember(campaignId: number, userId: number): boolean;
+  addCampaignMember(campaignId: number, userId: number): void;
   createCampaign(campaign: InsertCampaign): Campaign;
+  createCampaignWithCurrencies(
+    campaign: InsertCampaign,
+    currencies: Array<Omit<InsertCampaignCurrency, "campaignId">>,
+  ): Campaign;
   updateWorldState(campaignId: number, worldState: string): void;
   updateCampaign(campaignId: number, updates: Partial<Campaign>): void;
   incrementCampaignMessages(campaignId: number): void;
   getCampaignCurrencies(campaignId: number): CampaignCurrency[];
   createCampaignCurrency(currency: InsertCampaignCurrency): CampaignCurrency;
+
+  // Shops
   getActiveShopByCampaign(campaignId: number): ActiveShop | undefined;
   getShopItemsByShop(shopId: number): ShopItem[];
+  getShopItem(id: number): ShopItem | undefined;
+  openShop(
+    shop: InsertActiveShop,
+    items: Array<Omit<InsertShopItem, "shopId" | "campaignId">>,
+  ): { shop: ActiveShop; items: ShopItem[] };
+  closeActiveShop(shopId: number): void;
+  purchaseShopItem(
+    campaignId: number,
+    characterId: number,
+    shopItemId: number,
+    quantity: number,
+  ): ShopPurchaseResult;
 
   // Characters
   getCharacter(id: number): Character | undefined;
@@ -329,6 +465,19 @@ export interface IStorage {
   getCharacterByVisitor(campaignId: number, visitorId: string): Character | undefined;
   createCharacter(character: InsertCharacter): Character;
   updateCharacter(id: number, updates: Partial<Character>): void;
+  getCharacterCurrencies(characterId: number): CharacterCurrency[];
+  getCharacterCurrency(characterId: number, currencyCode: string): CharacterCurrency | undefined;
+  adjustCharacterCurrency(
+    campaignId: number,
+    characterId: number,
+    currencyCode: string,
+    delta: number,
+  ): CharacterCurrency | undefined;
+  replaceCharacterCurrencies(
+    campaignId: number,
+    characterId: number,
+    balances: Array<{ currencyCode: string; amount: number }>,
+  ): void;
 
   // Messages
   getMessagesByCampaign(campaignId: number, limit?: number): Message[];
@@ -353,6 +502,13 @@ export interface IStorage {
   deleteActiveEffect(id: number): void;
   removeConcentration(characterId: number): ActiveEffect | undefined;
   tickEffects(characterId: number): ActiveEffect[];
+
+  // Campaign snapshots / recovery
+  createCampaignSnapshot(data: InsertCampaignSnapshot): CampaignSnapshot;
+  getCampaignSnapshot(id: number): CampaignSnapshot | undefined;
+  getCampaignSnapshots(campaignId: number): CampaignSnapshot[];
+  buildCampaignSnapshot(campaignId: number): Record<string, unknown> | null;
+  restoreCampaignSnapshot(snapshotId: number): Campaign | null;
 
   // Achievements
   getUserAchievements(userId: number): UserAchievement[];
@@ -427,8 +583,50 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(campaigns.lastPlayedAt), desc(campaigns.createdAt))
       .all();
   }
+  getCampaignsAccessibleByUser(userId: number): Campaign[] {
+    const memberships = sqlite
+      .prepare("SELECT campaign_id FROM campaign_members WHERE user_id = ?")
+      .all(userId) as Array<{ campaign_id: number }>;
+    const memberIds = memberships.map((row) => row.campaign_id);
+
+    if (memberIds.length === 0) {
+      return this.getCampaignsByUser(userId);
+    }
+
+    return db
+      .select()
+      .from(campaigns)
+      .where(or(eq(campaigns.userId, userId), inArray(campaigns.id, memberIds)))
+      .orderBy(desc(campaigns.lastPlayedAt), desc(campaigns.createdAt))
+      .all();
+  }
+  isCampaignMember(campaignId: number, userId: number): boolean {
+    const row = sqlite
+      .prepare("SELECT 1 AS ok FROM campaign_members WHERE campaign_id = ? AND user_id = ? LIMIT 1")
+      .get(campaignId, userId) as { ok: number } | undefined;
+    return !!row;
+  }
+  addCampaignMember(campaignId: number, userId: number): void {
+    sqlite
+      .prepare("INSERT OR IGNORE INTO campaign_members (campaign_id, user_id) VALUES (?, ?)")
+      .run(campaignId, userId);
+  }
   createCampaign(campaign: InsertCampaign): Campaign {
     return db.insert(campaigns).values(campaign).returning().get();
+  }
+  createCampaignWithCurrencies(
+    campaign: InsertCampaign,
+    currencies: Array<Omit<InsertCampaignCurrency, "campaignId">>,
+  ): Campaign {
+    const transaction = sqlite.transaction(() => {
+      const created = db.insert(campaigns).values(campaign).returning().get();
+      for (const currency of currencies) {
+        db.insert(campaignCurrencies).values({ ...currency, campaignId: created.id }).run();
+      }
+      return created;
+    });
+
+    return transaction();
   }
   updateWorldState(campaignId: number, worldState: string): void {
     db.update(campaigns).set({ worldState }).where(eq(campaigns.id, campaignId)).run();
@@ -468,6 +666,124 @@ export class DatabaseStorage implements IStorage {
       .orderBy(shopItems.name)
       .all();
   }
+  getShopItem(id: number): ShopItem | undefined {
+    return db.select().from(shopItems).where(eq(shopItems.id, id)).get();
+  }
+  openShop(
+    shop: InsertActiveShop,
+    stock: Array<Omit<InsertShopItem, "shopId" | "campaignId">>,
+  ): { shop: ActiveShop; items: ShopItem[] } {
+    const transaction = sqlite.transaction(() => {
+      const now = new Date().toISOString();
+      db.update(activeShops)
+        .set({ isOpen: false, updatedAt: now })
+        .where(and(eq(activeShops.campaignId, shop.campaignId), eq(activeShops.isOpen, true)))
+        .run();
+
+      const opened = db
+        .insert(activeShops)
+        .values(shop)
+        .returning()
+        .get();
+
+      db.update(campaigns)
+        .set({ activeShopId: opened.id })
+        .where(eq(campaigns.id, shop.campaignId))
+        .run();
+
+      if (stock.length) {
+        db.insert(shopItems)
+          .values(
+            stock.map((item) => ({
+              ...item,
+              shopId: opened.id,
+              campaignId: shop.campaignId,
+            })),
+          )
+          .run();
+      }
+
+      return { shop: opened, items: this.getShopItemsByShop(opened.id) };
+    });
+
+    return transaction();
+  }
+  closeActiveShop(shopId: number): void {
+    const transaction = sqlite.transaction(() => {
+      const shop = db.select().from(activeShops).where(eq(activeShops.id, shopId)).get();
+      if (!shop) return;
+      db.update(activeShops)
+        .set({ isOpen: false, updatedAt: new Date().toISOString() })
+        .where(eq(activeShops.id, shopId))
+        .run();
+      db.update(campaigns)
+        .set({ activeShopId: null })
+        .where(and(eq(campaigns.id, shop.campaignId), eq(campaigns.activeShopId, shopId)))
+        .run();
+    });
+    transaction();
+  }
+  purchaseShopItem(
+    campaignId: number,
+    characterId: number,
+    shopItemId: number,
+    quantity: number,
+  ): ShopPurchaseResult {
+    const transaction = sqlite.transaction((): ShopPurchaseResult => {
+      const shopItem = this.getShopItem(shopItemId);
+      const activeShop = this.getActiveShopByCampaign(campaignId);
+      if (!shopItem || !activeShop || shopItem.shopId !== activeShop.id || shopItem.campaignId !== campaignId) {
+        return { ok: false, reason: "not_found" };
+      }
+      if (shopItem.stock < quantity) {
+        return { ok: false, reason: "stock" };
+      }
+
+      const wallet = this.getCharacterCurrency(characterId, shopItem.priceCurrencyCode);
+      const totalCost = shopItem.priceAmount * quantity;
+      if (!wallet || wallet.amount < totalCost) {
+        return { ok: false, reason: "funds" };
+      }
+
+      const now = new Date().toISOString();
+      db.update(characterCurrencies)
+        .set({ amount: wallet.amount - totalCost, updatedAt: now })
+        .where(eq(characterCurrencies.id, wallet.id))
+        .run();
+      db.update(shopItems)
+        .set({ stock: shopItem.stock - quantity, updatedAt: now })
+        .where(eq(shopItems.id, shopItem.id))
+        .run();
+
+      const grantedItem = db.insert(items).values({
+        campaignId,
+        characterId,
+        name: shopItem.name,
+        trueName: "",
+        description: shopItem.description,
+        trueDescription: "",
+        itemType: shopItem.itemType,
+        quantity: (shopItem.quantityPerPurchase || 1) * quantity,
+        charges: null,
+        maxCharges: null,
+        identified: true,
+        consumable: shopItem.itemType === "consumable",
+        equipped: false,
+        locationNote: "",
+        source: "shop_purchase",
+        statMods: "[]",
+      }).returning().get();
+
+      return {
+        ok: true,
+        wallet: this.getCharacterCurrency(characterId, shopItem.priceCurrencyCode)!,
+        remainingStock: shopItem.stock - quantity,
+        item: grantedItem,
+      };
+    });
+
+    return transaction();
+  }
 
   // Characters
   getCharacter(id: number): Character | undefined {
@@ -488,6 +804,63 @@ export class DatabaseStorage implements IStorage {
   }
   updateCharacter(id: number, updates: Partial<Character>): void {
     db.update(characters).set(updates as any).where(eq(characters.id, id)).run();
+  }
+  getCharacterCurrencies(characterId: number): CharacterCurrency[] {
+    return db
+      .select()
+      .from(characterCurrencies)
+      .where(eq(characterCurrencies.characterId, characterId))
+      .orderBy(characterCurrencies.id)
+      .all();
+  }
+  getCharacterCurrency(characterId: number, currencyCode: string): CharacterCurrency | undefined {
+    return db
+      .select()
+      .from(characterCurrencies)
+      .where(
+        and(
+          eq(characterCurrencies.characterId, characterId),
+          eq(characterCurrencies.currencyCode, currencyCode),
+        ),
+      )
+      .get();
+  }
+  adjustCharacterCurrency(
+    campaignId: number,
+    characterId: number,
+    currencyCode: string,
+    delta: number,
+  ): CharacterCurrency | undefined {
+    if (!Number.isInteger(delta) || delta === 0) {
+      return this.getCharacterCurrency(characterId, currencyCode);
+    }
+
+    const transaction = sqlite.transaction(() => {
+      const wallet = this.getCharacterCurrency(characterId, currencyCode);
+      if (!wallet || wallet.campaignId !== campaignId) return undefined;
+      const nextAmount = Math.max(0, wallet.amount + delta);
+      db.update(characterCurrencies)
+        .set({ amount: nextAmount, updatedAt: new Date().toISOString() })
+        .where(eq(characterCurrencies.id, wallet.id))
+        .run();
+      return this.getCharacterCurrency(characterId, currencyCode);
+    });
+
+    return transaction();
+  }
+  replaceCharacterCurrencies(
+    campaignId: number,
+    characterId: number,
+    balances: Array<{ currencyCode: string; amount: number }>,
+  ): void {
+    const transaction = sqlite.transaction(() => {
+      db.delete(characterCurrencies).where(eq(characterCurrencies.characterId, characterId)).run();
+      if (!balances.length) return;
+      db.insert(characterCurrencies)
+        .values(balances.map((balance) => ({ campaignId, characterId, ...balance })))
+        .run();
+    });
+    transaction();
   }
 
   // Messages
@@ -609,6 +982,142 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return expired;
+  }
+
+  // Campaign snapshots / recovery
+  createCampaignSnapshot(data: InsertCampaignSnapshot): CampaignSnapshot {
+    const transaction = sqlite.transaction(() => {
+      const snapshot = db.insert(campaignSnapshots).values(data).returning().get();
+      db.update(campaigns)
+        .set({ latestSnapshotId: snapshot.id })
+        .where(eq(campaigns.id, data.campaignId))
+        .run();
+      return snapshot;
+    });
+    return transaction();
+  }
+  getCampaignSnapshot(id: number): CampaignSnapshot | undefined {
+    return db.select().from(campaignSnapshots).where(eq(campaignSnapshots.id, id)).get();
+  }
+  getCampaignSnapshots(campaignId: number): CampaignSnapshot[] {
+    return db
+      .select()
+      .from(campaignSnapshots)
+      .where(eq(campaignSnapshots.campaignId, campaignId))
+      .orderBy(desc(campaignSnapshots.id))
+      .all();
+  }
+  buildCampaignSnapshot(campaignId: number): Record<string, unknown> | null {
+    const campaign = this.getCampaign(campaignId);
+    if (!campaign) return null;
+
+    const campaignCharacters = this.getCharactersByCampaign(campaignId);
+    const campaignMessages = this.getMessagesByCampaign(campaignId, 100000);
+    const campaignItems = db.select().from(items).where(eq(items.campaignId, campaignId)).all();
+    const effects = this.getActiveEffectsByCampaign(campaignId);
+    const currencies = this.getCampaignCurrencies(campaignId);
+    const characterMoney = campaignCharacters.map((character) => ({
+      characterId: character.id,
+      balances: this.getCharacterCurrencies(character.id),
+    }));
+    const shop = this.getActiveShopByCampaign(campaignId);
+    const shopStock = shop ? this.getShopItemsByShop(shop.id) : [];
+
+    return {
+      version: 1,
+      campaign,
+      characters: campaignCharacters,
+      messages: campaignMessages,
+      items: campaignItems,
+      effects,
+      currencies,
+      characterMoney,
+      shop,
+      shopStock,
+      takenAt: new Date().toISOString(),
+    };
+  }
+  restoreCampaignSnapshot(snapshotId: number): Campaign | null {
+    const snapshot = this.getCampaignSnapshot(snapshotId);
+    if (!snapshot) return null;
+
+    let data: any;
+    try {
+      data = JSON.parse(snapshot.snapshotData || "{}");
+    } catch {
+      return null;
+    }
+    if (!data?.campaign || Number(data.campaign.id) !== snapshot.campaignId) return null;
+
+    const currentCampaign = this.getCampaign(snapshot.campaignId);
+    if (!currentCampaign) return null;
+
+    const transaction = sqlite.transaction(() => {
+      const campaignId = snapshot.campaignId;
+      const restoredCampaign = { ...data.campaign };
+      delete restoredCampaign.id;
+      delete restoredCampaign.userId;
+      delete restoredCampaign.hostVisitorId;
+      delete restoredCampaign.inviteCode;
+      delete restoredCampaign.createdAt;
+      delete restoredCampaign.latestSnapshotId;
+      delete restoredCampaign.isArchived;
+
+      db.update(campaigns)
+        .set({
+          ...restoredCampaign,
+          latestSnapshotId: snapshot.id,
+          userId: currentCampaign.userId,
+          hostVisitorId: currentCampaign.hostVisitorId,
+          inviteCode: currentCampaign.inviteCode,
+          isArchived: currentCampaign.isArchived,
+        } as any)
+        .where(eq(campaigns.id, campaignId))
+        .run();
+
+      db.delete(shopItems).where(eq(shopItems.campaignId, campaignId)).run();
+      db.delete(activeShops).where(eq(activeShops.campaignId, campaignId)).run();
+      db.delete(characterCurrencies).where(eq(characterCurrencies.campaignId, campaignId)).run();
+      db.delete(activeEffects).where(eq(activeEffects.campaignId, campaignId)).run();
+      db.delete(items).where(eq(items.campaignId, campaignId)).run();
+      db.delete(messages).where(eq(messages.campaignId, campaignId)).run();
+      db.delete(characters).where(eq(characters.campaignId, campaignId)).run();
+      db.delete(campaignCurrencies).where(eq(campaignCurrencies.campaignId, campaignId)).run();
+
+      if (Array.isArray(data.currencies) && data.currencies.length) {
+        db.insert(campaignCurrencies).values(data.currencies as any).run();
+      }
+      if (Array.isArray(data.characters) && data.characters.length) {
+        db.insert(characters).values(data.characters as any).run();
+      }
+      if (Array.isArray(data.messages) && data.messages.length) {
+        db.insert(messages).values(data.messages as any).run();
+      }
+      if (Array.isArray(data.items) && data.items.length) {
+        db.insert(items).values(data.items as any).run();
+      }
+      if (Array.isArray(data.effects) && data.effects.length) {
+        db.insert(activeEffects).values(data.effects as any).run();
+      }
+
+      const walletRows = Array.isArray(data.characterMoney)
+        ? data.characterMoney.flatMap((bucket: any) => Array.isArray(bucket?.balances) ? bucket.balances : [])
+        : [];
+      if (walletRows.length) {
+        db.insert(characterCurrencies).values(walletRows as any).run();
+      }
+
+      if (data.shop) {
+        db.insert(activeShops).values(data.shop as any).run();
+      }
+      if (Array.isArray(data.shopStock) && data.shopStock.length) {
+        db.insert(shopItems).values(data.shopStock as any).run();
+      }
+
+      return this.getCampaign(campaignId) ?? null;
+    });
+
+    return transaction();
   }
 
   // Achievements

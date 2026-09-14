@@ -252,7 +252,7 @@ export default function Dashboard() {
     if (!joinCode.trim()) return;
     setJoinError("");
     try {
-      const res = await apiRequest("GET", `/api/campaigns/invite/${joinCode.trim()}`);
+      const res = await apiRequest("POST", "/api/campaigns/join", { inviteCode: joinCode.trim() });
       const campaign = (await res.json()) as Campaign;
       navigate(`/campaign/${campaign.id}`);
     } catch {
