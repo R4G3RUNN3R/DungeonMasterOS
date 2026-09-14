@@ -1,0 +1,73 @@
+name: DMOS V1 Release Stage
+
+on:
+  push:
+    branches:
+      - release/dmos-v1-20260914
+    paths:
+      - .github/workflows/dmos-v1-release-stage.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stage-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up exact Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+
+      - name: Pin npm
+        run: npm install --global npm@10.8.2
+
+      - name: Decode and verify release patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .release/dmos-v1.patch.gz.b64 | gzip -d > /tmp/dmos-v1.patch
+          echo 'ae963732b77f4b1fac795eba29d53d6cac9c02c80bad0045e49adc9285c87a99  /tmp/dmos-v1.patch' | sha256sum -c -
+          git apply --check /tmp/dmos-v1.patch
+          git apply /tmp/dmos-v1.patch
+
+      - name: Generate deterministic lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          echo 'd983068c70c4b2a2baf4844e1bc952031757b02d441b277e3ed2210ad956993e  package-lock.json' | sha256sum -c -
+
+      - name: Reproduce optimized DMOS logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx -y sharp-cli@6.1.0 -i attached_assets/logo.png -o /tmp/dmos-logo.png --compressionLevel 9 --adaptiveFiltering resize 256 256
+          echo '55e343fb3b4ce74f17fd4bf0f5715adf05ee5685c48a69f1af9d603cf8cfddd1  /tmp/dmos-logo.png' | sha256sum -c -
+          mv /tmp/dmos-logo.png attached_assets/logo.png
+
+      - name: Verify V1 release candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          npm run typecheck
+          npm audit --omit=dev --audit-level=high
+
+      - name: Remove staging machinery and commit verified tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .release
+          rm -f .github/workflows/dmos-v1-release-stage.yml
+          git config user.name 'R4G3RUNN3R'
+          git config user.email 'ragerunner__gr@hotmail.com'
+          git add -A
+          git commit -m 'release: harden DungeonMasterOS V1'
+          git push origin HEAD:release/dmos-v1-20260914
