@@ -94,7 +94,7 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
       return res.json();
     },
     onSuccess: () => setForgotSent(true),
-    onError: () => setForgotSent(true), // Don't reveal whether email exists
+    onError: (err: Error) => setFormError(err.message),
   });
 
   const resetMutation = useMutation({
@@ -197,6 +197,11 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
                   <Label htmlFor="forgot-email" className="text-xs text-muted-foreground">Email Address</Label>
                   <Input id="forgot-email" type="email" placeholder="you@example.com" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required autoComplete="email" />
                 </div>
+                {formError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{formError}
+                  </div>
+                )}
                 <Button type="submit" className="w-full" disabled={forgotMutation.isPending}>
                   {forgotMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Sending...</> : "Send Reset Link"}
                 </Button>
