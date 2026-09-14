@@ -31,7 +31,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .release/dmos-v1.patch.gz.b64 | gzip -d > /tmp/dmos-v1.patch
+          cat .release/chunks/part-* > /tmp/dmos-v1.patch.gz.b64
+          test "$(wc -c < /tmp/dmos-v1.patch.gz.b64)" = "60272"
+          base64 -d /tmp/dmos-v1.patch.gz.b64 | gzip -d > /tmp/dmos-v1.patch
           echo 'ae963732b77f4b1fac795eba29d53d6cac9c02c80bad0045e49adc9285c87a99  /tmp/dmos-v1.patch' | sha256sum -c -
           git apply --check /tmp/dmos-v1.patch
           git apply /tmp/dmos-v1.patch
