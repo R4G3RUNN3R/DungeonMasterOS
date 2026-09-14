@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-14
+- SEO: added a descriptive public title and meta description, canonical URL, robots directive, Open Graph/Twitter metadata, and SoftwareApplication structured data to the HTML shell.
+- SEO discovery: added real `client/public/robots.txt` and `client/public/sitemap.xml` files so `/robots.txt` and `/sitemap.xml` can be served as crawler resources rather than falling through to the SPA shell after deployment.
+- Sitemap scope: intentionally lists only the canonical public root while the current hash-based marketing/game routes remain outside the XML sitemap.
+- Risk: low. No authentication, campaign, gameplay, billing, API, WebSocket, database, or routing behaviour changed.
+
 ## 2026-08-17
 - Character sheet: added a dedicated read-only D&D 3.5e character sheet popup page that opens separately from the live campaign and leaves all existing campaign bars untouched.
 - Character sheet data: added `shared/dnd35-character-sheet.ts` as the canonical structured sheet contract for identity, class levels, ability scores, HP, movement, AC/touch/flat-footed AC, initiative, BAB, grapple, saves, skills, feats, special abilities, proficiencies, languages, weapons, armor, equipment, wealth, encumbrance, spellcasting, physical details, XP, backstory, contacts, enemies, and campaign notes.
