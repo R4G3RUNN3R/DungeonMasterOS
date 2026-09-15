@@ -173,3 +173,23 @@ test('paid AI turn entitlements match Stripe metadata and reset on the sold cade
     yearly: '2026-10-15T00:00:00.000Z',
   });
 });
+
+test('billing endpoints have a single authoritative route registration', () => {
+  const sources = [
+    readFileSync(path.join(repoRoot, 'server/routes.ts'), 'utf8'),
+    readFileSync(path.join(repoRoot, 'server/billing-v1.ts'), 'utf8'),
+  ].join('\n');
+  const endpoints = [
+    ['post', '/api/stripe/webhook'],
+    ['post', '/api/stripe/checkout'],
+    ['post', '/api/stripe/portal'],
+    ['post', '/api/stripe/topup'],
+    ['post', '/api/stripe/cancel'],
+    ['get', '/api/billing'],
+  ];
+  for (const [method, route] of endpoints) {
+    const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matches = sources.match(new RegExp(`app\\.${method}\\("${escaped}"`, 'g')) || [];
+    assert.equal(matches.length, 1, `${method.toUpperCase()} ${route} must have exactly one route registration`);
+  }
+});
