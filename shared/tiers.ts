@@ -4,6 +4,31 @@
 
 export type TierName = "free" | "adventurer" | "master" | "legend" | "chronicler";
 
+// Commercial V1 catalogue backed by active live Stripe subscription prices.
+// Chronicler remains an internal entitlement tier but is not currently sold.
+export const PUBLIC_SUBSCRIPTION_TIERS = ["adventurer", "master", "legend"] as const;
+export type PublicSubscriptionTier = (typeof PUBLIC_SUBSCRIPTION_TIERS)[number];
+
+// Legacy turn-pack definitions are retained for compatibility, but sales stay
+// fail-closed until dedicated live Stripe prices are provisioned and verified.
+export const TOP_UP_SALES_ENABLED = false;
+
+export type BillingInterval = "weekly" | "monthly" | "yearly";
+
+export interface PublicBillingSubscription {
+  tier: PublicSubscriptionTier;
+  displayName: string;
+  prices: Record<BillingInterval, number>;
+  turns: Record<BillingInterval, number>;
+  available: Record<BillingInterval, boolean>;
+}
+
+export interface PublicBillingCatalog {
+  currency: "gbp";
+  subscriptions: PublicBillingSubscription[];
+  topUpsEnabled: boolean;
+}
+
 export interface TurnPack {
   id: string;
   turns: number;
@@ -81,9 +106,9 @@ export const TIERS: Record<TierName, Tier> = {
     name: "adventurer",
     displayName: "Adventurer",
     tagline: "Solo adventures and duo campaigns",
-    priceMonthly: 1000,
-    priceWeekly: 300,
-    priceYearly: 8400,
+    priceMonthly: 1499,
+    priceWeekly: 499,
+    priceYearly: 15999,
     stripePriceIdMonthly: "STRIPE_PRICE_ADVENTURER_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_ADVENTURER_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_ADVENTURER_YEARLY",
@@ -112,9 +137,9 @@ export const TIERS: Record<TierName, Tier> = {
     displayName: "Campaign Master",
     tagline: "For regular groups and ongoing campaigns",
     badge: "Most Popular",
-    priceMonthly: 2000,
-    priceWeekly: 600,
-    priceYearly: 16800,
+    priceMonthly: 2499,
+    priceWeekly: 799,
+    priceYearly: 26999,
     stripePriceIdMonthly: "STRIPE_PRICE_MASTER_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_MASTER_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_MASTER_YEARLY",
@@ -122,7 +147,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 20,
     playersPerCampaign: 4,
-    aiTurnsPerMonth: 600,
+    aiTurnsPerMonth: 400,
     messageHistoryDepth: 1000,
     multiplayerHost: true,
     animeWorlds: true,
@@ -142,9 +167,9 @@ export const TIERS: Record<TierName, Tier> = {
     name: "legend",
     displayName: "Legend",
     tagline: "For serious players running multiple groups",
-    priceMonthly: 3000,
-    priceWeekly: 900,
-    priceYearly: 25200,
+    priceMonthly: 3499,
+    priceWeekly: 1099,
+    priceYearly: 37999,
     stripePriceIdMonthly: "STRIPE_PRICE_LEGEND_MONTHLY",
     stripePriceIdWeekly: "STRIPE_PRICE_LEGEND_WEEKLY",
     stripePriceIdYearly: "STRIPE_PRICE_LEGEND_YEARLY",
@@ -152,7 +177,7 @@ export const TIERS: Record<TierName, Tier> = {
     archivedCampaigns: 999,
     charactersTotal: 999,
     playersPerCampaign: 6,
-    aiTurnsPerMonth: 2000,
+    aiTurnsPerMonth: 600,
     messageHistoryDepth: 5000,
     multiplayerHost: true,
     animeWorlds: true,
@@ -247,6 +272,19 @@ export const TRIAL_LIMITS = {
   allWorldModes: true,
 };
 
+export const WEEKLY_AI_TURN_LIMITS: Record<PublicSubscriptionTier, number> = {
+  adventurer: 50,
+  master: 100,
+  legend: 150,
+};
+
+export type AiTurnCadence = "week" | "month" | "trial";
+
+export interface AiTurnAllowance {
+  limit: number;
+  cadence: AiTurnCadence;
+}
+
 export type SubscriptionStatus =
   | "trial"
   | "active"
@@ -288,6 +326,53 @@ export function getEffectiveLimits(
   }
 
   return base;
+}
+
+export function getAiTurnAllowance(
+  tier: TierName,
+  status: SubscriptionStatus,
+  trialEndsAt: Date | null,
+  billingInterval?: string | null,
+): AiTurnAllowance {
+  const effective = getEffectiveLimits(tier, status, trialEndsAt);
+  const activeTrial =
+    status === "trial" &&
+    trialEndsAt !== null &&
+    Date.now() < trialEndsAt.getTime();
+
+  if (activeTrial) {
+    return { limit: effective.aiTurnsPerMonth, cadence: "trial" };
+  }
+
+  if (billingInterval === "weekly" && (PUBLIC_SUBSCRIPTION_TIERS as readonly string[]).includes(tier)) {
+    return {
+      limit: WEEKLY_AI_TURN_LIMITS[tier as PublicSubscriptionTier],
+      cadence: "week",
+    };
+  }
+
+  return { limit: effective.aiTurnsPerMonth, cadence: "month" };
+}
+
+export function getNextTurnResetAt(
+  billingInterval?: string | null,
+  from: Date = new Date(),
+): Date {
+  const next = new Date(from.getTime());
+
+  if (billingInterval === "weekly") {
+    next.setUTCDate(next.getUTCDate() + 7);
+    return next;
+  }
+
+  const originalDay = next.getUTCDate();
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  const targetYear = next.getUTCFullYear();
+  const targetMonth = next.getUTCMonth();
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(originalDay, daysInTargetMonth));
+  return next;
 }
 
 export function getTopUpPrice(packId: string, tier: TierName): number | null {
