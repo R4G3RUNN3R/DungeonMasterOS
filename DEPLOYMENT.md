@@ -6,7 +6,7 @@
 - **Database:** SQLite (auto-created, no setup required)
 - **Backend:** Express + WebSocket
 - **Frontend:** Vite/React (built to `dist/public`, served as static files by Express)
-- **Auth:** JWT in httpOnly cookies
+- **Auth:** JWT in httpOnly cookies + Google OAuth for linked identities
 - **Payments:** Stripe Checkout + Customer Portal
 - **AI:** Anthropic Claude (via API)
 
@@ -47,6 +47,9 @@ nano .env  # Fill in all required values
 
 Required values:
 - `JWT_SECRET` — long random string (generate with: `openssl rand -hex 64`)
+- `GOOGLE_CLIENT_ID` — Google OAuth client ID for existing and new Google-linked accounts
+- `GOOGLE_CLIENT_SECRET` — Google OAuth client secret
+- `GOOGLE_OAUTH_REDIRECT_URL` — optional explicit callback; otherwise `${APP_URL}/api/auth/google/callback`
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
 - `STRIPE_SECRET_KEY` — from Stripe Dashboard
 - `STRIPE_WEBHOOK_SECRET` — from Stripe Webhook settings
@@ -223,11 +226,24 @@ Before a release candidate can be promoted, verify it from a clean install:
 
 ```bash
 npm ci
-npm test
-npm run typecheck
-npm run build
-npm audit --omit=dev --audit-level=high
+npm run release:verify
 ```
+
+`release:verify` is the canonical local/CI gate. It runs TypeScript checking, the full regression suite (whose `pretest` builds the production artifact), and the production dependency audit at high severity. Pull requests and pushes to `main` run the same gate in GitHub Actions.
+
+### Authentication continuity invariant
+
+Google-linked users are durable production identities. A release must never remove or silently detach Google authentication while `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured. The regression suite must retain coverage for the Google auth module, route registration, storage lookup, schema identity fields, UI entry point, callback URI/state handling, and public-user redaction.
+
+Before promotion and again after cutover:
+
+- `/api/auth/google/status` must exist and report Google sign-in enabled when production Google credentials are configured.
+- `/api/auth/google/start` must redirect to Google and set the OAuth state cookie with `HttpOnly`, `Secure` and `SameSite=Lax` in production.
+- invalid or mismatched OAuth state must fail closed.
+- an existing Google-linked identity must resolve to its existing user record rather than creating a duplicate account.
+- `googleId` must never appear in the public user payload.
+
+Treat failure of any authentication-continuity check as a release blocker. Roll back application code without rolling back user data unless a separately verified database rollback is actually required.
 
 Then:
 

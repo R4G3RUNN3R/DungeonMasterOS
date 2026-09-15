@@ -11,7 +11,8 @@
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "release:verify": "npm run typecheck && npm test && npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
