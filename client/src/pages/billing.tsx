@@ -11,7 +11,15 @@ import {
   CheckCircle, Gift, Plus, ExternalLink, Zap, RefreshCw,
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
-import { TIERS, TURN_PACKS, formatPrice, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
+import {
+  TIERS,
+  TURN_PACKS,
+  formatPrice,
+  getEffectiveLimits,
+  type TierName,
+  type SubscriptionStatus,
+  type PublicBillingCatalog,
+} from "@shared/tiers";
 
 export default function Billing() {
   const [, navigate] = useLocation();
@@ -27,6 +35,12 @@ export default function Billing() {
     queryFn: getQueryFn({ on401: "returnNull" }),
     enabled: !!user,
   }) as { data: any; isLoading: boolean };
+
+  const { data: billingCatalog } = useQuery<PublicBillingCatalog>({
+    queryKey: ["/api/billing/catalog"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !!user,
+  });
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, interval }: { tier: TierName; interval: string }) => {
@@ -59,6 +73,11 @@ export default function Billing() {
   const status = (billing?.subscriptionStatus || user?.subscriptionStatus || "trial") as SubscriptionStatus;
   const tierDef = TIERS[tier];
   const limits = getEffectiveLimits(tier, status, user?.trialEndsAt ? new Date(user.trialEndsAt) : null);
+
+  const turnLimit = billing?.aiTurnLimit ?? limits.aiTurnsPerMonth;
+  const turnCadence = (billing?.aiTurnCadence || "month") as "week" | "month" | "trial";
+  const turnPeriodLabel = turnCadence === "week" ? "this week" : turnCadence === "trial" ? "during trial" : "this month";
+  const turnPlanLabel = turnCadence === "week" ? "AI Turns per Week" : turnCadence === "trial" ? "AI Turns during Trial" : "AI Turns per Month";
 
   const statusColors: Record<string, string> = {
     trial: "bg-primary/10 text-primary border-primary/20",
@@ -117,9 +136,9 @@ export default function Billing() {
               )}
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground mb-1">AI Turns this month</p>
+              <p className="text-xs text-muted-foreground mb-1">AI Turns {turnPeriodLabel}</p>
               <p className="font-mono text-lg font-bold text-foreground">
-                {billing?.aiTurnsUsedThisMonth ?? 0} <span className="text-sm text-muted-foreground font-normal">/ {limits.aiTurnsPerMonth === 999 ? "∞" : limits.aiTurnsPerMonth}</span>
+                {billing?.aiTurnsUsedThisMonth ?? 0} <span className="text-sm text-muted-foreground font-normal">/ {turnLimit.toLocaleString()}</span>
               </p>
               {(billing?.bonusTurns ?? 0) > 0 && (
                 <p className="text-xs text-primary mt-0.5">+{billing.bonusTurns} bonus turns</p>
@@ -157,7 +176,7 @@ export default function Billing() {
             {[
               { label: "Active Campaigns", value: limits.activeCampaigns === 999 ? "Unlimited" : limits.activeCampaigns },
               { label: "Players per Campaign", value: limits.playersPerCampaign },
-              { label: "AI Turns per Month", value: limits.aiTurnsPerMonth === 999 ? "Unlimited" : limits.aiTurnsPerMonth.toLocaleString() },
+              { label: turnPlanLabel, value: turnLimit.toLocaleString() },
               { label: "Message History Depth", value: limits.messageHistoryDepth === 99999 ? "Unlimited" : limits.messageHistoryDepth.toLocaleString() },
               { label: "Anime Worlds", value: limits.animeWorlds ? "✓ Included" : "✗ Not included" },
               { label: "Epic Mode", value: limits.epicMode ? "✓ Included" : "✗ Not included" },
@@ -184,7 +203,7 @@ export default function Billing() {
         </div>
 
         {/* Top-up turns */}
-        {status !== "expired" && tier !== "free" && (
+        {billingCatalog?.topUpsEnabled === true && status !== "expired" && tier !== "free" && (
           <div>
             <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
               <Gift className="w-4 h-4 text-primary" /> Buy More AI Turns
