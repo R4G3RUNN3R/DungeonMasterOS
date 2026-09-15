@@ -146,7 +146,7 @@
 **Produces:** a release candidate without material performance or UX blockers.
 
 - [x] Measure initial JS payload and route-level loading; address the current >500 KiB client chunk warning where a safe route split materially improves startup.
-- [ ] Optimize the ~1.7 MB source logo in a later non-blocking payload pass; V1 release functionality and security do not depend on this cosmetic optimization.
+- [x] Optimize the ~1.7 MB source logo to a 123 KB lossless asset sized for actual UI use, with regression coverage preventing payload regression.
 - [x] Resolve or document the PostCSS `from` warning after identifying the responsible plugin/config path.
 - [x] Run responsive smoke at supported desktop/mobile widths.
 - [x] Verify onboarding, pricing, billing errors, empty states and reconnection UX.

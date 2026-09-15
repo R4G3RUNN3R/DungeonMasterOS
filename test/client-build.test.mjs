@@ -19,3 +19,9 @@ test('client build route-splits pages and keeps the HTML entry chunk under Vite 
   const entryBytes = statSync(path.join(assetsDir, entryFile)).size;
   assert.ok(entryBytes < 500_000, `entry chunk ${entryFile} is ${entryBytes} bytes; expected < 500000`);
 });
+
+
+test('DMOS logo source is sized for its actual UI use instead of shipping a megabyte-scale image', () => {
+  const logoBytes = statSync(path.join(repoRoot, 'attached_assets', 'logo.png')).size;
+  assert.ok(logoBytes < 250_000, `attached_assets/logo.png is ${logoBytes} bytes; expected < 250000`);
+});
