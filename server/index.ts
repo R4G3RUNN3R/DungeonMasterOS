@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
+import { registerBillingV1Routes } from "./billing-v1";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from "./storage";
@@ -78,6 +79,7 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
+  registerBillingV1Routes(app);
   await registerRoutes(httpServer, app);
 
   // Error handler

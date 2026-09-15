@@ -1,24 +1,29 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Check, Swords, ChevronDown, ChevronUp, Star, Crown, Loader2, X } from "lucide-react";
-import { TIERS, formatPrice, type TierName } from "@shared/tiers";
+import { Check, Swords, ChevronDown, ChevronUp, Star, Crown, Loader2 } from "lucide-react";
+import {
+  TIERS,
+  PUBLIC_SUBSCRIPTION_TIERS,
+  TRIAL_LIMITS,
+  formatPrice,
+  type TierName,
+  type PublicBillingCatalog,
+} from "@shared/tiers";
 import logoImg from "@assets/logo.png";
 
-const TIER_ORDER: TierName[] = ["free", "adventurer", "master", "legend", "chronicler"];
+const TIER_ORDER: TierName[] = ["free", ...PUBLIC_SUBSCRIPTION_TIERS];
 
 const faqs = [
   { q: "What happens after the free trial?", a: "Your campaigns are saved and preserved. Subscribe to continue playing. Nothing is deleted." },
   { q: "Can I cancel anytime?", a: "Yes — cancel anytime with no fees. Access continues until the end of your paid period." },
-  { q: "Do all players need to subscribe?", a: "Only the campaign host needs a subscription. Players join campaigns for free using an invite code." },
+  { q: "Do all players need accounts?", a: "Yes. Each player signs in separately. The host plan controls campaign capacity, while each player must have an account that is eligible to play." },
   { q: "What game systems does it support?", a: "Any system. D&D 5e, Pathfinder, anime power systems (Naruto, One Piece), homebrew rules, narrative-only — paste your character sheet and the DM adapts." },
-  { q: "Is there a difference between weekly and monthly?", a: "Same full access, different billing cadence. Monthly saves you 17% compared to paying weekly." },
-  { q: "What's in the top-up packs?", a: "Additional AI DM turns you can buy any time. Higher tiers get bigger loyalty discounts — up to 60% off." },
+  { q: "Is there a difference between weekly, monthly, and yearly billing?", a: "The plan features are the same. Only the billing cadence and price change; the selected price is shown before checkout." },
   { q: "What happens if I lose internet mid-session?", a: "Sessions are persisted server-side. Reconnect and the DM will pick up exactly where you left off." },
 ];
 
@@ -39,11 +44,11 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 const TIER_FEATURES: Record<TierName, string[]> = {
-  free: ["1 active campaign", "60 AI turns/month", "Solo only", "30-message context", "7-day trial included"],
-  adventurer: ["1 active campaign", "200 AI turns/month", "2 players", "200-message context", "Custom worlds", "Homebrew rules", "Export sessions", "25% top-up discount"],
-  master: ["3 active campaigns", "600 AI turns/month", "4 players", "1,000-message context", "Anime worlds", "Epic mode", "All world modes", "35% top-up discount"],
-  legend: ["10 active campaigns", "2,000 AI turns/month", "6 players", "5,000-message context", "Priority responses", "Early access", "50% top-up discount"],
-  chronicler: ["Unlimited campaigns", "3,000 AI turns/month", "6 players", "Full unlimited history", "Priority responses", "Early access features", "60% top-up discount"],
+  free: ["1 active campaign", "Solo only", "30-message context", "7-day trial included"],
+  adventurer: ["1 active campaign", "2 players", "200-message context", "Custom worlds", "Homebrew rules", "Export sessions"],
+  master: ["3 active campaigns", "4 players", "1,000-message context", "Anime worlds", "Epic mode", "All world modes"],
+  legend: ["10 active campaigns", "6 players", "5,000-message context", "Priority responses"],
+  chronicler: ["Unlimited campaigns", "6 players", "Full unlimited history", "Priority responses", "Early access features"],
 };
 
 export default function Pricing() {
@@ -52,6 +57,11 @@ export default function Pricing() {
   const { toast } = useToast();
   const [interval, setInterval] = useState<"monthly" | "weekly" | "yearly">("monthly");
   const [subscribingTier, setSubscribingTier] = useState<TierName | null>(null);
+
+  const { data: billingCatalog } = useQuery<PublicBillingCatalog>({
+    queryKey: ["/api/billing/catalog"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, interval }: { tier: TierName; interval: string }) => {
@@ -89,11 +99,11 @@ export default function Pricing() {
         <Link href="/">
           <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
             <img src={logoImg} alt="DMOS" className="w-8 h-8 rounded-lg" style={{ border: "1px solid #c4a26544" }} />
-            <span className="font-serif font-bold text-foreground tracking-tight text-sm">Dungeon Master OS</span>
+            <span className="hidden sm:inline font-serif font-bold text-foreground tracking-tight text-sm">Dungeon Master OS</span>
           </div>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/how-it-works"><Button variant="ghost" size="sm" className="text-xs text-muted-foreground">How It Works</Button></Link>
+          <Link href="/how-it-works"><Button variant="ghost" size="sm" className="hidden sm:inline-flex text-xs text-muted-foreground">How It Works</Button></Link>
           {user ? (
             <Link href="/dashboard"><Button size="sm" className="text-xs">Dashboard</Button></Link>
           ) : (
@@ -113,7 +123,7 @@ export default function Pricing() {
           </div>
           <h1 className="font-serif text-4xl md:text-5xl font-bold tracking-tight mb-5">Choose Your Adventure</h1>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto leading-relaxed mb-8">
-            Start free — no card required. Subscribe when you're ready. Players always join for free.
+            Start with a 7-day free trial — no card required. Subscribe when you're ready.
           </p>
 
           {/* Billing toggle */}
@@ -125,21 +135,27 @@ export default function Pricing() {
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors relative ${interval === iv ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {iv === "yearly" ? "Yearly" : iv === "monthly" ? "Monthly" : "Weekly"}
-                {iv === "monthly" && <span className="absolute -top-2.5 -right-2 text-xs bg-green-500 text-white px-1 rounded-full">-17%</span>}
-                {iv === "yearly" && <span className="absolute -top-2.5 -right-2 text-xs bg-green-500 text-white px-1 rounded-full">-30%</span>}
               </button>
             ))}
           </div>
         </div>
 
         {/* Tier cards */}
-        <div className="grid lg:grid-cols-5 md:grid-cols-3 gap-4 mb-20">
+        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4 mb-20">
           {TIER_ORDER.map((tierName) => {
             const tierDef = TIERS[tierName];
             const price = getPriceForInterval(tierName);
             const isMostPopular = tierName === "master";
             const isCurrent = user?.tier === tierName;
-            const features = TIER_FEATURES[tierName];
+            const catalogTier = billingCatalog?.subscriptions.find((item) => item.tier === tierName);
+            const isIntervalAvailable = tierName === "free" || Boolean(catalogTier?.available[interval]);
+            const turnLimit = tierName === "free"
+              ? TRIAL_LIMITS.aiTurnsPerMonth
+              : (catalogTier?.turns[interval] ?? tierDef.aiTurnsPerMonth);
+            const turnFeature = tierName === "free"
+              ? `${turnLimit.toLocaleString()} AI turns during trial`
+              : `${turnLimit.toLocaleString()} AI turns per ${interval === "weekly" ? "week" : "month"}`;
+            const features = [turnFeature, ...TIER_FEATURES[tierName]];
 
             return (
               <div
@@ -187,7 +203,11 @@ export default function Pricing() {
                   className="w-full text-xs"
                   variant={isMostPopular ? "default" : "outline"}
                   onClick={() => handleSubscribe(tierName)}
-                  disabled={checkoutMutation.isPending && subscribingTier === tierName}
+                  disabled={
+                    isCurrent ||
+                    (tierName !== "free" && !isIntervalAvailable) ||
+                    (checkoutMutation.isPending && subscribingTier === tierName)
+                  }
                 >
                   {checkoutMutation.isPending && subscribingTier === tierName ? (
                     <><Loader2 className="w-3 h-3 animate-spin mr-1.5" />Processing...</>
@@ -195,6 +215,8 @@ export default function Pricing() {
                     user ? "Go to Dashboard" : "Start Free Trial"
                   ) : isCurrent ? (
                     "Current Plan"
+                  ) : !isIntervalAvailable ? (
+                    "Temporarily unavailable"
                   ) : (
                     <>
                       <Crown className="w-3 h-3 mr-1.5" />
@@ -224,7 +246,7 @@ export default function Pricing() {
         {/* Final CTA */}
         <div className="text-center mt-20 py-16 border-t border-border">
           <h2 className="font-serif text-3xl font-bold mb-4">Ready to play?</h2>
-          <p className="text-muted-foreground mb-8 max-w-md mx-auto">Your party can join for free. You just need to host.</p>
+          <p className="text-muted-foreground mb-8 max-w-md mx-auto">Invite your party once each player has an eligible account.</p>
           <Link href={user ? "/dashboard" : "/register"}>
             <Button size="lg" className="px-8 gap-2">
               <Swords className="w-4 h-4" />

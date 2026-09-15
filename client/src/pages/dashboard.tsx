@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
 import type { Campaign } from "@shared/schema";
-import { TIERS, TURN_PACKS, formatPrice, trialDaysRemaining, turnsUsedPercent, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
+import { TIERS, TURN_PACKS, formatPrice, trialDaysRemaining, turnsUsedPercent } from "@shared/tiers";
 
 function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
   status: string | undefined;
@@ -76,17 +76,14 @@ function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
   return null;
 }
 
-function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
-  used: number; tier: string; status: string; trialEndsAt: string | null | undefined; bonusTurns: number;
+function TurnsUsageBar({ used, limit, cadence, bonusTurns, canTopUp }: {
+  used: number; limit: number; cadence: "week" | "month" | "trial"; bonusTurns: number; canTopUp: boolean;
 }) {
-  const limits = getEffectiveLimits(
-    tier as TierName,
-    status as SubscriptionStatus,
-    trialEndsAt ? new Date(trialEndsAt) : null,
-  );
-  const total = limits.aiTurnsPerMonth + bonusTurns;
+  const total = limit + bonusTurns;
   const pct = turnsUsedPercent(used, total);
   const remaining = Math.max(0, total - used);
+  const cadenceTitle = cadence === "week" ? "Weekly" : cadence === "trial" ? "Trial" : "Monthly";
+  const cadenceText = cadence === "week" ? "this week" : cadence === "trial" ? "during trial" : "this month";
 
   const barColor = pct >= 95 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-primary";
 
@@ -95,22 +92,22 @@ function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Monthly AI Turns</span>
+          <span className="text-sm font-medium">{cadenceTitle} AI Turns</span>
         </div>
-        <span className="text-xs text-muted-foreground">{used} / {total === 999 ? "∞" : total}</span>
+        <span className="text-xs text-muted-foreground">{used} / {total.toLocaleString()}</span>
       </div>
       <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
         <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{remaining} turns remaining this month</span>
+        <span>{remaining.toLocaleString()} turns remaining {cadenceText}</span>
         {bonusTurns > 0 && (
           <span className="text-primary flex items-center gap-1">
             <Gift className="w-3 h-3" /> +{bonusTurns} bonus
           </span>
         )}
       </div>
-      {pct >= 80 && (
+      {pct >= 80 && canTopUp && (
         <Link href="/billing">
           <Button size="sm" variant="outline" className="w-full text-xs gap-1">
             <Plus className="w-3 h-3" /> Buy More Turns
@@ -340,10 +337,10 @@ export default function Dashboard() {
             {billingData && (
               <TurnsUsageBar
                 used={billingData.aiTurnsUsedThisMonth}
-                tier={billingData.tier}
-                status={billingData.subscriptionStatus}
-                trialEndsAt={user?.trialEndsAt}
+                limit={billingData.aiTurnLimit}
+                cadence={billingData.aiTurnCadence}
                 bonusTurns={billingData.bonusTurns ?? 0}
+                canTopUp={billingData.canTopUp === true}
               />
             )}
           </div>

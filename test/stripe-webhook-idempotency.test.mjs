@@ -163,6 +163,7 @@ test('Stripe subscription lifecycle stays consistent across retries and stale ev
           stripe_customer_id = 'cus_lifecycle',
           stripe_subscription_id = 'sub_lifecycle',
           stripe_price_id = 'price_master',
+          stripe_billing_interval = 'weekly',
           ai_turns_used_this_month = 73
       WHERE id = ?
     `).run(user.id);
@@ -200,7 +201,12 @@ test('Stripe subscription lifecycle stays consistent across retries and stale ev
     me = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie } });
     current = await me.json();
     assert.equal(current.user.subscriptionStatus, 'active');
-    assert.equal(current.user.aiTurnsUsedThisMonth, 0, 'successful renewal should reset monthly usage');
+    assert.equal(current.user.aiTurnsUsedThisMonth, 0, 'successful renewal should reset recurring usage');
+    const weeklyResetMs = new Date(current.user.usageResetAt).getTime() - Date.now();
+    assert.ok(
+      weeklyResetMs > 6.9 * 24 * 60 * 60 * 1000 && weeklyResetMs < 7.1 * 24 * 60 * 60 * 1000,
+      `weekly subscription reset should be about seven days away, got ${weeklyResetMs}ms`,
+    );
 
     const cancelledUpdate = {
       ...eventBase,

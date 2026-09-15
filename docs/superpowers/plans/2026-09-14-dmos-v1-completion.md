@@ -68,12 +68,12 @@
 
 **Produces:** one explicit V1 authorization contract for campaign metadata, messages, characters, items, effects and joining.
 
-- [ ] Write E2E tests proving an unrelated authenticated account cannot read another campaign's messages, character inventory/effects, or mutate campaign state.
-- [ ] Write E2E tests preserving the valid invite-code join flow for an authenticated account.
-- [ ] Introduce a bounded server-side invite/join authorization path; do not rely on campaign ID knowledge as join authority.
-- [ ] Add reusable campaign owner/member authorization helpers/middleware.
-- [ ] Protect private campaign/message/character/item/effect reads and writes while leaving only the minimum safe invite projection public or authenticated-as-designed.
-- [ ] Re-run campaign creation, host entry, invite join, character creation, reload and WebSocket subscription E2E.
+- [x] Write E2E tests proving an unrelated authenticated account cannot read another campaign's messages, character inventory/effects, or mutate campaign state.
+- [x] Write E2E tests preserving the valid invite-code join flow for an authenticated account.
+- [x] Introduce a bounded server-side invite/join authorization path; do not rely on campaign ID knowledge as join authority.
+- [x] Add reusable campaign owner/member authorization helpers/middleware.
+- [x] Protect private campaign/message/character/item/effect reads and writes while leaving only the minimum safe invite projection public or authenticated-as-designed.
+- [x] Re-run campaign creation, host entry, invite join, character creation, reload and WebSocket subscription E2E.
 
 ### Task 4: Make Stripe billing idempotent and entitlement-safe
 
@@ -85,12 +85,12 @@
 
 **Produces:** replay-safe billing and top-up processing.
 
-- [ ] Write failing tests proving replayed `checkout.session.completed` can currently grant top-up turns more than once.
-- [ ] Add a persisted Stripe event ledger keyed by unique Stripe event ID.
-- [ ] Process each verified event atomically at most once.
-- [ ] Verify subscription create/update/delete, failed payment, successful payment and top-up replay behavior.
-- [ ] Verify invalid signatures and missing webhook secret fail closed.
-- [ ] Verify cancellation state matches Stripe semantics and does not revoke paid-through-period access prematurely.
+- [x] Write failing tests proving replayed `checkout.session.completed` can currently grant top-up turns more than once.
+- [x] Add a persisted Stripe event ledger keyed by unique Stripe event ID.
+- [x] Process each verified event atomically at most once.
+- [x] Verify subscription create/update/delete, failed payment, successful payment and top-up replay behavior.
+- [x] Verify invalid signatures and missing webhook secret fail closed.
+- [x] Verify cancellation state matches Stripe semantics and does not revoke paid-through-period access prematurely.
 
 ### Task 5: Harden AI turn/state transactions
 
@@ -101,11 +101,11 @@
 
 **Produces:** no duplicate AI turns, no partial state corruption, and bounded fallback behavior.
 
-- [ ] Reproduce action/start/item-use AI success, provider failure, timeout and malformed-response paths under deterministic test doubles.
-- [ ] Prove turn counters are incremented exactly once only for chargeable completed outcomes according to current V1 policy.
-- [ ] Prove world-state/item/message writes cannot partially duplicate on retries.
-- [ ] Add explicit provider timeout and bounded failure handling where missing.
-- [ ] Verify the user sees truthful AI-unavailable messages and campaign state remains consistent.
+- [x] Reproduce action/start/item-use AI success, provider failure, timeout and malformed-response paths under deterministic test doubles.
+- [x] Prove turn counters are incremented exactly once only for chargeable completed outcomes according to current V1 policy.
+- [x] Prove world-state/item/message writes cannot partially duplicate on retries.
+- [x] Add explicit provider timeout and bounded failure handling where missing.
+- [x] Verify the user sees truthful AI-unavailable messages and campaign state remains consistent.
 
 ### Task 6: Verify gameplay persistence and multiplayer consistency
 
@@ -115,12 +115,12 @@
 
 **Produces:** regression coverage for the actual V1 play loop.
 
-- [ ] Test create campaign -> create character -> start -> action -> messages -> reload.
-- [ ] Test HP, items, effects, equipment/currency projections and character-sheet reads.
-- [ ] Test two authenticated campaign members receiving the same campaign broadcasts.
-- [ ] Test reconnect/resubscribe after WebSocket disconnect.
-- [ ] Test campaign archive/restore and owner-only settings mutation.
-- [ ] Fix only defects reproduced by these tests and keep each fix independently reviewable.
+- [x] Test create campaign -> create character -> start -> action -> messages -> reload.
+- [x] Test HP, items, effects, equipment/currency projections and character-sheet reads.
+- [x] Test two authenticated campaign members receiving the same campaign broadcasts.
+- [x] Test reconnect/resubscribe after WebSocket disconnect.
+- [x] Test campaign archive/restore and owner-only settings mutation.
+- [x] Fix only defects reproduced by these tests and keep each fix independently reviewable.
 
 ### Task 7: Production resilience and recovery
 
@@ -130,12 +130,12 @@
 
 **Produces:** verified backup, restore, migration, monitoring and rollback procedures.
 
-- [ ] Identify exact live deployment commit/artifact and database path without weakening filesystem permissions.
-- [ ] Produce a test copy of the SQLite database or synthetic equivalent and verify backup using SQLite online backup semantics.
-- [ ] Perform an actual restore/readback test.
-- [ ] Verify startup migration behavior on fresh and existing database copies.
-- [ ] Define health/readback checks for HTTP, auth, WebSocket, Stripe configuration and AI configuration without exposing secrets.
-- [ ] Document release rollback to the previous immutable application artifact/database backup.
+- [x] Identify exact live deployment commit/artifact and database path without weakening filesystem permissions.
+- [x] Produce a test copy of the SQLite database or synthetic equivalent and verify backup using SQLite online backup semantics.
+- [x] Perform an actual restore/readback test.
+- [x] Verify startup migration behavior on fresh and existing database copies.
+- [x] Define health/readback checks for HTTP, auth, WebSocket, Stripe configuration and AI configuration without exposing secrets.
+- [x] Document release rollback to the previous immutable application artifact/database backup.
 
 ### Task 8: Performance, client payload and release polish
 
@@ -145,12 +145,11 @@
 
 **Produces:** a release candidate without material performance or UX blockers.
 
-- [ ] Measure initial JS payload and route-level loading; address the current >500 KiB client chunk warning where a safe route split materially improves startup.
-- [ ] Review the ~1.7 MB logo asset and optimize only if visual quality is preserved.
-- [ ] Resolve or document the PostCSS `from` warning after identifying the responsible plugin/config path.
-- [ ] Run responsive smoke at supported desktop/mobile widths.
-- [ ] Verify onboarding, pricing, billing errors, empty states and reconnection UX.
-
+- [x] Measure initial JS payload and route-level loading; address the current >500 KiB client chunk warning where a safe route split materially improves startup.
+- [ ] Optimize the ~1.7 MB source logo in a later non-blocking payload pass; V1 release functionality and security do not depend on this cosmetic optimization.
+- [x] Resolve or document the PostCSS `from` warning after identifying the responsible plugin/config path.
+- [x] Run responsive smoke at supported desktop/mobile widths.
+- [x] Verify onboarding, pricing, billing errors, empty states and reconnection UX.
 ### Task 9: Release candidate and controlled production promotion
 
 **Files:**
@@ -160,9 +159,9 @@
 
 **Produces:** evidence-backed stable DMOS V1.
 
-- [ ] Run `npm ci` from the committed lockfile on a clean test workspace.
-- [ ] Run `npm test`, `npm run typecheck`, `npm run build`, storage smoke and `npm audit --omit=dev --audit-level=high`.
-- [ ] Run complete V1 E2E suite against an isolated test database.
+- [x] Run `npm ci` from the committed lockfile on a clean test workspace.
+- [x] Run `npm test`, `npm run typecheck`, `npm run build`, storage smoke and `npm audit --omit=dev --audit-level=high`.
+- [x] Run complete V1 E2E suite against an isolated test database.
 - [ ] Create an identified release artifact/commit and capture rollback target.
 - [ ] Back up production database/configuration through the approved path.
 - [ ] Deploy through the GitHub/release path, not by editing live source.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-15
+- V1 billing catalogue: reconciled customer-facing subscription prices with the dedicated live DungeonMasterOS Stripe catalogue dated 2026-08-12: Adventurer £4.99/week, £14.99/month, £159.99/year; Campaign Master £7.99/week, £24.99/month, £269.99/year; Legend £10.99/week, £34.99/month, £379.99/year.
+- V1 billing fail-closed: only Adventurer, Campaign Master and Legend are purchasable in V1. Chronicler remains an internal entitlement tier but is not advertised for sale while no live Stripe prices exist. Legacy turn top-ups remain disabled until dedicated verified live prices are provisioned.
+- V1 billing UX: added a public safe billing-catalog endpoint exposing configured availability without price IDs or secrets; pricing and billing screens consume it, unavailable checkout paths stay disabled, current-plan checkout is disabled, and stale host-only/free-player and fixed-discount claims were removed.
+- V1 Stripe audit: the dedicated DungeonMasterOS Stripe account has no active Payment Links and no live subscriptions, so the unused Squire Pass price does not provide a public bypass and the entitlement correction does not reduce an existing subscriber.
+- V1 turn entitlements: aligned paid allowances with the live Stripe product metadata: Adventurer 50/week or 200/month, Campaign Master 100/week or 400/month, and Legend 150/week or 600/month. Weekly plans now reset weekly; monthly and yearly plans receive the monthly allowance on a monthly cadence. Checkout activation, renewals, automatic resets, server enforcement and client usage meters share the same allowance model.
+- V1 responsive polish: fixed the pricing navigation overflow on narrow screens and verified the public pricing surface at 360×800, 390×844 and 1440×900 with no horizontal overflow or missing catalogue controls.
+- V1 verification: final build, typecheck, 29/29 regression tests, and `npm audit --omit=dev --audit-level=high` pass after the entitlement correction and client-payload check. The four remaining moderate audit notices are development-tool-only dependencies and are excluded from the production runtime audit.
+
 ## 2026-09-14
 - V1 stabilization: restored the verified DungeonMaster authentication/admin implementation lost in an earlier source-sync regression, including production `JWT_SECRET` fail-closed behavior, DungeonMaster grant/revoke middleware and entitlement bypass rules.
 - V1 security: authenticated WebSocket upgrades from the signed session cookie, removed client-supplied user authority, introduced durable campaign membership, and locked campaign/message/character access to authenticated owners and members. Existing live characters are account-linked and migrate safely into membership.

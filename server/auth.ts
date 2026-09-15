@@ -15,8 +15,11 @@ import jwt from "jsonwebtoken";
 import { refundAiTurn, reserveAiTurn, storage, type AiTurnReservation } from "./storage";
 import {
   getEffectiveLimits,
+  getAiTurnAllowance,
+  getNextTurnResetAt,
   isReadOnly,
   canPlay,
+  TOP_UP_SALES_ENABLED,
   type TierName,
   type SubscriptionStatus,
 } from "../shared/tiers";
@@ -189,18 +192,17 @@ export function attachUser(req: Request, _res: Response, next: NextFunction) {
     }
   }
 
-  // Auto-reset monthly usage counter
-  if (user.usageResetAt) {
+  // Reset the recurring turn allowance on the sold cadence. Trial accounts
+  // expire before reset so a trial cannot silently refresh its allowance.
+  if (user.usageResetAt && user.subscriptionStatus !== "expired") {
     if (new Date() >= new Date(user.usageResetAt)) {
-      const nextReset = new Date();
-      nextReset.setMonth(nextReset.getMonth() + 1);
-      nextReset.setDate(1);
-      nextReset.setHours(0, 0, 0, 0);
+      const nextReset = getNextTurnResetAt(user.stripeBillingInterval);
       storage.updateUser(user.id, {
         aiTurnsUsedThisMonth: 0,
         usageResetAt: nextReset.toISOString(),
       });
       user.aiTurnsUsedThisMonth = 0;
+      user.usageResetAt = nextReset.toISOString();
     }
   }
 
@@ -311,18 +313,20 @@ export function checkTurnLimit(req: Request, res: Response, next: NextFunction) 
   const status = user.subscriptionStatus as SubscriptionStatus;
   const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
   const limits = getEffectiveLimits(tier, status, trialEndsAt);
+  const allowance = getAiTurnAllowance(tier, status, trialEndsAt, user.stripeBillingInterval);
+  const cadenceText = allowance.cadence === "week" ? "week" : allowance.cadence === "trial" ? "trial" : "month";
 
   const regularExhausted =
-    limits.aiTurnsPerMonth >= 0 && user.aiTurnsUsedThisMonth >= limits.aiTurnsPerMonth;
+    allowance.limit >= 0 && user.aiTurnsUsedThisMonth >= allowance.limit;
 
   if (regularExhausted && (user.bonusTurns ?? 0) <= 0) {
     return res.status(403).json({
-      message: `You've used your ${limits.aiTurnsPerMonth} DM responses this month. ${limits.upgradePrompt}`,
+      message: `You've used your ${allowance.limit} DM responses this ${cadenceText}. ${limits.upgradePrompt}`,
       code: "TURN_LIMIT",
-      limit: limits.aiTurnsPerMonth,
+      limit: allowance.limit,
       used: user.aiTurnsUsedThisMonth,
       bonusRemaining: user.bonusTurns ?? 0,
-      canTopUp: tier !== "free",
+      canTopUp: TOP_UP_SALES_ENABLED && tier !== "free",
     });
   }
   next();
@@ -341,7 +345,8 @@ export function claimTurn(user: User):
   const status = user.subscriptionStatus as SubscriptionStatus;
   const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
   const limits = getEffectiveLimits(tier, status, trialEndsAt);
-  const claim = reserveAiTurn(user.id, limits.aiTurnsPerMonth);
+  const allowance = getAiTurnAllowance(tier, status, trialEndsAt, user.stripeBillingInterval);
+  const claim = reserveAiTurn(user.id, allowance.limit);
 
   if (claim) {
     return { ok: true, claim };
@@ -351,12 +356,12 @@ export function claimTurn(user: User):
   return {
     ok: false,
     body: {
-      message: `You've used your ${limits.aiTurnsPerMonth} DM responses this month. ${limits.upgradePrompt}`,
+      message: `You've used your ${allowance.limit} DM responses this ${allowance.cadence === "week" ? "week" : allowance.cadence === "trial" ? "trial" : "month"}. ${limits.upgradePrompt}`,
       code: "TURN_LIMIT",
-      limit: limits.aiTurnsPerMonth,
+      limit: allowance.limit,
       used: fresh.aiTurnsUsedThisMonth,
       bonusRemaining: fresh.bonusTurns ?? 0,
-      canTopUp: tier !== "free",
+      canTopUp: TOP_UP_SALES_ENABLED && tier !== "free",
     },
   };
 }
