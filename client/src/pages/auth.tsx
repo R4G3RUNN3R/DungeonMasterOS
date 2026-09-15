@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,22 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
   const [view, setView] = useState<"auth" | "forgot" | "reset">(
     resetToken ? "reset" : "auth",
   );
+
+  const googleStatusQuery = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/auth/google/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/google/status", { credentials: "include" });
+      if (!res.ok) return { enabled: false };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const googleEnabled = !!googleStatusQuery.data?.enabled;
+
+  const startGoogleAuth = () => {
+    window.location.href = "/api/auth/google";
+  };
 
   useEffect(() => { setFormError(""); }, [activeTab, view]);
 
@@ -114,6 +130,25 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
   const bgGradient = {
     background: "radial-gradient(ellipse 80% 60% at 50% 30%, hsl(35 75% 52% / 0.05) 0%, transparent 60%)",
   };
+
+  const googleAuthBlock = googleEnabled ? (
+    <div className="space-y-4 mb-6">
+      <Button type="button" variant="outline" className="w-full h-10 gap-2" onClick={startGoogleAuth}>
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-background border border-border font-bold text-sm">
+          G
+        </span>
+        Continue with Google
+      </Button>
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-card px-2 text-muted-foreground">or use email</span>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   const gridPattern = {
     backgroundImage: "linear-gradient(hsl(35 75% 52%) 1px, transparent 1px), linear-gradient(90deg, hsl(35 75% 52%) 1px, transparent 1px)",
@@ -236,6 +271,7 @@ export default function AuthPage({ defaultTab = "register", mode }: AuthPageProp
               <TabsTrigger value="register" className="flex-1 text-sm">Create Account</TabsTrigger>
               <TabsTrigger value="login" className="flex-1 text-sm">Sign In</TabsTrigger>
             </TabsList>
+            {googleAuthBlock}
 
             {/* Register */}
             <TabsContent value="register">

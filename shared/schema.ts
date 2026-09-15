@@ -14,6 +14,9 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  googleId: text("google_id").unique(),
+  googleEmail: text("google_email"),
+  avatarUrl: text("avatar_url"),
 
   // Account role
   role: text("role").notNull().default("player"),
@@ -57,7 +60,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type PublicUser = Omit<User, "passwordHash">;
+export type PublicUser = Omit<User, "passwordHash" | "googleId">;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASSWORD RESET TOKENS

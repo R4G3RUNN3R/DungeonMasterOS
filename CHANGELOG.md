@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-09-15
+- V1 authentication preservation: added a pinned, read-only GitHub Actions release gate plus a canonical `release:verify` command, documented Google-linked identity continuity as a release-blocking invariant, and added a non-secret `.env.example` so Google OAuth configuration cannot quietly disappear from future deployments.
+- V1 Google authentication hotfix: restored Google OAuth sign-in, callback/state validation, Google identity mapping and the login/register UI entry point after the V1 release accidentally omitted the previously-live integration. Existing Google-linked accounts and production user data were intact; the regression prevented access rather than deleting accounts. Added regression coverage so future releases fail if the Google auth module, routes, storage mapping, schema fields or UI wiring disappear again.
 - V1 recovery tooling: backup and restore utilities now run directly under Node in production, avoiding a dependency on TypeScript/esbuild tooling that is intentionally absent from the runtime install.
 - V1 billing catalogue: reconciled customer-facing subscription prices with the dedicated live DungeonMasterOS Stripe catalogue dated 2026-08-12: Adventurer £4.99/week, £14.99/month, £159.99/year; Campaign Master £7.99/week, £24.99/month, £269.99/year; Legend £10.99/week, £34.99/month, £379.99/year.
 - V1 billing fail-closed: only Adventurer, Campaign Master and Legend are purchasable in V1. Chronicler remains an internal entitlement tier but is not advertised for sale while no live Stripe prices exist. Legacy turn top-ups remain disabled until dedicated verified live prices are provisioned.
