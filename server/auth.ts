@@ -373,6 +373,6 @@ export function releaseTurnClaim(userId: number, claim: TurnClaim): void {
 
 // ── Strip password from user ───────────────────────────────────────────────
 export function toPublicUser(user: User): PublicUser {
-  const { passwordHash: _pw, ...pub } = user;
+  const { passwordHash: _pw, googleId: _googleId, ...pub } = user;
   return pub;
 }

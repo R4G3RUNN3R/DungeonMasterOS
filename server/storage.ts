@@ -138,6 +138,9 @@ export function runMigrations() {
       email TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      google_id TEXT UNIQUE,
+      google_email TEXT,
+      avatar_url TEXT,
       role TEXT NOT NULL DEFAULT 'player',
       tier TEXT NOT NULL DEFAULT 'free',
       subscription_status TEXT NOT NULL DEFAULT 'trial',
@@ -360,6 +363,10 @@ export function runMigrations() {
   addColumnIfMissing("users", "unlimited_turns", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "role", "TEXT NOT NULL DEFAULT 'player'");
+  addColumnIfMissing("users", "google_id", "TEXT");
+  addColumnIfMissing("users", "google_email", "TEXT");
+  addColumnIfMissing("users", "avatar_url", "TEXT");
+  sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique ON users(google_id) WHERE google_id IS NOT NULL");
 
   addColumnIfMissing("campaigns", "is_archived", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "combat_style", "TEXT NOT NULL DEFAULT 'cinematic'");
@@ -414,6 +421,7 @@ export interface IStorage {
   getUser(id: number): User | undefined;
   getUserByUsername(username: string): User | undefined;
   getUserByEmail(email: string): User | undefined;
+  getUserByGoogleId(googleId: string): User | undefined;
   getUserByStripeCustomerId(customerId: string): User | undefined;
   getUserByStripeSubscriptionId(subscriptionId: string): User | undefined;
   createUser(user: InsertUser): User;
@@ -528,6 +536,9 @@ export class DatabaseStorage implements IStorage {
   }
   getUserByEmail(email: string): User | undefined {
     return db.select().from(users).where(eq(users.email, email)).get();
+  }
+  getUserByGoogleId(googleId: string): User | undefined {
+    return db.select().from(users).where(eq(users.googleId, googleId)).get();
   }
   getUserByStripeCustomerId(customerId: string): User | undefined {
     return db.select().from(users).where(eq(users.stripeCustomerId, customerId)).get();

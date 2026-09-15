@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -36,5 +36,41 @@ test('DungeonMaster auth helpers remain exported for protected admin routes', ()
       if (missing.length) throw new Error('missing exports: ' + missing.join(', '));
     });
   `, { NODE_ENV: 'test' });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+
+test('Google sign-in remains wired through server, storage, schema, and auth UI', () => {
+  const googleAuthPath = path.join(repoRoot, 'server', 'google-auth.ts');
+  assert.equal(existsSync(googleAuthPath), true, 'server/google-auth.ts is missing');
+
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+  const storage = readFileSync(path.join(repoRoot, 'server', 'storage.ts'), 'utf8');
+  const schema = readFileSync(path.join(repoRoot, 'shared', 'schema.ts'), 'utf8');
+  const authPage = readFileSync(path.join(repoRoot, 'client', 'src', 'pages', 'auth.tsx'), 'utf8');
+
+  assert.match(routes, /\/api\/auth\/google\/status/);
+  assert.match(routes, /\/api\/auth\/google\/callback/);
+  assert.match(storage, /getUserByGoogleId/);
+  assert.match(schema, /googleId:\s*text\(["']google_id["']\)/);
+  assert.match(authPage, /Continue with Google/);
+});
+
+test('Google OAuth authorization URL uses the configured callback and state', () => {
+  const result = runTsx(`
+    import('./server/google-auth.ts').then(({ buildGoogleAuthorizationUrl }) => {
+      const url = new URL(buildGoogleAuthorizationUrl('state-123'));
+      if (url.origin !== 'https://accounts.google.com') throw new Error('wrong google origin');
+      if (url.searchParams.get('state') !== 'state-123') throw new Error('missing state');
+      if (url.searchParams.get('redirect_uri') !== 'https://dungeonmaster-os.com/api/auth/google/callback') throw new Error('wrong callback');
+      if (url.searchParams.get('scope') !== 'openid email profile') throw new Error('wrong scope');
+    });
+  `, {
+    NODE_ENV: 'test',
+    APP_URL: 'https://dungeonmaster-os.com',
+    GOOGLE_CLIENT_ID: 'test-client-id',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+  });
+
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });

@@ -36,6 +36,15 @@ import {
   revokeDungeonMasterAccess,
   toPublicUser,
 } from "./auth";
+import {
+  buildGoogleAuthorizationUrl,
+  exchangeGoogleCodeForProfile,
+  generateGoogleUsernameBase,
+  getGoogleFailureRedirect,
+  getGooglePostLoginRedirect,
+  isGoogleAuthConfigured,
+  type GoogleProfile,
+} from "./google-auth";
 import { randomBytes } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { TRIAL_DAYS } from "../shared/tiers";
@@ -53,6 +62,7 @@ const anthropic = new Anthropic({
   maxRetries: 0,
 });
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+const GOOGLE_STATE_COOKIE = "dmos_google_oauth_state";
 
 
 // ── WebSocket campaign registry ─────────────────────────────────────────────
@@ -587,6 +597,101 @@ function applyNarrationProjection(
   return { createdItems, currencyChanged, abilitiesAdded };
 }
 
+function useSecureOAuthCookie(): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+function setShortLivedCookie(res: Response, name: string, value: string) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: useSecureOAuthCookie(),
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
+}
+
+function clearShortLivedCookie(res: Response, name: string) {
+  res.clearCookie(name, {
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
+}
+
+function makeUniqueGoogleUsername(profile: GoogleProfile): string {
+  const base = generateGoogleUsernameBase(profile.email, profile.name).slice(0, 24);
+  let candidate = base;
+  let counter = 2;
+
+  while (storage.getUserByUsername(candidate)) {
+    const suffix = `_${counter}`;
+    candidate = `${base.slice(0, 30 - suffix.length)}${suffix}`;
+    counter += 1;
+  }
+
+  return candidate;
+}
+
+function buildNewGoogleUserBillingDefaults() {
+  const trialEndsAt = new Date();
+  trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+
+  const nextReset = new Date();
+  nextReset.setMonth(nextReset.getMonth() + 1);
+  nextReset.setDate(1);
+  nextReset.setHours(0, 0, 0, 0);
+
+  return {
+    tier: "free",
+    subscriptionStatus: "trial",
+    trialEndsAt: trialEndsAt.toISOString(),
+    usageResetAt: nextReset.toISOString(),
+    aiTurnsUsedThisMonth: 0,
+    bonusTurns: 0,
+    onboardingComplete: false,
+  };
+}
+
+export async function findOrCreateGoogleUser(profile: GoogleProfile) {
+  const googleUser = storage.getUserByGoogleId(profile.sub);
+  if (googleUser) {
+    storage.updateUser(googleUser.id, {
+      googleEmail: profile.email,
+      avatarUrl: profile.picture || googleUser.avatarUrl,
+    });
+    return storage.getUser(googleUser.id) || googleUser;
+  }
+
+  const existingEmailUser = storage.getUserByEmail(profile.email);
+  if (existingEmailUser) {
+    if (existingEmailUser.googleId && existingEmailUser.googleId !== profile.sub) {
+      throw new Error("This email is already linked to a different Google account.");
+    }
+
+    storage.updateUser(existingEmailUser.id, {
+      googleId: profile.sub,
+      googleEmail: profile.email,
+      avatarUrl: profile.picture || existingEmailUser.avatarUrl,
+    });
+    return storage.getUser(existingEmailUser.id) || existingEmailUser;
+  }
+
+  const passwordHash = await hashPassword(`google:${profile.sub}:${randomBytes(24).toString("hex")}`);
+  return storage.createUser({
+    email: profile.email,
+    username: makeUniqueGoogleUsername(profile),
+    passwordHash,
+    googleId: profile.sub,
+    googleEmail: profile.email,
+    avatarUrl: profile.picture,
+    ...buildNewGoogleUserBillingDefaults(),
+  });
+}
+
 // ── Achievement helpers ─────────────────────────────────────────────────────
 function tryUnlockAchievements(
   userId: number,
@@ -625,6 +730,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTH ROUTES
   // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/auth/google/status", (_req, res) => {
+    return res.json({ enabled: isGoogleAuthConfigured() });
+  });
+
+  app.get("/api/auth/google", (_req, res) => {
+    if (!isGoogleAuthConfigured()) {
+      return res.status(503).json({ message: "Google sign-in is not configured yet." });
+    }
+
+    const state = randomBytes(24).toString("hex");
+    setShortLivedCookie(res, GOOGLE_STATE_COOKIE, state);
+    return res.redirect(buildGoogleAuthorizationUrl(state));
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const expectedState = req.cookies?.[GOOGLE_STATE_COOKIE];
+    clearShortLivedCookie(res, GOOGLE_STATE_COOKIE);
+
+    if (!code || !state || !expectedState || state !== expectedState) {
+      return res.redirect(getGoogleFailureRedirect("state"));
+    }
+
+    try {
+      const profile = await exchangeGoogleCodeForProfile(code);
+      const user = await findOrCreateGoogleUser(profile);
+      setSessionCookie(res, user.id);
+      return res.redirect(getGooglePostLoginRedirect());
+    } catch (err: any) {
+      console.error("Google auth error:", err);
+      return res.redirect(getGoogleFailureRedirect("failed"));
+    }
+  });
 
   app.post("/api/auth/register", async (req, res) => {
     try {
