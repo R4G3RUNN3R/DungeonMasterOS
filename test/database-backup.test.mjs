@@ -8,9 +8,9 @@ import Database from 'better-sqlite3';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 
-function runTsx(script, args, env = {}) {
+function runNode(script, args, env = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['node_modules/tsx/dist/cli.mjs', script, ...args], {
+    const child = spawn(process.execPath, [script, ...args], {
       cwd: repoRoot,
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -37,7 +37,7 @@ test('online SQLite backup restores into a clean database with integrity intact'
     db.prepare('INSERT INTO proof (value) VALUES (?)').run('survived-backup');
     db.close();
 
-    const backupResult = await runTsx('script/backup-database.ts', [
+    const backupResult = await runNode('script/backup-database.mjs', [
       '--source', source,
       '--output', backup,
     ]);
@@ -49,7 +49,7 @@ test('online SQLite backup restores into a clean database with integrity intact'
     assert.equal(backupDb.prepare('SELECT value FROM proof WHERE id = 1').get().value, 'survived-backup');
     backupDb.close();
 
-    const restoreResult = await runTsx('script/restore-database.ts', [
+    const restoreResult = await runNode('script/restore-database.mjs', [
       '--backup', backup,
       '--target', restored,
     ]);

@@ -2,12 +2,12 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "fs";
 import path from "path";
 
-function readArg(name: string): string | undefined {
+function readArg(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-function fail(message: string): never {
+function fail(message) {
   console.error(message);
   process.exit(1);
 }
@@ -17,7 +17,7 @@ async function main() {
     readArg("--source") || process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db"),
   );
   const outputArg = readArg("--output");
-  if (!outputArg) fail("Usage: backup-database.ts --output <backup.db> [--source <source.db>]");
+  if (!outputArg) fail("Usage: backup-database.mjs --output <backup.db> [--source <source.db>]");
   const outputPath = path.resolve(outputArg);
 
   if (!existsSync(sourcePath)) fail(`Source database does not exist: ${sourcePath}`);
@@ -30,7 +30,6 @@ async function main() {
   try {
     const sourceCheck = source.pragma("quick_check", { simple: true });
     if (sourceCheck !== "ok") fail(`Source database failed PRAGMA quick_check: ${String(sourceCheck)}`);
-
     await source.backup(outputPath);
   } finally {
     source.close();

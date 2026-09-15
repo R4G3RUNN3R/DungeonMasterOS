@@ -196,7 +196,7 @@ DATABASE_URL=/var/data/dmos/data.db
 Use SQLite online backup semantics rather than copying a live WAL-mode database file directly:
 
 ```bash
-npx tsx script/backup-database.ts \
+node script/backup-database.mjs \
   --source /path/to/data.db \
   --output /path/to/backups/data.db.$(date +%Y%m%dT%H%M%S).sqlite
 ```
@@ -206,7 +206,7 @@ The backup command checks the source database, performs SQLite's online backup, 
 Restore into a **new target path** first; the restore tool deliberately refuses to overwrite an existing database:
 
 ```bash
-npx tsx script/restore-database.ts \
+node script/restore-database.mjs \
   --backup /path/to/backups/data.db.YYYYMMDDTHHMMSS.sqlite \
   --target /path/to/restore-check/data.db
 ```

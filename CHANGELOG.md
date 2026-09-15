@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-09-15
+- V1 recovery tooling: backup and restore utilities now run directly under Node in production, avoiding a dependency on TypeScript/esbuild tooling that is intentionally absent from the runtime install.
 - V1 billing catalogue: reconciled customer-facing subscription prices with the dedicated live DungeonMasterOS Stripe catalogue dated 2026-08-12: Adventurer £4.99/week, £14.99/month, £159.99/year; Campaign Master £7.99/week, £24.99/month, £269.99/year; Legend £10.99/week, £34.99/month, £379.99/year.
 - V1 billing fail-closed: only Adventurer, Campaign Master and Legend are purchasable in V1. Chronicler remains an internal entitlement tier but is not advertised for sale while no live Stripe prices exist. Legacy turn top-ups remain disabled until dedicated verified live prices are provisioned.
 - V1 billing UX: added a public safe billing-catalog endpoint exposing configured availability without price IDs or secrets; pricing and billing screens consume it, unavailable checkout paths stay disabled, current-plan checkout is disabled, and stale host-only/free-player and fixed-discount claims were removed.
