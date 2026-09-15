@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/logo.png";
 import type { Campaign } from "@shared/schema";
-import { TIERS, TURN_PACKS, formatPrice, trialDaysRemaining, turnsUsedPercent, getEffectiveLimits, type TierName, type SubscriptionStatus } from "@shared/tiers";
+import { TIERS, TURN_PACKS, formatPrice, trialDaysRemaining, turnsUsedPercent } from "@shared/tiers";
 
 function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
   status: string | undefined;
@@ -76,17 +76,14 @@ function SubscriptionBanner({ status, tier, trialEndsAt, daysLeft }: {
   return null;
 }
 
-function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
-  used: number; tier: string; status: string; trialEndsAt: string | null | undefined; bonusTurns: number;
+function TurnsUsageBar({ used, limit, cadence, bonusTurns, canTopUp }: {
+  used: number; limit: number; cadence: "week" | "month" | "trial"; bonusTurns: number; canTopUp: boolean;
 }) {
-  const limits = getEffectiveLimits(
-    tier as TierName,
-    status as SubscriptionStatus,
-    trialEndsAt ? new Date(trialEndsAt) : null,
-  );
-  const total = limits.aiTurnsPerMonth + bonusTurns;
+  const total = limit + bonusTurns;
   const pct = turnsUsedPercent(used, total);
   const remaining = Math.max(0, total - used);
+  const cadenceTitle = cadence === "week" ? "Weekly" : cadence === "trial" ? "Trial" : "Monthly";
+  const cadenceText = cadence === "week" ? "this week" : cadence === "trial" ? "during trial" : "this month";
 
   const barColor = pct >= 95 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-primary";
 
@@ -95,22 +92,22 @@ function TurnsUsageBar({ used, tier, status, trialEndsAt, bonusTurns }: {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Monthly AI Turns</span>
+          <span className="text-sm font-medium">{cadenceTitle} AI Turns</span>
         </div>
-        <span className="text-xs text-muted-foreground">{used} / {total === 999 ? "∞" : total}</span>
+        <span className="text-xs text-muted-foreground">{used} / {total.toLocaleString()}</span>
       </div>
       <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
         <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{remaining} turns remaining this month</span>
+        <span>{remaining.toLocaleString()} turns remaining {cadenceText}</span>
         {bonusTurns > 0 && (
           <span className="text-primary flex items-center gap-1">
             <Gift className="w-3 h-3" /> +{bonusTurns} bonus
           </span>
         )}
       </div>
-      {pct >= 80 && (
+      {pct >= 80 && canTopUp && (
         <Link href="/billing">
           <Button size="sm" variant="outline" className="w-full text-xs gap-1">
             <Plus className="w-3 h-3" /> Buy More Turns
@@ -166,7 +163,6 @@ function CampaignCard({ campaign, onArchive }: { campaign: Campaign; onArchive: 
           </div>
         </div>
       </Link>
-      {/* Archive button */}
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onArchive(campaign.id, !campaign.isArchived); }}
         className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-card border border-border hover:bg-destructive/10 hover:border-destructive/30 text-muted-foreground hover:text-destructive"
@@ -200,7 +196,6 @@ export default function Dashboard() {
   const [joinError, setJoinError] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
-  // Check for subscription success params
   useEffect(() => {
     const hash = window.location.hash;
     if (hash.includes("subscribed=1")) {
@@ -270,7 +265,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Nav */}
       <nav className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="flex items-center justify-between px-6 py-3 max-w-6xl mx-auto w-full">
           <div className="flex items-center gap-3">
@@ -288,180 +282,84 @@ export default function Dashboard() {
                 <span className="text-xs font-medium text-foreground">{user.username}</span>
                 <Badge variant="secondary" className="text-xs capitalize">{billingData?.tier || user.tier}</Badge>
                 {(user.role === "dungeon_master" || user.isAdmin) && (
-                  <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400">
-                    DungeonMaster
-                  </Badge>
+                  <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400">DungeonMaster</Badge>
                 )}
               </div>
             )}
-            <Link href="/billing">
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5">
-                <Settings className="w-3.5 h-3.5" /><span className="hidden sm:block">Billing</span>
-              </Button>
-            </Link>
-            <Link href="/account">
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5">
-                <Settings className="w-3.5 h-3.5" /><span className="hidden sm:block">Account</span>
-              </Button>
-            </Link>
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending}>
-              <LogOut className="w-3.5 h-3.5" /><span className="hidden sm:block">Sign Out</span>
-            </Button>
+            <Link href="/billing"><Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5"><Settings className="w-3.5 h-3.5" /><span className="hidden sm:block">Billing</span></Button></Link>
+            <Link href="/account"><Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5"><Settings className="w-3.5 h-3.5" /><span className="hidden sm:block">Account</span></Button></Link>
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending}><LogOut className="w-3.5 h-3.5" /><span className="hidden sm:block">Sign Out</span></Button>
           </div>
         </div>
       </nav>
 
-      {/* Subscription banner */}
-      <SubscriptionBanner
-        status={billingData?.subscriptionStatus || user?.subscriptionStatus}
-        tier={billingData?.tier || user?.tier}
-        trialEndsAt={user?.trialEndsAt}
-        daysLeft={daysLeftInTrial}
-      />
+      <SubscriptionBanner status={billingData?.subscriptionStatus || user?.subscriptionStatus} tier={billingData?.tier || user?.tier} trialEndsAt={user?.trialEndsAt} daysLeft={daysLeftInTrial} />
 
-      {/* Main */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-10">
-        {/* Welcome */}
         <div className="mb-10">
-          <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground mb-1">
-            Welcome back, {user?.username}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {activeCampaigns.length === 0
-              ? "Create your first campaign to get started."
-              : `${activeCampaigns.length} active campaign${activeCampaigns.length !== 1 ? "s" : ""} waiting for you.`}
-          </p>
+          <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground mb-1">Welcome back, {user?.username}</h1>
+          <p className="text-muted-foreground text-sm">{activeCampaigns.length === 0 ? "Create your first campaign to get started." : `${activeCampaigns.length} active campaign${activeCampaigns.length !== 1 ? "s" : ""} waiting for you.`}</p>
         </div>
 
-        {/* Usage + quick actions */}
         <div className="grid lg:grid-cols-3 gap-6 mb-12">
-          {/* Turns usage */}
           <div className="lg:col-span-2">
-            {billingData && (
-              <TurnsUsageBar
-                used={billingData.aiTurnsUsedThisMonth}
-                tier={billingData.tier}
-                status={billingData.subscriptionStatus}
-                trialEndsAt={user?.trialEndsAt}
-                bonusTurns={billingData.bonusTurns ?? 0}
-              />
-            )}
+            {billingData && <TurnsUsageBar used={billingData.aiTurnsUsedThisMonth} limit={billingData.aiTurnLimit} cadence={billingData.aiTurnCadence} bonusTurns={billingData.bonusTurns ?? 0} canTopUp={billingData.canTopUp === true} />}
           </div>
-          {/* Quick actions */}
           <div className="space-y-3">
-            <Link href="/home">
-              <Button className="w-full gap-2 justify-start" variant="outline">
-                <Plus className="w-4 h-4" /> New Campaign
-              </Button>
-            </Link>
-            <Link href="/pricing">
-              <Button className="w-full gap-2 justify-start" variant="outline">
-                <Crown className="w-4 h-4" /> Upgrade Plan
-              </Button>
-            </Link>
-            <Link href="/billing">
-              <Button className="w-full gap-2 justify-start" variant="outline">
-                <Gift className="w-4 h-4" /> Buy More Turns
-              </Button>
-            </Link>
+            <Link href="/home"><Button className="w-full gap-2 justify-start" variant="outline"><Plus className="w-4 h-4" /> New Campaign</Button></Link>
+            <Link href="/pricing"><Button className="w-full gap-2 justify-start" variant="outline"><Crown className="w-4 h-4" /> Upgrade Plan</Button></Link>
+            <Link href="/billing"><Button className="w-full gap-2 justify-start" variant="outline"><Gift className="w-4 h-4" /> Buy More Turns</Button></Link>
           </div>
         </div>
 
-        {/* Campaigns */}
         <section className="mb-12">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-serif text-xl font-bold text-foreground flex items-center gap-2">
-              <Swords className="w-5 h-5 text-primary" /> My Campaigns
-            </h2>
-            <Link href="/home">
-              <Button variant="outline" size="sm" className="text-xs gap-1.5">
-                <Plus className="w-3.5 h-3.5" /> New Campaign
-              </Button>
-            </Link>
+            <h2 className="font-serif text-xl font-bold text-foreground flex items-center gap-2"><Swords className="w-5 h-5 text-primary" /> My Campaigns</h2>
+            <Link href="/home"><Button variant="outline" size="sm" className="text-xs gap-1.5"><Plus className="w-3.5 h-3.5" /> New Campaign</Button></Link>
           </div>
-
           {campaignsLoading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              <span className="text-sm">Loading campaigns...</span>
-            </div>
+            <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /><span className="text-sm">Loading campaigns...</span></div>
           ) : activeCampaigns.length === 0 ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <NewCampaignCard />
-              {/* Onboarding hint */}
               <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 flex flex-col gap-3">
-                <Sparkles className="w-6 h-6 text-primary" />
-                <h3 className="font-semibold text-sm">Create your first campaign</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Choose a tone, world, and combat style. The AI Dungeon Master will build a living world around your choices.
-                </p>
-                <Link href="/home">
-                  <Button size="sm" className="w-full gap-1.5 mt-auto">
-                    <Swords className="w-3.5 h-3.5" /> Start Now
-                  </Button>
-                </Link>
+                <Sparkles className="w-6 h-6 text-primary" /><h3 className="font-semibold text-sm">Create your first campaign</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">Choose a tone, world, and combat style. The AI Dungeon Master will build a living world around your choices.</p>
+                <Link href="/home"><Button size="sm" className="w-full gap-1.5 mt-auto"><Swords className="w-3.5 h-3.5" /> Start Now</Button></Link>
               </div>
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeCampaigns.map((c) => (
-                <CampaignCard key={c.id} campaign={c} onArchive={(id, archive) => archiveMutation.mutate({ id, archive })} />
-              ))}
+              {activeCampaigns.map((c) => <CampaignCard key={c.id} campaign={c} onArchive={(id, archive) => archiveMutation.mutate({ id, archive })} />)}
               <NewCampaignCard />
             </div>
           )}
         </section>
 
-        {/* Archived campaigns */}
         {archivedCampaigns.length > 0 && (
           <section className="mb-12">
-            <button
-              onClick={() => setShowArchived((v) => !v)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-            >
-              <Archive className="w-4 h-4" />
-              {showArchived ? "Hide" : "Show"} archived campaigns ({archivedCampaigns.length})
-              <ChevronRight className={`w-3 h-3 transition-transform ${showArchived ? "rotate-90" : ""}`} />
+            <button onClick={() => setShowArchived((v) => !v)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
+              <Archive className="w-4 h-4" />{showArchived ? "Hide" : "Show"} archived campaigns ({archivedCampaigns.length})<ChevronRight className={`w-3 h-3 transition-transform ${showArchived ? "rotate-90" : ""}`} />
             </button>
-            {showArchived && (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {archivedCampaigns.map((c) => (
-                  <CampaignCard key={c.id} campaign={c} onArchive={(id, archive) => archiveMutation.mutate({ id, archive })} />
-                ))}
-              </div>
-            )}
+            {showArchived && <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{archivedCampaigns.map((c) => <CampaignCard key={c.id} campaign={c} onArchive={(id, archive) => archiveMutation.mutate({ id, archive })} />)}</div>}
           </section>
         )}
 
-        {/* Quick join */}
         <section className="border-t border-border pt-10">
-          <h2 className="font-serif text-xl font-bold text-foreground flex items-center gap-2 mb-4">
-            <Hash className="w-5 h-5 text-primary" /> Quick Join
-          </h2>
+          <h2 className="font-serif text-xl font-bold text-foreground flex items-center gap-2 mb-4"><Hash className="w-5 h-5 text-primary" /> Quick Join</h2>
           <p className="text-sm text-muted-foreground mb-4">Have an invite code from another player? Enter it below.</p>
           <div className="flex gap-2 max-w-sm">
-            <Input
-              placeholder="e.g. a1b2c3d4"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-              className="font-mono"
-            />
+            <Input placeholder="e.g. a1b2c3d4" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleJoin()} className="font-mono" />
             <Button onClick={handleJoin} className="shrink-0">Join</Button>
           </div>
           {joinError && <p className="text-destructive text-xs mt-2">{joinError}</p>}
         </section>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-border py-6 px-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-muted-foreground">
           <span>Dungeon Master OS</span>
-          <div className="flex gap-4">
-            <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
-            <Link href="/how-it-works" className="hover:text-foreground transition-colors">How It Works</Link>
-            <Link href="/billing" className="hover:text-foreground transition-colors">Billing</Link>
-          </div>
+          <div className="flex gap-4"><Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link><Link href="/how-it-works" className="hover:text-foreground transition-colors">How It Works</Link><Link href="/billing" className="hover:text-foreground transition-colors">Billing</Link></div>
         </div>
       </footer>
     </div>
