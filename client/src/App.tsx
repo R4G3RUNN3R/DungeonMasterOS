@@ -19,6 +19,67 @@ const HowItWorks = lazy(() => import("@/pages/how-it-works"));
 const Billing = lazy(() => import("@/pages/billing"));
 const Account = lazy(() => import("@/pages/account"));
 
+const PUBLIC_SEO: Record<string, { title: string; description: string }> = {
+  "/": {
+    title: "DungeonMasterOS | Persistent AI Dungeon Master RPG",
+    description:
+      "DungeonMasterOS is a persistent multiplayer tabletop RPG experience powered by an AI Dungeon Master, built for ongoing campaigns in the browser.",
+  },
+  "/how-it-works": {
+    title: "How DungeonMasterOS Works | Persistent AI RPG Campaigns",
+    description:
+      "Learn how DungeonMasterOS runs persistent AI-guided tabletop RPG campaigns with campaign memory, character systems, multiplayer sessions, and lasting world consequences.",
+  },
+  "/pricing": {
+    title: "DungeonMasterOS Pricing | AI Dungeon Master Plans",
+    description:
+      "Compare DungeonMasterOS plans for persistent AI Dungeon Master campaigns, multiplayer play, campaign memory, and browser-based tabletop RPG sessions.",
+  },
+};
+
+const ATTRIBUTION_PATHS = new Set([
+  "/",
+  "/how-it-works",
+  "/pricing",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+]);
+
+function upsertMeta(selector: string, attribute: string, value: string) {
+  const element = document.head.querySelector<HTMLMetaElement>(selector);
+  if (element) element.setAttribute(attribute, value);
+}
+
+function SeoHead() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    const publicMeta = PUBLIC_SEO[location];
+    const canonical = `https://dungeonmaster-os.com${location === "/" ? "/" : location}`;
+
+    if (publicMeta) {
+      document.title = publicMeta.title;
+      upsertMeta('meta[name="description"]', "content", publicMeta.description);
+      upsertMeta('meta[name="robots"]', "content", "index, follow, max-image-preview:large");
+      upsertMeta('meta[property="og:title"]', "content", publicMeta.title);
+      upsertMeta('meta[property="og:description"]', "content", publicMeta.description);
+      upsertMeta('meta[property="og:url"]', "content", canonical);
+      upsertMeta('meta[name="twitter:title"]', "content", publicMeta.title);
+      upsertMeta('meta[name="twitter:description"]', "content", publicMeta.description);
+
+      const canonicalLink = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+      canonicalLink?.setAttribute("href", canonical);
+      return;
+    }
+
+    upsertMeta('meta[name="robots"]', "content", "noindex, follow");
+  }, [location]);
+
+  return null;
+}
+
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
@@ -41,6 +102,23 @@ function LegacyHashRedirect() {
   }, [navigate]);
 
   return null;
+}
+
+function VoidsmithAttribution() {
+  const [location] = useLocation();
+  if (!ATTRIBUTION_PATHS.has(location)) return null;
+
+  return (
+    <footer className="border-t border-border bg-background px-6 py-6 text-center text-xs text-muted-foreground">
+      <span>Powered by </span>
+      <a
+        href="https://voidsmithindustries.com/"
+        className="font-medium text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+      >
+        Voidsmith Industries
+      </a>
+    </footer>
+  );
 }
 
 function CampaignCharacterSheetLauncher() {
@@ -100,10 +178,12 @@ function App() {
       <TooltipProvider>
         <Toaster />
         <LegacyHashRedirect />
+        <SeoHead />
         <CampaignCharacterSheetLauncher />
         <Suspense fallback={null}>
           <AppRouter />
         </Suspense>
+        <VoidsmithAttribution />
       </TooltipProvider>
     </QueryClientProvider>
   );
