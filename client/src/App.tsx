@@ -1,6 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Switch, Route, Router, Redirect, useLocation } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
+import { lazy, Suspense, useEffect } from "react";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -27,6 +26,23 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+function LegacyHashRedirect() {
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const legacyPath = window.location.hash.startsWith("#/")
+      ? window.location.hash.slice(1)
+      : "";
+
+    if (!legacyPath) return;
+
+    window.history.replaceState(null, "", legacyPath);
+    navigate(legacyPath, { replace: true });
+  }, [navigate]);
+
+  return null;
+}
+
 function CampaignCharacterSheetLauncher() {
   const [location] = useLocation();
   const match = location.match(/^\/campaign\/(\d+)$/);
@@ -35,7 +51,7 @@ function CampaignCharacterSheetLauncher() {
   const campaignId = match[1];
   const openCharacterSheet = () => {
     const popup = window.open(
-      `/#/character-sheet/${campaignId}`,
+      `/character-sheet/${campaignId}`,
       `dmos-character-sheet-${campaignId}`,
       "popup=yes,width=1500,height=950,resizable=yes,scrollbars=yes",
     );
@@ -83,12 +99,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router hook={useHashLocation}>
-          <CampaignCharacterSheetLauncher />
-          <Suspense fallback={null}>
-            <AppRouter />
-          </Suspense>
-        </Router>
+        <LegacyHashRedirect />
+        <CampaignCharacterSheetLauncher />
+        <Suspense fallback={null}>
+          <AppRouter />
+        </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
   );
