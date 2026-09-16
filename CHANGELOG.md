@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-16
+- SEO routing: replaced hash-only public routing with clean browser paths so `/how-it-works` and `/pricing` can be requested directly by users and crawlers, while preserving legacy `#/...` links through a compatibility redirect.
+- SEO metadata: public root, how-it-works, and pricing routes now set route-specific titles, descriptions, canonicals, Open Graph/Twitter metadata, and index/follow directives; authenticated and account/game surfaces are marked `noindex, follow` in the rendered client.
+- SEO discovery: expanded the sitemap from the homepage alone to the three intended public marketing URLs.
+- Voidsmith attribution: added a visible crawlable `Powered by Voidsmith Industries` footer link across DungeonMasterOS public and authentication surfaces.
+- Character-sheet compatibility: popup launch URLs now use the clean `/character-sheet/:id` path while legacy hash routes remain supported.
+
 ## 2026-09-15
 - V1 authentication preservation: added a pinned, read-only GitHub Actions release gate plus a canonical `release:verify` command, documented Google-linked identity continuity as a release-blocking invariant, and added a non-secret `.env.example` so Google OAuth configuration cannot quietly disappear from future deployments.
 - V1 Google authentication hotfix: restored Google OAuth sign-in, callback/state validation, Google identity mapping and the login/register UI entry point after the V1 release accidentally omitted the previously-live integration. Existing Google-linked accounts and production user data were intact; the regression prevented access rather than deleting accounts. Added regression coverage so future releases fail if the Google auth module, routes, storage mapping, schema fields or UI wiring disappear again.
@@ -54,7 +61,7 @@
 - Expected impact: stable character ownership and campaign identity for signed-in users, which supports Enter the World and character import flows.
 - Risk: low. Narrow route-level change only.
 - Deployment: added a fresh commit to force Railway to redeploy current `main`.
-- Auth/routes: confirmed `server/routes.ts` already uses stable logged-in visitor identity (`user-{id}`) before falling back to `x-visitor-id` or anonymous IDs.
+- Auth/routes: confirmed `server/routes.ts` already uses stable logged-in visitor identity (`user-{id}` before falling back to `x-visitor-id` or anonymous IDs.
 - Expected impact: logged-in users keep a stable character/campaign identity, which unblocks Enter the World and character import flows after redeploy.
 - Risk: low. No gameplay logic changes in this commit beyond triggering a fresh deployment of the already-fixed route code.
 
