@@ -119,12 +119,45 @@ test('browser session cookie contract remains compatible while session internals
   assert.match(auth, /path:\s*["']\/["']/);
 });
 
-test('current access bypasses stay explicit until permissions and entitlements are separated', () => {
+test('access policy preserves current legacy capability semantics during separation', () => {
+  const result = runTsx(`
+    import('./server/access-policy.ts').then(({ resolveAccessCapabilities }) => {
+      const cases = [
+        [
+          { role: 'player', isAdmin: false, unlimitedTurns: false },
+          { dungeonMasterAccess: false, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: false },
+        ],
+        [
+          { role: 'dungeon_master', isAdmin: false, unlimitedTurns: false },
+          { dungeonMasterAccess: true, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
+        ],
+        [
+          { role: 'player', isAdmin: true, unlimitedTurns: false },
+          { dungeonMasterAccess: true, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
+        ],
+        [
+          { role: 'player', isAdmin: false, unlimitedTurns: true },
+          { dungeonMasterAccess: false, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: true },
+        ],
+      ];
+
+      for (const [user, expected] of cases) {
+        const actual = resolveAccessCapabilities(user);
+        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+          throw new Error('legacy capability mapping changed for ' + JSON.stringify(user) + ': ' + JSON.stringify(actual));
+        }
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('auth middleware consumes explicit access capabilities instead of duplicating legacy flag logic', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
 
-  assert.match(auth, /requireCanPlay[\s\S]*?hasDungeonMasterAccess\(req\.user\)[\s\S]*?return next\(\)/);
-  assert.match(auth, /allowReadOnlyForExpired[\s\S]*?hasDungeonMasterAccess\(req\.user\)[\s\S]*?return next\(\)/);
-  assert.match(auth, /checkCampaignLimit[\s\S]*?hasDungeonMasterAccess\(user\)[\s\S]*?return next\(\)/);
-  assert.match(auth, /checkTurnLimit[\s\S]*?hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
-  assert.match(auth, /claimTurn[\s\S]*?hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
+  assert.match(auth, /hasSubscriptionBypassAccess\(req\.user\)/);
+  assert.match(auth, /hasCampaignLimitBypass\(user\)/);
+  assert.match(auth, /hasUnlimitedAiAccess\(user\)/);
+  assert.doesNotMatch(auth, /hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
 });
