@@ -23,7 +23,15 @@ import {
   type TierName,
   type SubscriptionStatus,
 } from "../shared/tiers";
-import type { User, PublicUser, UserRole } from "../shared/schema";
+import type { User, PublicUser } from "../shared/schema";
+import {
+  hasCampaignLimitBypass,
+  hasDungeonMasterAccess,
+  hasSubscriptionBypassAccess,
+  hasUnlimitedAiAccess,
+} from "./access-policy";
+
+export { hasDungeonMasterAccess } from "./access-policy";
 
 const DEV_JWT_SECRET = "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
@@ -41,14 +49,6 @@ function getJwtSecret(): string {
   return DEV_JWT_SECRET;
 }
 
-function isDungeonMasterRole(role: string | null | undefined): role is UserRole {
-  return role === "dungeon_master";
-}
-
-export function hasDungeonMasterAccess(user?: Pick<User, "role" | "isAdmin"> | null): boolean {
-  return !!user && (isDungeonMasterRole(user.role) || user.isAdmin);
-}
-
 function syncDungeonMasterFlags(user: User): User {
   if (!hasDungeonMasterAccess(user)) {
     return user;
@@ -56,7 +56,7 @@ function syncDungeonMasterFlags(user: User): User {
 
   const updates: Partial<User> = {};
 
-  if (!isDungeonMasterRole(user.role)) {
+  if (user.role !== "dungeon_master") {
     updates.role = "dungeon_master";
   }
   if (!user.isAdmin) {
@@ -248,7 +248,7 @@ export function requireCanPlay(req: Request, res: Response, next: NextFunction) 
       code: "UNAUTHENTICATED",
     });
   }
-  if (hasDungeonMasterAccess(req.user)) {
+  if (hasSubscriptionBypassAccess(req.user)) {
     return next();
   }
   const status = req.user.subscriptionStatus as SubscriptionStatus;
@@ -268,7 +268,7 @@ export function allowReadOnlyForExpired(req: Request, res: Response, next: NextF
   if (!req.user) {
     return res.status(401).json({ message: "Sign in to continue.", code: "UNAUTHENTICATED" });
   }
-  if (hasDungeonMasterAccess(req.user)) {
+  if (hasSubscriptionBypassAccess(req.user)) {
     return next();
   }
   const status = req.user.subscriptionStatus as SubscriptionStatus;
@@ -286,7 +286,7 @@ export function allowReadOnlyForExpired(req: Request, res: Response, next: NextF
 export function checkCampaignLimit(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return next();
   const user = req.user;
-  if (hasDungeonMasterAccess(user)) return next();
+  if (hasCampaignLimitBypass(user)) return next();
   const tier = user.tier as TierName;
   const status = user.subscriptionStatus as SubscriptionStatus;
   const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
@@ -308,7 +308,7 @@ export function checkCampaignLimit(req: Request, res: Response, next: NextFuncti
 export function checkTurnLimit(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return next();
   const user = req.user;
-  if (hasDungeonMasterAccess(user) || user.unlimitedTurns) return next();
+  if (hasUnlimitedAiAccess(user)) return next();
   const tier = user.tier as TierName;
   const status = user.subscriptionStatus as SubscriptionStatus;
   const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
@@ -337,7 +337,7 @@ export type TurnClaim = AiTurnReservation | "unlimited";
 export function claimTurn(user: User):
   | { ok: true; claim: TurnClaim }
   | { ok: false; body: Record<string, unknown> } {
-  if (hasDungeonMasterAccess(user) || user.unlimitedTurns) {
+  if (hasUnlimitedAiAccess(user)) {
     return { ok: true, claim: "unlimited" };
   }
 
