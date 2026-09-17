@@ -5,6 +5,7 @@ import {
   revokeAllAuthSessionsForUser,
   revokeAuthSessionByTokenHash,
   touchAuthSession,
+  storage,
   type AuthSessionRecord,
 } from "./storage";
 
@@ -19,6 +20,7 @@ export type SessionMetadata = {
   userAgent?: string | null;
   ipHash?: string | null;
   expiresAt?: Date | string | null;
+  authVersion?: number;
 };
 
 export function generateOpaqueSessionToken(): string {
@@ -58,6 +60,11 @@ export function createOpaqueSession(
   }
 
   const expiresAt = new Date(Math.min(requestedExpiry, maximumExpiry)).toISOString();
+  const authVersion = metadata.authVersion ?? storage.getUser(userId)?.authVersion ?? 0;
+
+  if (!Number.isInteger(authVersion) || authVersion < 0) {
+    throw new Error("Session auth version must be a non-negative integer.");
+  }
 
   const session = createAuthSessionRecord({
     tokenHash: hashOpaqueSessionToken(token),
@@ -69,6 +76,7 @@ export function createOpaqueSession(
     revokedAt: null,
     userAgent: metadata.userAgent ?? null,
     ipHash: metadata.ipHash ?? null,
+    authVersion,
   });
 
   return { token, session };
