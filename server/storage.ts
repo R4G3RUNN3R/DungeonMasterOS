@@ -51,6 +51,23 @@ export const db = drizzle(sqlite);
 
 export type AiTurnReservation = "regular" | "bonus";
 
+export type AuthSessionRecord = {
+  id: number;
+  tokenHash: string;
+  userId: number;
+  authMethod: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  userAgent: string | null;
+  ipHash: string | null;
+};
+
+export type NewAuthSessionRecord = Omit<AuthSessionRecord, "id" | "revokedAt"> & {
+  revokedAt?: string | null;
+};
+
 export type ShopPurchaseResult =
   | { ok: true; wallet: CharacterCurrency; remainingStock: number; item: Item }
   | { ok: false; reason: "not_found" | "stock" | "funds" };
@@ -98,6 +115,78 @@ export function refundAiTurn(userId: number, reservation: AiTurnReservation): vo
   });
 
   transaction();
+}
+
+
+const AUTH_SESSION_SELECT = `
+  SELECT
+    id,
+    token_hash AS tokenHash,
+    user_id AS userId,
+    auth_method AS authMethod,
+    created_at AS createdAt,
+    last_seen_at AS lastSeenAt,
+    expires_at AS expiresAt,
+    revoked_at AS revokedAt,
+    user_agent AS userAgent,
+    ip_hash AS ipHash
+  FROM auth_sessions
+`;
+
+export function createAuthSessionRecord(input: NewAuthSessionRecord): AuthSessionRecord {
+  const result = sqlite.prepare(`
+    INSERT INTO auth_sessions (
+      token_hash,
+      user_id,
+      auth_method,
+      created_at,
+      last_seen_at,
+      expires_at,
+      revoked_at,
+      user_agent,
+      ip_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.tokenHash,
+    input.userId,
+    input.authMethod,
+    input.createdAt,
+    input.lastSeenAt,
+    input.expiresAt,
+    input.revokedAt ?? null,
+    input.userAgent,
+    input.ipHash,
+  );
+
+  return sqlite
+    .prepare(`${AUTH_SESSION_SELECT} WHERE id = ?`)
+    .get(Number(result.lastInsertRowid)) as AuthSessionRecord;
+}
+
+export function getAuthSessionByTokenHash(tokenHash: string): AuthSessionRecord | undefined {
+  return sqlite
+    .prepare(`${AUTH_SESSION_SELECT} WHERE token_hash = ?`)
+    .get(tokenHash) as AuthSessionRecord | undefined;
+}
+
+export function touchAuthSession(id: number, lastSeenAt: string): void {
+  sqlite
+    .prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL")
+    .run(lastSeenAt, id);
+}
+
+export function revokeAuthSessionByTokenHash(tokenHash: string, revokedAt: string): boolean {
+  const result = sqlite
+    .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL")
+    .run(revokedAt, tokenHash);
+  return result.changes > 0;
+}
+
+export function revokeAllAuthSessionsForUser(userId: number, revokedAt: string): number {
+  const result = sqlite
+    .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
+    .run(revokedAt, userId);
+  return result.changes;
 }
 
 export function applyWebhookEventOnce(
@@ -158,6 +247,24 @@ export function runMigrations() {
       is_admin INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      user_id INTEGER NOT NULL,
+      auth_method TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      user_agent TEXT,
+      ip_hash TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id
+      ON auth_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at
+      ON auth_sessions(expires_at);
 
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
