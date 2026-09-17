@@ -226,3 +226,68 @@ test('WebSocket authentication uses the same dual-session resolver as HTTP auth'
   assert.match(routes, /getSessionUserIdFromCookieHeader\(cookieHeader\)/);
   assert.doesNotMatch(routes, /const payload = verifyToken\(token\)/);
 });
+
+
+test('password rotation routes invalidate prior sessions and preserve the intended browser outcome', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+
+  const changeStart = routes.indexOf('app.post("/api/auth/change-password"');
+  const forgotStart = routes.indexOf('app.post("/api/auth/forgot-password"', changeStart);
+  const resetStart = routes.indexOf('app.post("/api/auth/reset-password"', forgotStart);
+  const accountRoutesStart = routes.indexOf('// USER / ACCOUNT ROUTES', resetStart);
+
+  assert.notEqual(changeStart, -1);
+  assert.notEqual(forgotStart, -1);
+  assert.notEqual(resetStart, -1);
+  assert.notEqual(accountRoutesStart, -1);
+
+  const changePassword = routes.slice(changeStart, forgotStart);
+  const resetPassword = routes.slice(resetStart, accountRoutesStart);
+
+  assert.match(changePassword, /updateUserPasswordAndBumpAuthVersion\(user\.id, passwordHash\)/);
+  assert.match(changePassword, /revokeAllOpaqueSessionsForUser\(user\.id\)/);
+  assert.match(changePassword, /setSessionCookie\(res, user\.id, ["']password["'], authVersion\)/);
+
+  assert.match(resetPassword, /updateUserPasswordAndBumpAuthVersion\(resetToken\.userId, passwordHash\)/);
+  assert.match(resetPassword, /revokeAllOpaqueSessionsForUser\(resetToken\.userId\)/);
+  assert.match(resetPassword, /clearSessionCookie\(res\)/);
+});
+
+test('auth version remains internal and is stripped from public user payloads', () => {
+  const result = runTsx(`
+    import('./server/auth.ts').then(({ toPublicUser }) => {
+      const publicUser = toPublicUser({
+        id: 1,
+        email: 'public@example.invalid',
+        username: 'public_user',
+        passwordHash: 'secret-hash',
+        googleId: 'google-subject',
+        googleEmail: 'public@example.invalid',
+        avatarUrl: null,
+        role: 'player',
+        tier: 'free',
+        subscriptionStatus: 'trial',
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+        stripeBillingInterval: null,
+        trialEndsAt: null,
+        subscriptionCurrentPeriodEnd: null,
+        aiTurnsUsedThisMonth: 0,
+        bonusTurns: 0,
+        usageResetAt: null,
+        onboardingComplete: false,
+        unlimitedTurns: false,
+        isAdmin: false,
+        authVersion: 7,
+        createdAt: new Date().toISOString(),
+      });
+
+      if ('passwordHash' in publicUser) throw new Error('password hash leaked');
+      if ('googleId' in publicUser) throw new Error('Google provider subject leaked');
+      if ('authVersion' in publicUser) throw new Error('auth version leaked');
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
