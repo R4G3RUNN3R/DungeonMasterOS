@@ -241,6 +241,14 @@ Authentication abuse controls are in-memory fixed-window limiters. They are appr
 
 The production reverse proxy must continue to be the only public path to the application process so Express `trust proxy = 1` resolves the client address from the expected single proxy hop.
 
+### Security audit ledger
+
+Authentication and privilege security events are written to the additive `security_events` table. The ledger stores event type, actor/subject user IDs, a timestamp, and tightly bounded sanitized metadata. It must never contain passwords, bearer/session tokens, cookies, authorization headers, API keys, secrets, email addresses, or raw IP addresses.
+
+Audit writes are intentionally best-effort: a ledger write failure is emitted to server logs but does not turn a completed login, logout, password change/reset, or privilege mutation into an application failure. Monitor application logs for `Security audit write failed` messages.
+
+V1 performs no automatic audit-event deletion. Include `security_events` in normal database backup/restore handling and define retention/archive policy before storage volume makes retention material.
+
 ### Authentication continuity invariant
 
 Google-linked users are durable production identities. A release must never remove or silently detach Google authentication while `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured. The regression suite must retain coverage for the Google auth module, route registration, storage lookup, schema identity fields, UI entry point, callback URI/state handling, and public-user redaction.
