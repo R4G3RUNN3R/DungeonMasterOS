@@ -18,6 +18,7 @@ export type SessionAuthMethod = "password" | "register" | "google" | "legacy-jwt
 export type SessionMetadata = {
   userAgent?: string | null;
   ipHash?: string | null;
+  expiresAt?: Date | string | null;
 };
 
 export function generateOpaqueSessionToken(): string {
@@ -44,7 +45,19 @@ export function createOpaqueSession(
   const token = generateOpaqueSessionToken();
   const now = new Date();
   const nowIso = now.toISOString();
-  const expiresAt = new Date(now.getTime() + OPAQUE_SESSION_TTL_MS).toISOString();
+  const maximumExpiry = now.getTime() + OPAQUE_SESSION_TTL_MS;
+  const requestedExpiry =
+    metadata.expiresAt instanceof Date
+      ? metadata.expiresAt.getTime()
+      : metadata.expiresAt
+        ? Date.parse(metadata.expiresAt)
+        : maximumExpiry;
+
+  if (!Number.isFinite(requestedExpiry) || requestedExpiry <= now.getTime()) {
+    throw new Error("Session expiry must be a valid future timestamp.");
+  }
+
+  const expiresAt = new Date(Math.min(requestedExpiry, maximumExpiry)).toISOString();
 
   const session = createAuthSessionRecord({
     tokenHash: hashOpaqueSessionToken(token),
