@@ -1,6 +1,12 @@
 # Changelog
 
 ## 2026-09-17
+- Auth credential rotation: added a per-user authentication version stamped into both v2 opaque sessions and newly issued legacy compatibility JWTs. Existing pre-version JWTs map to version 0 so current users remain signed in until a credential rotation occurs.
+- Auth password security: successful password changes atomically update the password hash and bump the authentication version, revoke all existing v2 sessions, and issue a fresh current-browser session. Password-reset completion bumps the version, revokes v2 sessions, and clears browser auth cookies so every prior session generation is rejected.
+- Auth session authority: HTTP and WebSocket authentication now compare each session generation against the user's current authentication version, preventing old JWT or v2 credentials from surviving password rotation even during the dual-cookie compatibility window.
+- Auth privacy: the authentication version remains server-internal and is removed from public user payloads alongside password hashes and Google provider subjects.
+- Auth migration coverage: old databases receive user/session auth-version columns with a zero default, preserving existing accounts and pre-version session compatibility without rewriting user rows.
+- Release sequencing: this hardening is safe to merge but must not be promoted with a JWT-only rollback target. Establish the v2-compatible session release as the rollback baseline before promoting authentication-version enforcement.
 - Auth sessions: added server-revocable opaque v2 sessions backed by an additive `auth_sessions` ledger; only SHA-256 token hashes are persisted, never raw bearer tokens.
 - Auth rollback safety: introduced a dual-cookie migration where `dmos_session_v2` is preferred while the existing `dmos_session` JWT remains untouched for JWT-only release rollback compatibility. JWT-only HTTP sessions upgrade additively on use.
 - Auth revocation: a present but invalid/revoked v2 cookie fails closed instead of falling back to a legacy JWT, logout revokes the current v2 session and clears both cookies, and HTTP/WebSocket authentication share the same session resolution rules.
