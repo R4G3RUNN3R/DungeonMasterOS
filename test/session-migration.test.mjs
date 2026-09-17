@@ -116,8 +116,21 @@ test('legacy HTTP sessions upgrade additively without replacing the rollback JWT
 
       if (nextCalls !== 1) throw new Error('auth middleware did not continue');
       if (req.user?.id !== user.id) throw new Error('legacy user was not authenticated');
-      if (!written.some((cookie) => cookie.name === 'dmos_session_v2')) throw new Error('legacy session was not upgraded');
+      const opaqueCookie = written.find((cookie) => cookie.name === 'dmos_session_v2');
+      if (!opaqueCookie) throw new Error('legacy session was not upgraded');
       if (written.some((cookie) => cookie.name === 'dmos_session')) throw new Error('legacy JWT was unexpectedly replaced during upgrade');
+
+      const legacyPayload = JSON.parse(Buffer.from(legacy.split('.')[1], 'base64url').toString('utf8'));
+      const dbMod = await import('better-sqlite3');
+      const sessions = await import('./server/session-service.ts');
+      const db = new dbMod.default(process.env.DATABASE_URL);
+      const row = db.prepare('SELECT expires_at AS expiresAt FROM auth_sessions WHERE token_hash = ?')
+        .get(sessions.hashOpaqueSessionToken(opaqueCookie.value));
+      if (!row) throw new Error('upgraded v2 session row missing');
+      if (Date.parse(row.expiresAt) > legacyPayload.exp * 1000) {
+        throw new Error('legacy upgrade extended the original JWT expiry');
+      }
+      db.close();
     });
   `);
 
