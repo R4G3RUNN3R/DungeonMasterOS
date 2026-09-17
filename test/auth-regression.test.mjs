@@ -74,3 +74,57 @@ test('Google OAuth authorization URL uses the configured callback and state', ()
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
+
+test('current DungeonMaster access accepts either the DungeonMaster role or legacy admin flag', () => {
+  const result = runTsx(`
+    import('./server/auth.ts').then(({ hasDungeonMasterAccess }) => {
+      const cases = [
+        [{ role: 'player', isAdmin: false }, false],
+        [{ role: 'dungeon_master', isAdmin: false }, true],
+        [{ role: 'player', isAdmin: true }, true],
+        [{ role: 'dungeon_master', isAdmin: true }, true],
+      ];
+      for (const [user, expected] of cases) {
+        if (hasDungeonMasterAccess(user) !== expected) {
+          throw new Error('DungeonMaster compatibility contract changed for ' + JSON.stringify(user));
+        }
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('legacy DungeonMaster grant and revoke semantics stay pinned during auth migration', () => {
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+
+  assert.match(
+    auth,
+    /grantDungeonMasterAccess[\s\S]*?role:\s*["']dungeon_master["'][\s\S]*?isAdmin:\s*true[\s\S]*?unlimitedTurns:\s*true/,
+    'grant compatibility must keep role/admin/unlimited access together until the entitlement migration is explicit',
+  );
+  assert.match(
+    auth,
+    /revokeDungeonMasterAccess[\s\S]*?role:\s*["']player["'][\s\S]*?isAdmin:\s*false[\s\S]*?unlimitedTurns:\s*false/,
+    'revoke compatibility must keep role/admin/unlimited access together until the entitlement migration is explicit',
+  );
+});
+
+test('browser session cookie contract remains compatible while session internals evolve', () => {
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+
+  assert.match(auth, /COOKIE_NAME\s*=\s*["']dmos_session["']/);
+  assert.match(auth, /httpOnly:\s*true/);
+  assert.match(auth, /maxAge:\s*7\s*\*\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
+  assert.match(auth, /path:\s*["']\/["']/);
+});
+
+test('current access bypasses stay explicit until permissions and entitlements are separated', () => {
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+
+  assert.match(auth, /requireCanPlay[\s\S]*?hasDungeonMasterAccess\(req\.user\)[\s\S]*?return next\(\)/);
+  assert.match(auth, /allowReadOnlyForExpired[\s\S]*?hasDungeonMasterAccess\(req\.user\)[\s\S]*?return next\(\)/);
+  assert.match(auth, /checkCampaignLimit[\s\S]*?hasDungeonMasterAccess\(user\)[\s\S]*?return next\(\)/);
+  assert.match(auth, /checkTurnLimit[\s\S]*?hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
+  assert.match(auth, /claimTurn[\s\S]*?hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
+});
