@@ -13,23 +13,14 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { refundAiTurn, reserveAiTurn, storage, type AiTurnReservation } from "./storage";
-import {
-  getEffectiveLimits,
-  getAiTurnAllowance,
-  getNextTurnResetAt,
-  isReadOnly,
-  canPlay,
-  TOP_UP_SALES_ENABLED,
-  type TierName,
-  type SubscriptionStatus,
-} from "../shared/tiers";
+import { getNextTurnResetAt } from "../shared/tiers";
 import type { User, PublicUser } from "../shared/schema";
+import { hasDungeonMasterAccess } from "./access-policy";
 import {
-  hasCampaignLimitBypass,
-  hasDungeonMasterAccess,
-  hasSubscriptionBypassAccess,
-  hasUnlimitedAiAccess,
-} from "./access-policy";
+  resolveAiEntitlement,
+  resolveCampaignEntitlement,
+  resolvePlayEntitlement,
+} from "./entitlements";
 
 export { hasDungeonMasterAccess } from "./access-policy";
 
@@ -248,16 +239,13 @@ export function requireCanPlay(req: Request, res: Response, next: NextFunction) 
       code: "UNAUTHENTICATED",
     });
   }
-  if (hasSubscriptionBypassAccess(req.user)) {
-    return next();
-  }
-  const status = req.user.subscriptionStatus as SubscriptionStatus;
-  if (!canPlay(status)) {
+  const entitlement = resolvePlayEntitlement(req.user);
+  if (!entitlement.canPlay) {
     return res.status(402).json({
       message: "Your adventure awaits — subscribe to continue.",
       code: "SUBSCRIPTION_REQUIRED",
-      status,
-      readOnly: isReadOnly(status),
+      status: entitlement.status,
+      readOnly: entitlement.readOnly,
     });
   }
   next();
@@ -268,11 +256,8 @@ export function allowReadOnlyForExpired(req: Request, res: Response, next: NextF
   if (!req.user) {
     return res.status(401).json({ message: "Sign in to continue.", code: "UNAUTHENTICATED" });
   }
-  if (hasSubscriptionBypassAccess(req.user)) {
-    return next();
-  }
-  const status = req.user.subscriptionStatus as SubscriptionStatus;
-  if (isReadOnly(status) && req.method !== "GET") {
+  const entitlement = resolvePlayEntitlement(req.user);
+  if (entitlement.readOnly && req.method !== "GET") {
     return res.status(402).json({
       message: "Your subscription has ended. Subscribe to resume your campaigns.",
       code: "READ_ONLY",
@@ -286,11 +271,9 @@ export function allowReadOnlyForExpired(req: Request, res: Response, next: NextF
 export function checkCampaignLimit(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return next();
   const user = req.user;
-  if (hasCampaignLimitBypass(user)) return next();
-  const tier = user.tier as TierName;
-  const status = user.subscriptionStatus as SubscriptionStatus;
-  const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
-  const limits = getEffectiveLimits(tier, status, trialEndsAt);
+  const entitlement = resolveCampaignEntitlement(user);
+  if (entitlement.unlimited) return next();
+  const limits = entitlement.limits;
 
   const activeCampaigns = storage.getCampaignsByUser(user.id).filter((c) => !c.isArchived);
   if (activeCampaigns.length >= limits.activeCampaigns) {
@@ -308,12 +291,11 @@ export function checkCampaignLimit(req: Request, res: Response, next: NextFuncti
 export function checkTurnLimit(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return next();
   const user = req.user;
-  if (hasUnlimitedAiAccess(user)) return next();
-  const tier = user.tier as TierName;
-  const status = user.subscriptionStatus as SubscriptionStatus;
-  const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
-  const limits = getEffectiveLimits(tier, status, trialEndsAt);
-  const allowance = getAiTurnAllowance(tier, status, trialEndsAt, user.stripeBillingInterval);
+  const entitlement = resolveAiEntitlement(user);
+  if (entitlement.unlimited) return next();
+  const limits = entitlement.limits;
+  const allowance = entitlement.allowance;
+  const tier = user.tier;
   const cadenceText = allowance.cadence === "week" ? "week" : allowance.cadence === "trial" ? "trial" : "month";
 
   const regularExhausted =
@@ -326,7 +308,7 @@ export function checkTurnLimit(req: Request, res: Response, next: NextFunction) 
       limit: allowance.limit,
       used: user.aiTurnsUsedThisMonth,
       bonusRemaining: user.bonusTurns ?? 0,
-      canTopUp: TOP_UP_SALES_ENABLED && tier !== "free",
+      canTopUp: entitlement.canTopUp,
     });
   }
   next();
@@ -337,15 +319,14 @@ export type TurnClaim = AiTurnReservation | "unlimited";
 export function claimTurn(user: User):
   | { ok: true; claim: TurnClaim }
   | { ok: false; body: Record<string, unknown> } {
-  if (hasUnlimitedAiAccess(user)) {
+  const entitlement = resolveAiEntitlement(user);
+  if (entitlement.unlimited) {
     return { ok: true, claim: "unlimited" };
   }
 
-  const tier = user.tier as TierName;
-  const status = user.subscriptionStatus as SubscriptionStatus;
-  const trialEndsAt = user.trialEndsAt ? new Date(user.trialEndsAt) : null;
-  const limits = getEffectiveLimits(tier, status, trialEndsAt);
-  const allowance = getAiTurnAllowance(tier, status, trialEndsAt, user.stripeBillingInterval);
+  const tier = user.tier;
+  const limits = entitlement.limits;
+  const allowance = entitlement.allowance;
   const claim = reserveAiTurn(user.id, allowance.limit);
 
   if (claim) {
@@ -361,7 +342,7 @@ export function claimTurn(user: User):
       limit: allowance.limit,
       used: fresh.aiTurnsUsedThisMonth,
       bonusRemaining: fresh.bonusTurns ?? 0,
-      canTopUp: TOP_UP_SALES_ENABLED && tier !== "free",
+      canTopUp: entitlement.canTopUp,
     },
   };
 }
