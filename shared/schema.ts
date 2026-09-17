@@ -50,6 +50,9 @@ export const users = sqliteTable("users", {
   unlimitedTurns: integer("unlimited_turns", { mode: "boolean" }).notNull().default(false),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
 
+  // Incremented whenever credentials invalidate previously issued sessions.
+  authVersion: integer("auth_version").notNull().default(0),
+
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
