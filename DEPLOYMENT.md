@@ -233,6 +233,14 @@ npm run release:verify
 
 `release:verify` is the canonical local/CI gate. It runs TypeScript checking, the full regression suite (whose `pretest` builds the production artifact), and the production dependency audit at high severity. Pull requests and pushes to `main` run the same gate in GitHub Actions.
 
+### Authentication request hardening
+
+State-changing authentication/account browser requests validate their `Origin` against the canonical `APP_URL`. Keep `APP_URL` set to the actual public origin, including the correct scheme and hostname. Non-browser clients that omit `Origin` remain supported.
+
+Authentication abuse controls are in-memory fixed-window limiters. They are appropriate for the current single-process V1 deployment and are deliberately bounded in size, but they reset on application restart and are not shared between multiple application instances. Do not horizontally scale DMOS auth behind multiple Node processes without replacing these counters with a shared store or equivalent edge-level limiter.
+
+The production reverse proxy must continue to be the only public path to the application process so Express `trust proxy = 1` resolves the client address from the expected single proxy hop.
+
 ### Authentication continuity invariant
 
 Google-linked users are durable production identities. A release must never remove or silently detach Google authentication while `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured. The regression suite must retain coverage for the Google auth module, route registration, storage lookup, schema identity fields, UI entry point, callback URI/state handling, and public-user redaction.
