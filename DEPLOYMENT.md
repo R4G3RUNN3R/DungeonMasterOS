@@ -6,7 +6,7 @@
 - **Database:** SQLite (auto-created, no setup required)
 - **Backend:** Express + WebSocket
 - **Frontend:** Vite/React (built to `dist/public`, served as static files by Express)
-- **Auth:** JWT in httpOnly cookies + Google OAuth for linked identities
+- **Auth:** revocable opaque server sessions in httpOnly cookies, with temporary legacy JWT rollback compatibility + Google OAuth for linked identities
 - **Payments:** Stripe Checkout + Customer Portal
 - **AI:** Anthropic Claude (via API)
 
@@ -47,6 +47,8 @@ nano .env  # Fill in all required values
 
 Required values:
 - `JWT_SECRET` — long random string (generate with: `openssl rand -hex 64`)
+- `AUTH_LEGACY_SESSION_ACCEPT` — keep `true` during the v2 compatibility window so pre-upgrade JWT-only clients continue to work
+- `AUTH_LEGACY_SESSION_ISSUE` — keep `true` while the rollback target is an older JWT-only release; new logins then receive both legacy and v2 cookies
 - `GOOGLE_CLIENT_ID` — Google OAuth client ID for existing and new Google-linked accounts
 - `GOOGLE_CLIENT_SECRET` — Google OAuth client secret
 - `GOOGLE_OAUTH_REDIRECT_URL` — optional explicit callback; otherwise `${APP_URL}/api/auth/google/callback`
@@ -244,6 +246,22 @@ Before promotion and again after cutover:
 - `googleId` must never appear in the public user payload.
 
 Treat failure of any authentication-continuity check as a release blocker. Roll back application code without rolling back user data unless a separately verified database rollback is actually required.
+
+### Revocable session migration and rollback invariant
+
+The v2 session rollout is deliberately additive:
+
+- `dmos_session_v2` is a random opaque bearer token. Only its SHA-256 hash is stored in the additive `auth_sessions` table.
+- `dmos_session` remains the legacy signed JWT during the initial compatibility window.
+- HTTP and WebSocket authentication prefer a valid v2 session. Legacy JWT fallback is used only when no v2 cookie is present.
+- If a v2 cookie is present but revoked or invalid, DMOS must not fall back to the legacy JWT beside it. This prevents a revoked v2 session from being resurrected.
+- JWT-only HTTP sessions are upgraded additively by setting `dmos_session_v2`; the existing JWT cookie is left untouched so the previous release can still authenticate the browser after an application rollback.
+- Logout revokes the current v2 session and clears both cookies.
+- While the rollback target is JWT-only, keep both `AUTH_LEGACY_SESSION_ACCEPT=true` and `AUTH_LEGACY_SESSION_ISSUE=true`.
+- Do not stop issuing the legacy cookie until the selected rollback release also understands v2 sessions. After that point, issuance may be disabled while acceptance remains enabled for at least the maximum seven-day legacy lifetime; only then may legacy acceptance be disabled.
+- During the compatibility window, a copied legacy JWT retains its historical non-revocable lifetime. This is a bounded migration risk, not a property of the final session architecture.
+
+The `auth_sessions` migration is additive and does not rewrite users, credentials, campaigns, billing records, or existing JWT cookies. A code rollback therefore does not require a database rollback.
 
 Then:
 
