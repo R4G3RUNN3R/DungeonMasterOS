@@ -62,6 +62,7 @@ export type AuthSessionRecord = {
   revokedAt: string | null;
   userAgent: string | null;
   ipHash: string | null;
+  authVersion: number;
 };
 
 export type NewAuthSessionRecord = Omit<AuthSessionRecord, "id" | "revokedAt"> & {
@@ -129,7 +130,8 @@ const AUTH_SESSION_SELECT = `
     expires_at AS expiresAt,
     revoked_at AS revokedAt,
     user_agent AS userAgent,
-    ip_hash AS ipHash
+    ip_hash AS ipHash,
+    auth_version AS authVersion
   FROM auth_sessions
 `;
 
@@ -144,8 +146,9 @@ export function createAuthSessionRecord(input: NewAuthSessionRecord): AuthSessio
       expires_at,
       revoked_at,
       user_agent,
-      ip_hash
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ip_hash,
+      auth_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.tokenHash,
     input.userId,
@@ -156,6 +159,7 @@ export function createAuthSessionRecord(input: NewAuthSessionRecord): AuthSessio
     input.revokedAt ?? null,
     input.userAgent,
     input.ipHash,
+    input.authVersion,
   );
 
   return sqlite
@@ -187,6 +191,30 @@ export function revokeAllAuthSessionsForUser(userId: number, revokedAt: string):
     .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
     .run(revokedAt, userId);
   return result.changes;
+}
+
+export function updateUserPasswordAndBumpAuthVersion(
+  userId: number,
+  passwordHash: string,
+): number | null {
+  const transaction = sqlite.transaction(() => {
+    const updated = sqlite
+      .prepare(`
+        UPDATE users
+        SET password_hash = ?, auth_version = auth_version + 1
+        WHERE id = ?
+      `)
+      .run(passwordHash, userId);
+
+    if (updated.changes === 0) return null;
+
+    const row = sqlite
+      .prepare("SELECT auth_version AS authVersion FROM users WHERE id = ?")
+      .get(userId) as { authVersion: number } | undefined;
+    return row?.authVersion ?? null;
+  });
+
+  return transaction();
 }
 
 export function applyWebhookEventOnce(
@@ -245,6 +273,7 @@ export function runMigrations() {
       onboarding_complete INTEGER NOT NULL DEFAULT 0,
       unlimited_turns INTEGER NOT NULL DEFAULT 0,
       is_admin INTEGER NOT NULL DEFAULT 0,
+      auth_version INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -258,7 +287,8 @@ export function runMigrations() {
       expires_at TEXT NOT NULL,
       revoked_at TEXT,
       user_agent TEXT,
-      ip_hash TEXT
+      ip_hash TEXT,
+      auth_version INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id
@@ -473,7 +503,10 @@ export function runMigrations() {
   addColumnIfMissing("users", "google_id", "TEXT");
   addColumnIfMissing("users", "google_email", "TEXT");
   addColumnIfMissing("users", "avatar_url", "TEXT");
+  addColumnIfMissing("users", "auth_version", "INTEGER NOT NULL DEFAULT 0");
   sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique ON users(google_id) WHERE google_id IS NOT NULL");
+
+  addColumnIfMissing("auth_sessions", "auth_version", "INTEGER NOT NULL DEFAULT 0");
 
   addColumnIfMissing("campaigns", "is_archived", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "combat_style", "TEXT NOT NULL DEFAULT 'cinematic'");
