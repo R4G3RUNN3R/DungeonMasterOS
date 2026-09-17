@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-09-17
+- Auth architecture: introduced a dedicated access-policy compatibility boundary so DungeonMaster access, subscription bypass, campaign-limit bypass, and unlimited AI access are consumed as explicit capabilities instead of repeated legacy flag combinations.
+- Auth compatibility: the new policy deliberately preserves existing V1 effective access, including legacy admin-to-DungeonMaster compatibility and standalone unlimited-turn access; no session, login, Google OAuth, billing, or campaign ownership contract changes in this step.
+- Regression coverage: added executable capability-mapping tests and guards preventing the legacy raw access expression from being duplicated back into auth middleware.
+- Risk: low-to-moderate. Authorization code paths were refactored, but the capability mapping is behavior-preserving and remains protected by the release gate.
 - SEO server rendering: production now returns route-aware HTML metadata for `/`, `/how-it-works`, and `/pricing` instead of serving the homepage canonical for every clean route.
 - SEO crawlability: the three public marketing routes now include concise semantic fallback content and a crawlable `Powered by Voidsmith Industries` publisher link in the initial HTML response before JavaScript runs.
 - SEO indexing boundaries: authentication and application routes now receive `noindex, follow` in the server response and no longer leak the homepage canonical before React boots.
