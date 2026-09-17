@@ -1,7 +1,8 @@
 /**
  * Auth + Subscription middleware for DMOS
  *
- * - JWT stored in httpOnly cookie (7-day expiry)
+ * - Revocable opaque session stored in httpOnly cookie (7-day expiry)
+ * - Legacy JWT cookie retained temporarily for rollback-safe migration
  * - bcrypt password hashing (cost 12)
  * - Trial auto-expiry on each request
  * - Monthly usage counter auto-reset
@@ -21,11 +22,19 @@ import {
   resolveCampaignEntitlement,
   resolvePlayEntitlement,
 } from "./entitlements";
+import {
+  createOpaqueSession,
+  resolveOpaqueSession,
+  revokeOpaqueSession,
+  type SessionAuthMethod,
+} from "./session-service";
 
 export { hasDungeonMasterAccess } from "./access-policy";
 
 const DEV_JWT_SECRET = "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
+const OPAQUE_COOKIE_NAME = "dmos_session_v2";
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET?.trim();
@@ -109,12 +118,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-// ── JWT utils ──────────────────────────────────────────────────────────────
+// ── Legacy JWT compatibility ───────────────────────────────────────────────
 export function signToken(userId: number): string {
   return jwt.sign({ sub: userId }, getJwtSecret(), { expiresIn: "7d" });
 }
 
-export function verifyToken(token: string): { sub: number } | null {
+type VerifiedLegacySession = {
+  sub: number;
+  expiresAt: Date | null;
+};
+
+function verifyLegacySession(token: string): VerifiedLegacySession | null {
   try {
     const payload = jwt.verify(token, getJwtSecret());
     const sub =
@@ -126,31 +140,142 @@ export function verifyToken(token: string): { sub: number } | null {
       return null;
     }
 
-    return { sub };
+    const exp =
+      typeof payload === "string" || typeof payload.exp !== "number"
+        ? null
+        : new Date(payload.exp * 1000);
+
+    return {
+      sub,
+      expiresAt: exp && Number.isFinite(exp.getTime()) ? exp : null,
+    };
   } catch {
     return null;
   }
 }
 
-// ── Cookie helpers ─────────────────────────────────────────────────────────
-export function setSessionCookie(res: Response, userId: number) {
-  const token = signToken(userId);
-  const secureCookies = useSecureCookies();
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: secureCookies,
-    sameSite: secureCookies ? "strict" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: "/",
-    domain: process.env.COOKIE_DOMAIN || undefined,
-  });
+export function verifyToken(token: string): { sub: number } | null {
+  const verified = verifyLegacySession(token);
+  return verified ? { sub: verified.sub } : null;
 }
 
-export function clearSessionCookie(res: Response) {
-  res.clearCookie(COOKIE_NAME, {
+function envFlag(name: string, defaultValue: boolean): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  if (!value) return defaultValue;
+  if (["1", "true", "yes", "on"].includes(value)) return true;
+  if (["0", "false", "no", "off"].includes(value)) return false;
+  return defaultValue;
+}
+
+function acceptsLegacySessions(): boolean {
+  return envFlag("AUTH_LEGACY_SESSION_ACCEPT", true);
+}
+
+function issuesLegacySessions(): boolean {
+  return envFlag("AUTH_LEGACY_SESSION_ISSUE", true);
+}
+
+function sessionCookieOptions() {
+  const secureCookies = useSecureCookies();
+  return {
+    httpOnly: true as const,
+    secure: secureCookies,
+    sameSite: (secureCookies ? "strict" : "lax") as "strict" | "lax",
+    maxAge: SESSION_MAX_AGE_MS,
     path: "/",
     domain: process.env.COOKIE_DOMAIN || undefined,
-  });
+  };
+}
+
+function setOpaqueSessionCookie(res: Response, token: string): void {
+  res.cookie(OPAQUE_COOKIE_NAME, token, sessionCookieOptions());
+}
+
+function setLegacySessionCookie(res: Response, token: string): void {
+  res.cookie(COOKIE_NAME, token, sessionCookieOptions());
+}
+
+// ── Cookie helpers ─────────────────────────────────────────────────────────
+export function setSessionCookie(
+  res: Response,
+  userId: number,
+  authMethod: SessionAuthMethod = "password",
+): void {
+  const legacyToken = issuesLegacySessions() ? signToken(userId) : null;
+
+  try {
+    const { token } = createOpaqueSession(userId, authMethod);
+    setOpaqueSessionCookie(res, token);
+  } catch (error) {
+    // During the compatibility window the legacy session remains authoritative.
+    // If opaque persistence is unavailable, preserve login availability rather
+    // than converting an additive migration into an outage.
+    console.error("Opaque session creation failed; using legacy session compatibility.", error);
+    if (!legacyToken) {
+      throw error;
+    }
+  }
+
+  if (legacyToken) {
+    setLegacySessionCookie(res, legacyToken);
+  }
+}
+
+export function revokeRequestSession(req: Request): boolean {
+  const token = req.cookies?.[OPAQUE_COOKIE_NAME];
+  return typeof token === "string" && token.length > 0
+    ? revokeOpaqueSession(token)
+    : false;
+}
+
+export function clearSessionCookie(res: Response): void {
+  const baseOptions = {
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  };
+  res.clearCookie(OPAQUE_COOKIE_NAME, baseOptions);
+  res.clearCookie(COOKIE_NAME, baseOptions);
+}
+
+function decodeCookieValue(rawValue: string): string | null {
+  try {
+    return decodeURIComponent(rawValue);
+  } catch {
+    return null;
+  }
+}
+
+function getCookieValueFromHeader(
+  cookieHeader: string | undefined,
+  cookieName: string,
+): string | undefined {
+  if (!cookieHeader) return undefined;
+  const prefix = `${cookieName}=`;
+  const part = cookieHeader
+    .split(";")
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith(prefix));
+  if (!part) return undefined;
+  return decodeCookieValue(part.slice(prefix.length)) ?? "";
+}
+
+export function getSessionUserIdFromCookieHeader(
+  cookieHeader: string | undefined,
+): number | null {
+  const opaqueToken = getCookieValueFromHeader(cookieHeader, OPAQUE_COOKIE_NAME);
+  if (opaqueToken !== undefined) {
+    const session = resolveOpaqueSession(opaqueToken, { touch: false });
+    if (!session) return null;
+    return storage.getUser(session.userId)?.id ?? null;
+  }
+
+  if (!acceptsLegacySessions()) return null;
+
+  const legacyToken = getCookieValueFromHeader(cookieHeader, COOKIE_NAME);
+  if (!legacyToken) return null;
+  const payload = verifyToken(legacyToken);
+  if (!payload) return null;
+  return storage.getUser(payload.sub)?.id ?? null;
 }
 
 // ── Request augmentation ───────────────────────────────────────────────────
@@ -163,15 +288,40 @@ declare global {
   }
 }
 
-// ── Middleware: attach user from JWT cookie ────────────────────────────────
-export function attachUser(req: Request, _res: Response, next: NextFunction) {
-  const token = req.cookies?.[COOKIE_NAME];
-  if (!token) return next();
+// ── Middleware: attach user from v2 session or legacy JWT ──────────────────
+export function attachUser(req: Request, res: Response, next: NextFunction) {
+  const opaqueToken = req.cookies?.[OPAQUE_COOKIE_NAME];
+  let rawUser: User | undefined;
 
-  const payload = verifyToken(token);
-  if (!payload) return next();
+  if (typeof opaqueToken === "string") {
+    const session = resolveOpaqueSession(opaqueToken);
+    if (!session) {
+      // Never fall back to a legacy JWT when a v2 cookie is present but invalid
+      // or revoked. Otherwise revoking the v2 session could resurrect it.
+      return next();
+    }
+    rawUser = storage.getUser(session.userId);
+  } else if (acceptsLegacySessions()) {
+    const legacyToken = req.cookies?.[COOKIE_NAME];
+    if (typeof legacyToken !== "string" || !legacyToken) return next();
 
-  const rawUser = storage.getUser(payload.sub);
+    const legacySession = verifyLegacySession(legacyToken);
+    if (!legacySession) return next();
+
+    rawUser = storage.getUser(legacySession.sub);
+    if (rawUser) {
+      try {
+        const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
+          expiresAt: legacySession.expiresAt,
+        });
+        setOpaqueSessionCookie(res, token);
+      } catch (error) {
+        // A valid legacy session must remain usable during the migration window.
+        console.error("Legacy session upgrade to opaque session failed.", error);
+      }
+    }
+  }
+
   const user = rawUser ? syncDungeonMasterFlags(rawUser) : undefined;
   if (!user) return next();
 

@@ -27,7 +27,8 @@ import {
   attachUser,
   requireAuth,
   requireDungeonMaster,
-  verifyToken,
+  getSessionUserIdFromCookieHeader,
+  revokeRequestSession,
   requireCanPlay,
   checkCampaignLimit,
   claimTurn,
@@ -96,26 +97,7 @@ function getVisitorId(req: Request): string {
 }
 
 function getWebSocketUserId(cookieHeader: string | undefined): number | null {
-  if (!cookieHeader) return null;
-  const sessionPart = cookieHeader
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("dmos_session="));
-  if (!sessionPart) return null;
-
-  const rawToken = sessionPart.slice("dmos_session=".length);
-  if (!rawToken) return null;
-
-  let token: string;
-  try {
-    token = decodeURIComponent(rawToken);
-  } catch {
-    return null;
-  }
-
-  const payload = verifyToken(token);
-  if (!payload) return null;
-  return storage.getUser(payload.sub)?.id ?? null;
+  return getSessionUserIdFromCookieHeader(cookieHeader);
 }
 
 function userCanAccessCampaign(userId: number, campaignId: number): boolean {
@@ -758,7 +740,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const profile = await exchangeGoogleCodeForProfile(code);
       const user = await findOrCreateGoogleUser(profile);
-      setSessionCookie(res, user.id);
+      setSessionCookie(res, user.id, "google");
       return res.redirect(getGooglePostLoginRedirect());
     } catch (err: any) {
       console.error("Google auth error:", err);
@@ -802,7 +784,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         onboardingComplete: false,
       } as any);
 
-      setSessionCookie(res, user.id);
+      setSessionCookie(res, user.id, "register");
       return res.status(201).json({ user: toPublicUser(user) });
     } catch (err: any) {
       console.error("Register error:", err);
@@ -827,11 +809,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) return res.status(401).json({ message: "Invalid email or password." });
 
-    setSessionCookie(res, user.id);
+    setSessionCookie(res, user.id, "password");
     return res.json({ user: toPublicUser(user) });
   });
 
-  app.post("/api/auth/logout", (_req, res) => {
+  app.post("/api/auth/logout", (req, res) => {
+    revokeRequestSession(req);
     clearSessionCookie(res);
     return res.json({ ok: true });
   });

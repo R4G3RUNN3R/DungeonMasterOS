@@ -1,6 +1,12 @@
 # Changelog
 
 ## 2026-09-17
+- Auth sessions: added server-revocable opaque v2 sessions backed by an additive `auth_sessions` ledger; only SHA-256 token hashes are persisted, never raw bearer tokens.
+- Auth rollback safety: introduced a dual-cookie migration where `dmos_session_v2` is preferred while the existing `dmos_session` JWT remains untouched for JWT-only release rollback compatibility. JWT-only HTTP sessions upgrade additively on use.
+- Auth revocation: a present but invalid/revoked v2 cookie fails closed instead of falling back to a legacy JWT, logout revokes the current v2 session and clears both cookies, and HTTP/WebSocket authentication share the same session resolution rules.
+- Auth operations: added independent legacy-session acceptance/issuance controls so JWT compatibility can be retired in stages only after the rollback target is v2-capable and the seven-day legacy lifetime has drained.
+- Auth migration coverage: added hashed-token, immediate-revocation, dual-cookie, legacy-upgrade, no-resurrection, WebSocket, logout, compatibility-disable, and old-database additive-migration regression checks.
+- Risk: moderate and intentionally staged. Legacy JWT behavior remains available during the compatibility window; no password, Google identity, billing, campaign, or gameplay data is rewritten.
 - Auth architecture: introduced dedicated access-policy and entitlement boundaries so DungeonMaster access, subscription state, campaign limits, and AI quota are resolved as explicit concepts instead of repeated legacy flag/product-rule combinations.
 - Auth compatibility: the new policy deliberately preserves existing V1 effective access, including legacy admin-to-DungeonMaster compatibility and standalone unlimited-turn access; no session, login, Google OAuth, billing, or campaign ownership contract changes in this step.
 - Regression coverage: added executable capability and entitlement mapping tests, including proof that standalone unlimited-turn access does not silently become subscription or campaign-limit bypass.

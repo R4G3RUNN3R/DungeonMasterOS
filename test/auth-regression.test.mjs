@@ -110,12 +110,14 @@ test('legacy DungeonMaster grant and revoke semantics stay pinned during auth mi
   );
 });
 
-test('browser session cookie contract remains compatible while session internals evolve', () => {
+test('browser session cookie contract remains rollback-compatible while v2 sessions migrate', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
 
   assert.match(auth, /COOKIE_NAME\s*=\s*["']dmos_session["']/);
+  assert.match(auth, /OPAQUE_COOKIE_NAME\s*=\s*["']dmos_session_v2["']/);
+  assert.match(auth, /SESSION_MAX_AGE_MS\s*=\s*7\s*\*\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
   assert.match(auth, /httpOnly:\s*true/);
-  assert.match(auth, /maxAge:\s*7\s*\*\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
+  assert.match(auth, /maxAge:\s*SESSION_MAX_AGE_MS/);
   assert.match(auth, /path:\s*["']\/["']/);
 });
 
@@ -216,4 +218,11 @@ test('auth middleware consumes entitlement resolvers instead of duplicating prod
   assert.match(auth, /resolveCampaignEntitlement\(user\)/);
   assert.match(auth, /resolveAiEntitlement\(user\)/);
   assert.doesNotMatch(auth, /hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
+});
+
+test('WebSocket authentication uses the same dual-session resolver as HTTP auth', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+
+  assert.match(routes, /getSessionUserIdFromCookieHeader\(cookieHeader\)/);
+  assert.doesNotMatch(routes, /const payload = verifyToken\(token\)/);
 });
