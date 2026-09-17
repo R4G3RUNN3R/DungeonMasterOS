@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-17
+- SEO server rendering: production now returns route-aware HTML metadata for `/`, `/how-it-works`, and `/pricing` instead of serving the homepage canonical for every clean route.
+- SEO crawlability: the three public marketing routes now include concise semantic fallback content and a crawlable `Powered by Voidsmith Industries` publisher link in the initial HTML response before JavaScript runs.
+- SEO indexing boundaries: authentication and application routes now receive `noindex, follow` in the server response and no longer leak the homepage canonical before React boots.
+- Regression coverage: added production-server tests for self-canonical public routes, pre-JavaScript public content/publisher attribution, and private-route noindex behavior.
+- Risk: low. No gameplay, authentication authority, billing, WebSocket, database, campaign, or AI logic changed.
+
 ## 2026-09-16
 - SEO routing: replaced hash-only public routing with clean browser paths so `/how-it-works` and `/pricing` can be requested directly by users and crawlers, while preserving legacy `#/...` links through a compatibility redirect.
 - SEO metadata: public root, how-it-works, and pricing routes now set route-specific titles, descriptions, canonicals, Open Graph/Twitter metadata, and index/follow directives; authenticated and account/game surfaces are marked `noindex, follow` in the rendered client.
