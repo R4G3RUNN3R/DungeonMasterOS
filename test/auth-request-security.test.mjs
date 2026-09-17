@@ -1,120 +1,126 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 
-function fakeResponse() {
-  return {
-    statusCode: 200,
-    body: null,
-    headers: new Map(),
-    setHeader(name, value) {
-      this.headers.set(String(name).toLowerCase(), String(value));
-    },
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(body) {
-      this.body = body;
-      return this;
-    },
-  };
+function runTsx(source, extraEnv = {}) {
+  return spawnSync(path.join(repoRoot, 'node_modules', '.bin', 'tsx'), ['-e', source], {
+    cwd: repoRoot,
+    env: { ...process.env, NODE_ENV: 'test', ...extraEnv },
+    encoding: 'utf8',
+  });
 }
 
-function fakeRequest({ ip = '203.0.113.10', body = {}, origin, host = 'dungeonmaster-os.com', protocol = 'https' } = {}) {
-  return {
-    ip,
-    body,
-    protocol,
-    socket: { remoteAddress: ip },
-    get(name) {
-      const key = String(name).toLowerCase();
-      if (key === 'origin') return origin;
-      if (key === 'host') return host;
-      return undefined;
-    },
-  };
-}
+test('fixed-window auth throttling enforces allowance, Retry-After, and key isolation', () => {
+  const result = runTsx(`
+    import('./server/security.ts').then(({ createFixedWindowRateLimiter }) => {
+      function response() {
+        return {
+          statusCode: 200,
+          body: null,
+          headers: new Map(),
+          setHeader(name, value) { this.headers.set(String(name).toLowerCase(), String(value)); },
+          status(code) { this.statusCode = code; return this; },
+          json(body) { this.body = body; return this; },
+        };
+      }
 
-test('fixed-window limiter blocks only after the configured allowance and emits Retry-After', async () => {
-  const { createFixedWindowRateLimiter } = await import('../server/security.ts');
-  const limiter = createFixedWindowRateLimiter({
-    name: 'test',
-    windowMs: 60_000,
-    maxAttempts: 2,
-    key: (req) => req.ip,
-  });
+      function request(ip, email) {
+        return {
+          ip,
+          body: { email },
+          protocol: 'https',
+          socket: { remoteAddress: ip },
+          get() { return undefined; },
+        };
+      }
 
-  const req = fakeRequest();
-  let nextCalls = 0;
+      const limiter = createFixedWindowRateLimiter({
+        name: 'test',
+        windowMs: 60000,
+        maxAttempts: 2,
+        key: (req) => req.ip,
+      });
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const res = fakeResponse();
-    limiter(req, res, () => { nextCalls += 1; });
-    assert.equal(res.statusCode, 200);
-  }
+      const req = request('203.0.113.10', 'first@example.invalid');
+      let nextCalls = 0;
 
-  const blocked = fakeResponse();
-  limiter(req, blocked, () => { nextCalls += 1; });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const res = response();
+        limiter(req, res, () => { nextCalls += 1; });
+        if (res.statusCode !== 200) throw new Error('allowed request was blocked');
+      }
 
-  assert.equal(nextCalls, 2);
-  assert.equal(blocked.statusCode, 429);
-  assert.equal(blocked.body?.code, 'RATE_LIMITED');
-  assert.ok(Number(blocked.headers.get('retry-after')) >= 1);
+      const blocked = response();
+      limiter(req, blocked, () => { nextCalls += 1; });
+
+      if (nextCalls !== 2) throw new Error('rate limiter allowed too many requests');
+      if (blocked.statusCode !== 429) throw new Error('rate limiter did not return 429');
+      if (blocked.body?.code !== 'RATE_LIMITED') throw new Error('rate limiter response code changed');
+      if (Number(blocked.headers.get('retry-after')) < 1) throw new Error('Retry-After header missing');
+
+      const identityLimiter = createFixedWindowRateLimiter({
+        name: 'identity-test',
+        windowMs: 60000,
+        maxAttempts: 1,
+        key: (candidate) => String(candidate.body?.email || '').toLowerCase(),
+      });
+
+      let identityNext = 0;
+      identityLimiter(request('203.0.113.10', 'first@example.invalid'), response(), () => { identityNext += 1; });
+      identityLimiter(request('203.0.113.10', 'second@example.invalid'), response(), () => { identityNext += 1; });
+      if (identityNext !== 2) throw new Error('independent identities shared a bucket');
+    });
+  `);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('rate-limit identities are isolated from one another', async () => {
-  const { createFixedWindowRateLimiter } = await import('../server/security.ts');
-  const limiter = createFixedWindowRateLimiter({
-    name: 'identity-test',
-    windowMs: 60_000,
-    maxAttempts: 1,
-    key: (req) => String(req.body?.email || '').toLowerCase(),
+test('trusted-origin validation accepts canonical and origin-less clients but rejects cross-origin browsers', () => {
+  const result = runTsx(`
+    import('./server/security.ts').then(({ requireTrustedOrigin }) => {
+      function response() {
+        return {
+          statusCode: 200,
+          body: null,
+          setHeader() {},
+          status(code) { this.statusCode = code; return this; },
+          json(body) { this.body = body; return this; },
+        };
+      }
+
+      function request(origin) {
+        return {
+          protocol: 'https',
+          socket: { remoteAddress: '203.0.113.10' },
+          get(name) {
+            const key = String(name).toLowerCase();
+            if (key === 'origin') return origin;
+            if (key === 'host') return 'dungeonmaster-os.com';
+            return undefined;
+          },
+        };
+      }
+
+      let allowed = 0;
+      requireTrustedOrigin(request('https://dungeonmaster-os.com'), response(), () => { allowed += 1; });
+      requireTrustedOrigin(request(undefined), response(), () => { allowed += 1; });
+
+      const rejected = response();
+      requireTrustedOrigin(request('https://evil.example'), rejected, () => { allowed += 1; });
+
+      if (allowed !== 2) throw new Error('trusted-origin allow behavior changed');
+      if (rejected.statusCode !== 403) throw new Error('cross-origin request was not rejected');
+      if (rejected.body?.code !== 'ORIGIN_NOT_ALLOWED') throw new Error('origin rejection code changed');
+    });
+  `, {
+    APP_URL: 'https://dungeonmaster-os.com/app/path',
   });
 
-  let nextCalls = 0;
-  limiter(fakeRequest({ body: { email: 'first@example.invalid' } }), fakeResponse(), () => { nextCalls += 1; });
-  limiter(fakeRequest({ body: { email: 'second@example.invalid' } }), fakeResponse(), () => { nextCalls += 1; });
-
-  assert.equal(nextCalls, 2);
-});
-
-test('trusted-origin middleware accepts canonical and origin-less clients but rejects cross-origin browsers', async () => {
-  const previousAppUrl = process.env.APP_URL;
-  process.env.APP_URL = 'https://dungeonmaster-os.com/app/path';
-
-  try {
-    const { requireTrustedOrigin } = await import('../server/security.ts');
-
-    let allowed = 0;
-    requireTrustedOrigin(
-      fakeRequest({ origin: 'https://dungeonmaster-os.com' }),
-      fakeResponse(),
-      () => { allowed += 1; },
-    );
-    requireTrustedOrigin(
-      fakeRequest({ origin: undefined }),
-      fakeResponse(),
-      () => { allowed += 1; },
-    );
-
-    const rejected = fakeResponse();
-    requireTrustedOrigin(
-      fakeRequest({ origin: 'https://evil.example' }),
-      rejected,
-      () => { allowed += 1; },
-    );
-
-    assert.equal(allowed, 2);
-    assert.equal(rejected.statusCode, 403);
-    assert.equal(rejected.body?.code, 'ORIGIN_NOT_ALLOWED');
-  } finally {
-    if (previousAppUrl === undefined) delete process.env.APP_URL;
-    else process.env.APP_URL = previousAppUrl;
-  }
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('all state-changing auth routes consume the intended origin and throttle middleware', () => {
