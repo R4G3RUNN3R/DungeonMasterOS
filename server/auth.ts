@@ -295,7 +295,6 @@ export function checkTurnLimit(req: Request, res: Response, next: NextFunction) 
   if (entitlement.unlimited) return next();
   const limits = entitlement.limits;
   const allowance = entitlement.allowance;
-  const tier = user.tier;
   const cadenceText = allowance.cadence === "week" ? "week" : allowance.cadence === "trial" ? "trial" : "month";
 
   const regularExhausted =
@@ -324,7 +323,6 @@ export function claimTurn(user: User):
     return { ok: true, claim: "unlimited" };
   }
 
-  const tier = user.tier;
   const limits = entitlement.limits;
   const allowance = entitlement.allowance;
   const claim = reserveAiTurn(user.id, allowance.limit);
