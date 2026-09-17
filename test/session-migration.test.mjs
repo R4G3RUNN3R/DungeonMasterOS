@@ -252,3 +252,73 @@ test('legacy session compatibility can be disabled independently after the migra
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
+
+
+test('credential rotation invalidates both pre-version legacy JWTs and existing v2 sessions', () => {
+  const result = runTsx(`
+    import('./server/storage.ts').then(async (storageMod) => {
+      storageMod.runMigrations();
+      const auth = await import('./server/auth.ts');
+      const sessions = await import('./server/session-service.ts');
+      const jwtMod = await import('jsonwebtoken');
+      const jwt = jwtMod.default;
+
+      const user = storageMod.storage.createUser({
+        email: 'auth-version@example.invalid',
+        username: 'auth_version_user',
+        passwordHash: 'old-hash',
+      });
+
+      if (user.authVersion !== 0) throw new Error('new user auth version did not start at zero');
+
+      const opaque = sessions.createOpaqueSession(user.id, 'password', {
+        authVersion: user.authVersion,
+      }).token;
+      const preVersionLegacy = jwt.sign(
+        { sub: user.id },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' },
+      );
+
+      const opaqueHeader = 'dmos_session_v2=' + encodeURIComponent(opaque);
+      const legacyHeader = 'dmos_session=' + encodeURIComponent(preVersionLegacy);
+
+      if (auth.getSessionUserIdFromCookieHeader(opaqueHeader) !== user.id) {
+        throw new Error('current-version v2 session did not authenticate');
+      }
+      if (auth.getSessionUserIdFromCookieHeader(legacyHeader) !== user.id) {
+        throw new Error('pre-version legacy JWT was not accepted for auth version zero');
+      }
+
+      const nextVersion = storageMod.updateUserPasswordAndBumpAuthVersion(user.id, 'new-hash');
+      if (nextVersion !== 1) throw new Error('credential rotation did not bump auth version to one');
+
+      if (auth.getSessionUserIdFromCookieHeader(opaqueHeader) !== null) {
+        throw new Error('old v2 session survived credential rotation');
+      }
+      if (auth.getSessionUserIdFromCookieHeader(legacyHeader) !== null) {
+        throw new Error('old legacy JWT survived credential rotation');
+      }
+
+      const freshOpaque = sessions.createOpaqueSession(user.id, 'password', {
+        authVersion: nextVersion,
+      }).token;
+      const freshLegacy = auth.signToken(user.id, nextVersion);
+
+      if (auth.getSessionUserIdFromCookieHeader(
+        'dmos_session_v2=' + encodeURIComponent(freshOpaque)
+      ) !== user.id) {
+        throw new Error('fresh v2 session failed after credential rotation');
+      }
+      if (auth.getSessionUserIdFromCookieHeader(
+        'dmos_session=' + encodeURIComponent(freshLegacy)
+      ) !== user.id) {
+        throw new Error('fresh legacy compatibility JWT failed after credential rotation');
+      }
+    });
+  `, {
+    JWT_SECRET: 'test-auth-version-secret-with-enough-entropy',
+  });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});

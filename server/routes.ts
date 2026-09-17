@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage";
+import { storage, updateUserPasswordAndBumpAuthVersion } from "./storage";
 import {
   generateDMResponse,
   generateOpeningScene,
@@ -37,6 +37,7 @@ import {
   revokeDungeonMasterAccess,
   toPublicUser,
 } from "./auth";
+import { revokeAllOpaqueSessionsForUser } from "./session-service";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleCodeForProfile,
@@ -740,7 +741,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const profile = await exchangeGoogleCodeForProfile(code);
       const user = await findOrCreateGoogleUser(profile);
-      setSessionCookie(res, user.id, "google");
+      setSessionCookie(res, user.id, "google", user.authVersion);
       return res.redirect(getGooglePostLoginRedirect());
     } catch (err: any) {
       console.error("Google auth error:", err);
@@ -784,7 +785,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         onboardingComplete: false,
       } as any);
 
-      setSessionCookie(res, user.id, "register");
+      setSessionCookie(res, user.id, "register", user.authVersion);
       return res.status(201).json({ user: toPublicUser(user) });
     } catch (err: any) {
       console.error("Register error:", err);
@@ -809,7 +810,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) return res.status(401).json({ message: "Invalid email or password." });
 
-    setSessionCookie(res, user.id, "password");
+    setSessionCookie(res, user.id, "password", user.authVersion);
     return res.json({ user: toPublicUser(user) });
   });
 
@@ -897,7 +898,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!valid) return res.status(401).json({ message: "Current password is incorrect." });
 
     const passwordHash = await hashPassword(newPassword);
-    storage.updateUser(user.id, { passwordHash } as any);
+    const authVersion = updateUserPasswordAndBumpAuthVersion(user.id, passwordHash);
+    if (authVersion === null) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    revokeAllOpaqueSessionsForUser(user.id);
+    setSessionCookie(res, user.id, "password", authVersion);
     return res.json({ ok: true });
   });
 
@@ -947,8 +954,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const passwordHash = await hashPassword(newPassword);
-    storage.updateUser(resetToken.userId, { passwordHash } as any);
+    const authVersion = updateUserPasswordAndBumpAuthVersion(resetToken.userId, passwordHash);
+    if (authVersion === null) {
+      return res.status(400).json({ message: "Invalid or expired reset link." });
+    }
+
+    revokeAllOpaqueSessionsForUser(resetToken.userId);
     storage.markPasswordResetTokenUsed(resetToken.id);
+    clearSessionCookie(res);
 
     return res.json({ ok: true });
   });

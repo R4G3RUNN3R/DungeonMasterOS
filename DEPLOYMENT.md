@@ -259,9 +259,24 @@ The v2 session rollout is deliberately additive:
 - Logout revokes the current v2 session and clears both cookies.
 - While the rollback target is JWT-only, keep both `AUTH_LEGACY_SESSION_ACCEPT=true` and `AUTH_LEGACY_SESSION_ISSUE=true`.
 - Do not stop issuing the legacy cookie until the selected rollback release also understands v2 sessions. After that point, issuance may be disabled while acceptance remains enabled for at least the maximum seven-day legacy lifetime; only then may legacy acceptance be disabled.
-- During the compatibility window, a copied legacy JWT retains its historical non-revocable lifetime. This is a bounded migration risk, not a property of the final session architecture.
+- During the compatibility window, a copied legacy JWT retains its historical non-revocable lifetime until credential-version enforcement is promoted.
 
 The `auth_sessions` migration is additive and does not rewrite users, credentials, campaigns, billing records, or existing JWT cookies. A code rollback therefore does not require a database rollback.
+
+### Credential-rotation rollback invariant
+
+The credential-version hardening adds an integer `auth_version` to users and sessions. New legacy compatibility JWTs carry the same version in their signed payload; older JWTs with no version claim are interpreted as version `0`. Existing users and migrated sessions also start at `0`, so the migration itself does not sign anyone out.
+
+A successful password change or password reset increments the user's version. HTTP and WebSocket authentication reject any v2 session or legacy JWT whose version no longer matches. This invalidates prior credentials immediately without deleting account, campaign, billing or gameplay data.
+
+**Promotion order matters:** do not make an authentication-version release the first v2 production release while the selected rollback target is still JWT-only and unaware of `auth_version`. Rolling application code back to such an older release after a password rotation could make an old compatibility JWT acceptable again until its original seven-day expiry.
+
+Use this sequence:
+
+1. Promote and verify the rollback-safe v2 dual-session release first, and retain it as the tested rollback target.
+2. Only then promote the credential-version hardening release.
+3. After credential-version enforcement is live, rollback only to a release that understands both v2 sessions and `auth_version`.
+4. A database rollback is not required for these additive columns.
 
 Then:
 
