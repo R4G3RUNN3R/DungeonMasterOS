@@ -153,11 +153,67 @@ test('access policy preserves current legacy capability semantics during separat
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('auth middleware consumes explicit access capabilities instead of duplicating legacy flag logic', () => {
+test('entitlement resolvers preserve legacy subscription, campaign, and AI outcomes', () => {
+  const result = runTsx(`
+    import('./server/entitlements.ts').then(({ resolvePlayEntitlement, resolveCampaignEntitlement, resolveAiEntitlement }) => {
+      const base = {
+        id: 1,
+        email: 'test@example.invalid',
+        username: 'tester',
+        passwordHash: 'x',
+        googleId: null,
+        googleEmail: null,
+        avatarUrl: null,
+        role: 'player',
+        tier: 'free',
+        subscriptionStatus: 'expired',
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+        stripeBillingInterval: null,
+        trialEndsAt: null,
+        subscriptionCurrentPeriodEnd: null,
+        aiTurnsUsedThisMonth: 0,
+        bonusTurns: 0,
+        usageResetAt: null,
+        onboardingComplete: true,
+        unlimitedTurns: false,
+        isAdmin: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      const normal = { ...base };
+      if (resolvePlayEntitlement(normal).canPlay !== false) throw new Error('expired player unexpectedly playable');
+      if (resolvePlayEntitlement(normal).readOnly !== true) throw new Error('expired player lost read-only mode');
+      if (resolveCampaignEntitlement(normal).unlimited !== false) throw new Error('normal player unexpectedly bypasses campaign limit');
+      if (resolveAiEntitlement(normal).unlimited !== false) throw new Error('normal player unexpectedly has unlimited AI');
+
+      const dm = { ...base, role: 'dungeon_master' };
+      if (resolvePlayEntitlement(dm).canPlay !== true) throw new Error('DungeonMaster lost play bypass');
+      if (resolvePlayEntitlement(dm).readOnly !== false) throw new Error('DungeonMaster became read-only');
+      if (resolveCampaignEntitlement(dm).unlimited !== true) throw new Error('DungeonMaster lost campaign bypass');
+      if (resolveAiEntitlement(dm).unlimited !== true) throw new Error('DungeonMaster lost unlimited AI');
+
+      const admin = { ...base, isAdmin: true };
+      if (resolvePlayEntitlement(admin).canPlay !== true) throw new Error('legacy admin lost play bypass');
+      if (resolveCampaignEntitlement(admin).unlimited !== true) throw new Error('legacy admin lost campaign bypass');
+      if (resolveAiEntitlement(admin).unlimited !== true) throw new Error('legacy admin lost unlimited AI');
+
+      const unlimitedOnly = { ...base, unlimitedTurns: true };
+      if (resolvePlayEntitlement(unlimitedOnly).canPlay !== false) throw new Error('unlimited-turn flag incorrectly bypassed subscription');
+      if (resolveCampaignEntitlement(unlimitedOnly).unlimited !== false) throw new Error('unlimited-turn flag incorrectly bypassed campaign limit');
+      if (resolveAiEntitlement(unlimitedOnly).unlimited !== true) throw new Error('unlimited-turn flag lost AI bypass');
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('auth middleware consumes entitlement resolvers instead of duplicating product rules', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
 
-  assert.match(auth, /hasSubscriptionBypassAccess\(req\.user\)/);
-  assert.match(auth, /hasCampaignLimitBypass\(user\)/);
-  assert.match(auth, /hasUnlimitedAiAccess\(user\)/);
+  assert.match(auth, /resolvePlayEntitlement\(req\.user\)/);
+  assert.match(auth, /resolveCampaignEntitlement\(user\)/);
+  assert.match(auth, /resolveAiEntitlement\(user\)/);
   assert.doesNotMatch(auth, /hasDungeonMasterAccess\(user\) \|\| user\.unlimitedTurns/);
 });
