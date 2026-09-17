@@ -119,13 +119,14 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 // ── Legacy JWT compatibility ───────────────────────────────────────────────
-export function signToken(userId: number): string {
-  return jwt.sign({ sub: userId }, getJwtSecret(), { expiresIn: "7d" });
+export function signToken(userId: number, authVersion = 0): string {
+  return jwt.sign({ sub: userId, ver: authVersion }, getJwtSecret(), { expiresIn: "7d" });
 }
 
 type VerifiedLegacySession = {
   sub: number;
   expiresAt: Date | null;
+  authVersion: number;
 };
 
 function verifyLegacySession(token: string): VerifiedLegacySession | null {
@@ -145,9 +146,19 @@ function verifyLegacySession(token: string): VerifiedLegacySession | null {
         ? null
         : new Date(payload.exp * 1000);
 
+    let authVersion = 0;
+    if (typeof payload !== "string" && payload.ver !== undefined) {
+      const version = Number(payload.ver);
+      if (!Number.isInteger(version) || version < 0) {
+        return null;
+      }
+      authVersion = version;
+    }
+
     return {
       sub,
       expiresAt: exp && Number.isFinite(exp.getTime()) ? exp : null,
+      authVersion,
     };
   } catch {
     return null;
@@ -200,11 +211,18 @@ export function setSessionCookie(
   res: Response,
   userId: number,
   authMethod: SessionAuthMethod = "password",
+  authVersion?: number,
 ): void {
-  const legacyToken = issuesLegacySessions() ? signToken(userId) : null;
+  const effectiveAuthVersion =
+    authVersion ?? storage.getUser(userId)?.authVersion ?? 0;
+  const legacyToken = issuesLegacySessions()
+    ? signToken(userId, effectiveAuthVersion)
+    : null;
 
   try {
-    const { token } = createOpaqueSession(userId, authMethod);
+    const { token } = createOpaqueSession(userId, authMethod, {
+      authVersion: effectiveAuthVersion,
+    });
     setOpaqueSessionCookie(res, token);
   } catch (error) {
     // During the compatibility window the legacy session remains authoritative.
@@ -266,16 +284,20 @@ export function getSessionUserIdFromCookieHeader(
   if (opaqueToken !== undefined) {
     const session = resolveOpaqueSession(opaqueToken, { touch: false });
     if (!session) return null;
-    return storage.getUser(session.userId)?.id ?? null;
+    const user = storage.getUser(session.userId);
+    if (!user || session.authVersion !== user.authVersion) return null;
+    return user.id;
   }
 
   if (!acceptsLegacySessions()) return null;
 
   const legacyToken = getCookieValueFromHeader(cookieHeader, COOKIE_NAME);
   if (!legacyToken) return null;
-  const payload = verifyToken(legacyToken);
-  if (!payload) return null;
-  return storage.getUser(payload.sub)?.id ?? null;
+  const legacySession = verifyLegacySession(legacyToken);
+  if (!legacySession) return null;
+  const user = storage.getUser(legacySession.sub);
+  if (!user || legacySession.authVersion !== user.authVersion) return null;
+  return user.id;
 }
 
 // ── Request augmentation ───────────────────────────────────────────────────
@@ -301,6 +323,9 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
       return next();
     }
     rawUser = storage.getUser(session.userId);
+    if (!rawUser || session.authVersion !== rawUser.authVersion) {
+      return next();
+    }
   } else if (acceptsLegacySessions()) {
     const legacyToken = req.cookies?.[COOKIE_NAME];
     if (typeof legacyToken !== "string" || !legacyToken) return next();
@@ -309,10 +334,14 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
     if (!legacySession) return next();
 
     rawUser = storage.getUser(legacySession.sub);
+    if (!rawUser || legacySession.authVersion !== rawUser.authVersion) {
+      return next();
+    }
     if (rawUser) {
       try {
         const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
           expiresAt: legacySession.expiresAt,
+          authVersion: legacySession.authVersion,
         });
         setOpaqueSessionCookie(res, token);
       } catch (error) {
