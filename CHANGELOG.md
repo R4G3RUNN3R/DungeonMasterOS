@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-09-17
+- Auth request hardening: added bounded in-memory fixed-window throttles for login, registration, password recovery/reset, and sensitive authenticated account actions. Login is constrained by both source IP and normalized identity while limits remain deliberately high enough to avoid routine user lockouts.
+- Auth origin validation: state-changing authentication/account POST routes now reject browser requests whose `Origin` differs from the canonical `APP_URL`; origin-less non-browser clients remain compatible, while production SameSite cookie policy continues to provide the browser cookie boundary.
+- Auth abuse safety: limiter storage is bounded to prevent untrusted keys from growing process memory without limit. The V1 limiter is intentionally process-local and restart-local because DMOS currently runs as a single process; multi-instance deployment requires a shared limiter before horizontal scaling.
 - Auth credential rotation: added a per-user authentication version stamped into both v2 opaque sessions and newly issued legacy compatibility JWTs. Existing pre-version JWTs map to version 0 so current users remain signed in until a credential rotation occurs.
 - Auth password security: successful password changes atomically update the password hash and bump the authentication version, revoke all existing v2 sessions, and issue a fresh current-browser session. Password-reset completion bumps the version, revokes v2 sessions, and clears browser auth cookies so every prior session generation is rejected.
 - Auth session authority: HTTP and WebSocket authentication now compare each session generation against the user's current authentication version, preventing old JWT or v2 credentials from surviving password rotation even during the dual-cookie compatibility window.
