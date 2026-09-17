@@ -136,7 +136,7 @@ export const authLoginIpLimit = createFixedWindowRateLimiter({
 export const authLoginIdentityLimit = createFixedWindowRateLimiter({
   name: "auth-login-identity",
   windowMs: 15 * 60 * 1000,
-  maxAttempts: 12,
+  maxAttempts: 30,
   key: (req) => normalizeEmail(req.body?.email) || null,
 });
 
@@ -157,7 +157,7 @@ export const authRecoveryIpLimit = createFixedWindowRateLimiter({
 export const authRecoveryIdentityLimit = createFixedWindowRateLimiter({
   name: "auth-recovery-identity",
   windowMs: 60 * 60 * 1000,
-  maxAttempts: 6,
+  maxAttempts: 20,
   key: (req) => normalizeEmail(req.body?.email) || null,
 });
 
