@@ -39,6 +39,16 @@ import {
 } from "./auth";
 import { revokeAllOpaqueSessionsForUser } from "./session-service";
 import {
+  authLoginIdentityLimit,
+  authLoginIpLimit,
+  authRecoveryIdentityLimit,
+  authRecoveryIpLimit,
+  authRegisterIpLimit,
+  authResetIpLimit,
+  authSensitiveIpLimit,
+  requireTrustedOrigin,
+} from "./security";
+import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleCodeForProfile,
   generateGoogleUsernameBase,
@@ -749,7 +759,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/auth/register", async (req, res) => {
+  app.post("/api/auth/register", requireTrustedOrigin, authRegisterIpLimit, async (req, res) => {
     try {
       const parsed = registerSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -797,7 +807,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", requireTrustedOrigin, authLoginIpLimit, authLoginIdentityLimit, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -814,7 +824,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(user) });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", requireTrustedOrigin, (req, res) => {
     revokeRequestSession(req);
     clearSessionCookie(res);
     return res.json({ ok: true });
@@ -878,12 +888,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated) });
   });
 
-  app.post("/api/auth/complete-onboarding", requireAuth, (req, res) => {
+  app.post("/api/auth/complete-onboarding", requireAuth, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     storage.updateUser(req.user!.id, { onboardingComplete: true } as any);
     return res.json({ ok: true });
   });
 
-  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  app.post("/api/auth/change-password", requireAuth, requireTrustedOrigin, authSensitiveIpLimit, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ message: "Current and new password are required." });
@@ -908,7 +918,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
-  app.post("/api/auth/forgot-password", async (req, res) => {
+  app.post("/api/auth/forgot-password", requireTrustedOrigin, authRecoveryIpLimit, authRecoveryIdentityLimit, async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required." });
 
@@ -937,7 +947,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(response);
   });
 
-  app.post("/api/auth/reset-password", async (req, res) => {
+  app.post("/api/auth/reset-password", requireTrustedOrigin, authResetIpLimit, async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
       return res.status(400).json({ message: "Token and new password are required." });
