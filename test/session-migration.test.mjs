@@ -166,7 +166,7 @@ test('a revoked or invalid v2 cookie cannot be resurrected by a legacy JWT besid
       if (nextCalls !== 1) throw new Error('auth middleware did not continue');
       if (req.user) throw new Error('revoked v2 session was resurrected from legacy JWT');
 
-      const header = `dmos_session_v2=${encodeURIComponent(created.token)}; dmos_session=${encodeURIComponent(legacy)}`;
+      const header = 'dmos_session_v2=' + encodeURIComponent(created.token) + '; dmos_session=' + encodeURIComponent(legacy);
       if (auth.getSessionUserIdFromCookieHeader(header) !== null) {
         throw new Error('WebSocket auth resurrected a revoked v2 session');
       }
@@ -191,12 +191,12 @@ test('WebSocket session resolution accepts v2 first and legacy-only clients duri
       const opaque = sessions.createOpaqueSession(user.id, 'password').token;
       const legacy = auth.signToken(user.id);
 
-      const v2Header = `dmos_session_v2=${encodeURIComponent(opaque)}; dmos_session=${encodeURIComponent(legacy)}`;
+      const v2Header = 'dmos_session_v2=' + encodeURIComponent(opaque) + '; dmos_session=' + encodeURIComponent(legacy);
       if (auth.getSessionUserIdFromCookieHeader(v2Header) !== user.id) {
         throw new Error('v2 WebSocket session did not resolve');
       }
 
-      const legacyHeader = `dmos_session=${encodeURIComponent(legacy)}`;
+      const legacyHeader = 'dmos_session=' + encodeURIComponent(legacy);
       if (auth.getSessionUserIdFromCookieHeader(legacyHeader) !== user.id) {
         throw new Error('legacy-only WebSocket client lost migration compatibility');
       }
@@ -243,7 +243,7 @@ test('legacy session compatibility can be disabled independently after the migra
         passwordHash: 'test-hash',
       });
       const legacy = auth.signToken(user.id);
-      const header = `dmos_session=${encodeURIComponent(legacy)}`;
+      const header = 'dmos_session=' + encodeURIComponent(legacy);
       if (auth.getSessionUserIdFromCookieHeader(header) !== null) {
         throw new Error('legacy JWT was accepted after compatibility was disabled');
       }
