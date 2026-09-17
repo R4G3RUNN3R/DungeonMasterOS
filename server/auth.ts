@@ -123,7 +123,12 @@ export function signToken(userId: number): string {
   return jwt.sign({ sub: userId }, getJwtSecret(), { expiresIn: "7d" });
 }
 
-export function verifyToken(token: string): { sub: number } | null {
+type VerifiedLegacySession = {
+  sub: number;
+  expiresAt: Date | null;
+};
+
+function verifyLegacySession(token: string): VerifiedLegacySession | null {
   try {
     const payload = jwt.verify(token, getJwtSecret());
     const sub =
@@ -135,10 +140,23 @@ export function verifyToken(token: string): { sub: number } | null {
       return null;
     }
 
-    return { sub };
+    const exp =
+      typeof payload === "string" || typeof payload.exp !== "number"
+        ? null
+        : new Date(payload.exp * 1000);
+
+    return {
+      sub,
+      expiresAt: exp && Number.isFinite(exp.getTime()) ? exp : null,
+    };
   } catch {
     return null;
   }
+}
+
+export function verifyToken(token: string): { sub: number } | null {
+  const verified = verifyLegacySession(token);
+  return verified ? { sub: verified.sub } : null;
 }
 
 function envFlag(name: string, defaultValue: boolean): boolean {
@@ -287,13 +305,15 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
     const legacyToken = req.cookies?.[COOKIE_NAME];
     if (typeof legacyToken !== "string" || !legacyToken) return next();
 
-    const payload = verifyToken(legacyToken);
-    if (!payload) return next();
+    const legacySession = verifyLegacySession(legacyToken);
+    if (!legacySession) return next();
 
-    rawUser = storage.getUser(payload.sub);
+    rawUser = storage.getUser(legacySession.sub);
     if (rawUser) {
       try {
-        const { token } = createOpaqueSession(rawUser.id, "legacy-jwt");
+        const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
+          expiresAt: legacySession.expiresAt,
+        });
         setOpaqueSessionCookie(res, token);
       } catch (error) {
         // A valid legacy session must remain usable during the migration window.
