@@ -48,6 +48,7 @@ import {
   authSensitiveIpLimit,
   requireTrustedOrigin,
 } from "./security";
+import { safeRecordSecurityEvent } from "./security-audit";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleCodeForProfile,
@@ -745,6 +746,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     clearShortLivedCookie(res, GOOGLE_STATE_COOKIE);
 
     if (!code || !state || !expectedState || state !== expectedState) {
+      safeRecordSecurityEvent({
+        eventType: "AUTH_GOOGLE_FAILED",
+        metadata: { reason: "state" },
+      });
       return res.redirect(getGoogleFailureRedirect("state"));
     }
 
@@ -752,9 +757,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const profile = await exchangeGoogleCodeForProfile(code);
       const user = await findOrCreateGoogleUser(profile);
       setSessionCookie(res, user.id, "google", user.authVersion);
+      safeRecordSecurityEvent({
+        eventType: "AUTH_GOOGLE_SUCCESS",
+        actorUserId: user.id,
+        subjectUserId: user.id,
+      });
       return res.redirect(getGooglePostLoginRedirect());
     } catch (err: any) {
       console.error("Google auth error:", err);
+      safeRecordSecurityEvent({
+        eventType: "AUTH_GOOGLE_FAILED",
+        metadata: { reason: "provider" },
+      });
       return res.redirect(getGoogleFailureRedirect("failed"));
     }
   });
@@ -796,6 +810,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } as any);
 
       setSessionCookie(res, user.id, "register", user.authVersion);
+      safeRecordSecurityEvent({
+        eventType: "AUTH_REGISTER_SUCCESS",
+        actorUserId: user.id,
+        subjectUserId: user.id,
+      });
       return res.status(201).json({ user: toPublicUser(user) });
     } catch (err: any) {
       console.error("Register error:", err);
@@ -815,18 +834,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { email, password } = parsed.data;
 
     const user = storage.getUserByEmail(email);
-    if (!user) return res.status(401).json({ message: "Invalid email or password." });
+    if (!user) {
+      safeRecordSecurityEvent({
+        eventType: "AUTH_LOGIN_FAILED",
+        metadata: { reason: "credentials" },
+      });
+      return res.status(401).json({ message: "Invalid email or password." });
+    }
 
     const valid = await verifyPassword(password, user.passwordHash);
-    if (!valid) return res.status(401).json({ message: "Invalid email or password." });
+    if (!valid) {
+      safeRecordSecurityEvent({
+        eventType: "AUTH_LOGIN_FAILED",
+        subjectUserId: user.id,
+        metadata: { reason: "credentials" },
+      });
+      return res.status(401).json({ message: "Invalid email or password." });
+    }
 
     setSessionCookie(res, user.id, "password", user.authVersion);
+    safeRecordSecurityEvent({
+      eventType: "AUTH_LOGIN_SUCCESS",
+      actorUserId: user.id,
+      subjectUserId: user.id,
+    });
     return res.json({ user: toPublicUser(user) });
   });
 
   app.post("/api/auth/logout", requireTrustedOrigin, (req, res) => {
+    const userId = req.user?.id ?? null;
     revokeRequestSession(req);
     clearSessionCookie(res);
+    if (userId !== null) {
+      safeRecordSecurityEvent({
+        eventType: "AUTH_LOGOUT",
+        actorUserId: userId,
+        subjectUserId: userId,
+      });
+    }
     return res.json({ ok: true });
   });
 
@@ -838,7 +883,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(req.user!) });
   });
 
-  app.post("/api/admin/grant-dungeon-master", requireDungeonMaster, (req, res) => {
+  app.post("/api/admin/grant-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -858,10 +903,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(500).json({ message: "Failed to grant DungeonMaster access." });
     }
 
+    safeRecordSecurityEvent({
+      eventType: "DUNGEON_MASTER_GRANTED",
+      actorUserId: req.user!.id,
+      subjectUserId: target.id,
+    });
     return res.json({ user: toPublicUser(updated) });
   });
 
-  app.post("/api/admin/revoke-dungeon-master", requireDungeonMaster, (req, res) => {
+  app.post("/api/admin/revoke-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -885,6 +935,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(500).json({ message: "Failed to revoke DungeonMaster access." });
     }
 
+    safeRecordSecurityEvent({
+      eventType: "DUNGEON_MASTER_REVOKED",
+      actorUserId: req.user!.id,
+      subjectUserId: target.id,
+    });
     return res.json({ user: toPublicUser(updated) });
   });
 
@@ -915,6 +970,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     revokeAllOpaqueSessionsForUser(user.id);
     setSessionCookie(res, user.id, "password", authVersion);
+    safeRecordSecurityEvent({
+      eventType: "PASSWORD_CHANGED",
+      actorUserId: user.id,
+      subjectUserId: user.id,
+    });
     return res.json({ ok: true });
   });
 
@@ -972,6 +1032,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     revokeAllOpaqueSessionsForUser(resetToken.userId);
     storage.markPasswordResetTokenUsed(resetToken.id);
     clearSessionCookie(res);
+    safeRecordSecurityEvent({
+      eventType: "PASSWORD_RESET",
+      subjectUserId: resetToken.userId,
+      metadata: { method: "reset-link" },
+    });
 
     return res.json({ ok: true });
   });

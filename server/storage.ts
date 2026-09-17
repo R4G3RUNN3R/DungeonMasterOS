@@ -69,6 +69,17 @@ export type NewAuthSessionRecord = Omit<AuthSessionRecord, "id" | "revokedAt"> &
   revokedAt?: string | null;
 };
 
+export type SecurityEventRecord = {
+  id: number;
+  actorUserId: number | null;
+  subjectUserId: number | null;
+  eventType: string;
+  metadata: string;
+  createdAt: string;
+};
+
+export type NewSecurityEventRecord = Omit<SecurityEventRecord, "id">;
+
 export type ShopPurchaseResult =
   | { ok: true; wallet: CharacterCurrency; remainingStock: number; item: Item }
   | { ok: false; reason: "not_found" | "stock" | "funds" };
@@ -193,6 +204,38 @@ export function revokeAllAuthSessionsForUser(userId: number, revokedAt: string):
   return result.changes;
 }
 
+export function insertSecurityEventRecord(
+  input: NewSecurityEventRecord,
+): SecurityEventRecord {
+  const result = sqlite.prepare(`
+    INSERT INTO security_events (
+      actor_user_id,
+      subject_user_id,
+      event_type,
+      metadata,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(
+    input.actorUserId,
+    input.subjectUserId,
+    input.eventType,
+    input.metadata,
+    input.createdAt,
+  );
+
+  return sqlite.prepare(`
+    SELECT
+      id,
+      actor_user_id AS actorUserId,
+      subject_user_id AS subjectUserId,
+      event_type AS eventType,
+      metadata,
+      created_at AS createdAt
+    FROM security_events
+    WHERE id = ?
+  `).get(Number(result.lastInsertRowid)) as SecurityEventRecord;
+}
+
 export function updateUserPasswordAndBumpAuthVersion(
   userId: number,
   passwordHash: string,
@@ -295,6 +338,24 @@ export function runMigrations() {
       ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at
       ON auth_sessions(expires_at);
+
+    CREATE TABLE IF NOT EXISTS security_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_user_id INTEGER,
+      subject_user_id INTEGER,
+      event_type TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_security_events_created_at
+      ON security_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_security_events_event_type
+      ON security_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_security_events_actor_user_id
+      ON security_events(actor_user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_events_subject_user_id
+      ON security_events(subject_user_id);
 
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

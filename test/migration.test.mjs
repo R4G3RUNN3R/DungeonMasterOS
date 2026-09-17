@@ -163,6 +163,12 @@ test('current startup migrates an older V1 database in place without losing rows
     }
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM auth_sessions").get().count, 0);
 
+    const securityEventColumns = new Set(db.pragma('table_info(security_events)').map((row) => row.name));
+    for (const column of ['actor_user_id', 'subject_user_id', 'event_type', 'metadata', 'created_at']) {
+      assert.equal(securityEventColumns.has(column), true, `security_events.${column} was not migrated`);
+    }
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM security_events").get().count, 0);
+
     const itemColumns = new Set(db.pragma('table_info(items)').map((row) => row.name));
     assert.equal(itemColumns.has('stat_mods'), true);
     assert.equal(itemColumns.has('updated_at'), true);
