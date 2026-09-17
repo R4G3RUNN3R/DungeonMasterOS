@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-09-17
+- Security audit ledger: added an additive `security_events` table recording authentication, credential-rotation, logout, and DungeonMaster privilege changes with actor/subject user IDs and bounded sanitized metadata.
+- Security audit privacy: audit metadata rejects keys associated with passwords, tokens, cookies, authorization headers, API keys, secrets, and email addresses. Raw IPs and credential material are not stored.
+- Security audit availability: event writes are best-effort and log failures server-side rather than failing a successful authentication/account action; audit storage failure therefore cannot become an authentication outage.
+- Privileged-route CSRF hardening: DungeonMaster grant/revoke POST routes now use the same trusted-origin validation and sensitive-action throttle as other privileged account mutations.
+- Audit retention: V1 does not automatically delete security events; retention/archive policy remains an operational decision rather than silently discarding security evidence.
 - Auth request hardening: added bounded in-memory fixed-window throttles for login, registration, password recovery/reset, and sensitive authenticated account actions. Login is constrained by both source IP and normalized identity while limits remain deliberately high enough to avoid routine user lockouts.
 - Auth origin validation: state-changing authentication/account POST routes now reject browser requests whose `Origin` differs from the canonical `APP_URL`; origin-less non-browser clients remain compatible, while production SameSite cookie policy continues to provide the browser cookie boundary.
 - Auth abuse safety: limiter storage is bounded to prevent untrusted keys from growing process memory without limit. The V1 limiter is intentionally process-local and restart-local because DMOS currently runs as a single process; multi-instance deployment requires a shared limiter before horizontal scaling.
