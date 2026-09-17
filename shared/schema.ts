@@ -63,7 +63,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type PublicUser = Omit<User, "passwordHash" | "googleId">;
+export type PublicUser = Omit<User, "passwordHash" | "googleId" | "authVersion">;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASSWORD RESET TOKENS
