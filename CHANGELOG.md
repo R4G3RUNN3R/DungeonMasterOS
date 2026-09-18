@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-09-18
+- Legacy-session retirement telemetry: each successful JWT-only HTTP session upgrade now emits one sanitized `AUTH_LEGACY_SESSION_UPGRADED` event, giving operations evidence that legacy-only clients are still arriving without storing bearer values or identity metadata in the event payload.
+- Migration readiness view: administrators can read aggregate legacy-session compatibility flags, active opaque/legacy-upgrade session counts, recent upgrade counts, and the latest upgrade timestamp through a permission-guarded status endpoint. The endpoint deliberately does not declare retirement safe, because deployment timing and rollback-target validity remain operational gates.
+- Retirement sequencing: disabling legacy issuance and disabling legacy acceptance remain separate production actions. The repository now documents the required v2-capable rollback baseline, issuance-off timestamp, full seven-day drain plus buffer, telemetry review, and only then acceptance shutdown.
 - Recent-authentication boundary: role assignment, DungeonMaster grant/revoke compatibility routes, and explicit entitlement overrides now require credential verification within the previous 15 minutes in addition to normal session and permission checks.
 - Reauthentication: authenticated users can confirm their password through a separately throttled endpoint that refreshes only the current owned opaque session's authentication timestamp; success and failure are recorded in the sanitized security ledger.
 - Legacy migration safety: opaque sessions created from legacy JWTs inherit the JWT's original issuance time instead of treating migration time as fresh authentication. Existing pre-feature legacy-upgrade rows are backfilled fail-closed to an old authentication timestamp, preventing session migration from bypassing the sensitive-action gate.
