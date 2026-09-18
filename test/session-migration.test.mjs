@@ -115,7 +115,7 @@ test('HTTP login paths pass the request user-agent into session issuance', () =>
   assert.match(routes, /setSessionCookie\(res, user\.id, ["']register["'], user\.authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
   assert.match(routes, /setSessionCookie\(res, user\.id, ["']password["'], user\.authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
   assert.match(routes, /setSessionCookie\(res, user\.id, ["']password["'], authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
-  assert.match(auth, /createOpaqueSession\(rawUser\.id, ["']legacy-jwt["'], \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
+  assert.match(auth, /createOpaqueSession\(rawUser\.id, ["']legacy-jwt["'], \{[\s\S]*?userAgent:[\s\S]*?typeof req\.get === ["']function["'][\s\S]*?req\.get\(["']user-agent["']\) \?\? null/);
 });
 
 
