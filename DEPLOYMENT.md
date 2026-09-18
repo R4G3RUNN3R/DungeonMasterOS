@@ -268,6 +268,8 @@ Treat failure of any authentication-continuity check as a release blocker. Roll 
 The v2 session rollout is deliberately additive:
 
 - `dmos_session_v2` is a random opaque bearer token. Only its SHA-256 hash is stored in the additive `auth_sessions` table.
+- `auth_sessions.authenticated_at` records when credentials were last actually verified, separately from `created_at` and `last_seen_at`. Privilege/entitlement mutations require this timestamp to be no more than 15 minutes old.
+- Legacy-JWT upgrades preserve the JWT issuance time for authentication freshness; migration itself must never make an old credential appear recently verified.
 - `dmos_session` remains the legacy signed JWT during the initial compatibility window.
 - HTTP and WebSocket authentication prefer a valid v2 session. Legacy JWT fallback is used only when no v2 cookie is present.
 - If a v2 cookie is present but revoked or invalid, DMOS must not fall back to the legacy JWT beside it. This prevents a revoked v2 session from being resurrected.
