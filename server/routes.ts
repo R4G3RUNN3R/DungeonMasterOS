@@ -16,6 +16,7 @@ import {
   loginSchema,
   dungeonMasterTargetSchema,
   accessRoleUpdateSchema,
+  explicitEntitlementUpdateSchema,
   createShopItemSchema,
   buyShopItemSchema,
   type Item,
@@ -39,6 +40,7 @@ import {
   setAccessRole,
   toPublicUser,
 } from "./auth";
+import { setExplicitEntitlements } from "./entitlement-management";
 import {
   listActiveOpaqueSessionsForUser,
   resolveOpaqueSession,
@@ -997,6 +999,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         metadata: {
           fromRole: target.accessRole,
           toRole: updated.accessRole,
+        },
+      });
+    }
+
+    return res.json({ user: toPublicUser(updated), changed });
+  });
+
+  app.post("/api/admin/set-entitlements", requirePermission(PERMISSIONS.ADMIN_ENTITLEMENTS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+    const parsed = explicitEntitlementUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    const target =
+      parsed.data.email
+        ? storage.getUserByEmail(parsed.data.email)
+        : storage.getUserByUsername(parsed.data.username!);
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const requestsChange =
+      (parsed.data.subscriptionBypass !== undefined &&
+        parsed.data.subscriptionBypass !== target.subscriptionBypass) ||
+      (parsed.data.campaignLimitBypass !== undefined &&
+        parsed.data.campaignLimitBypass !== target.campaignLimitBypass) ||
+      (parsed.data.unlimitedAiTurns !== undefined &&
+        parsed.data.unlimitedAiTurns !== target.unlimitedAiTurns);
+
+    if (target.id === req.user!.id && requestsChange) {
+      return res.status(400).json({
+        message: "You cannot change your own entitlement overrides.",
+        code: "SELF_ENTITLEMENT_CHANGE_NOT_ALLOWED",
+      });
+    }
+
+    const updated = setExplicitEntitlements(target.id, {
+      subscriptionBypass: parsed.data.subscriptionBypass,
+      campaignLimitBypass: parsed.data.campaignLimitBypass,
+      unlimitedAiTurns: parsed.data.unlimitedAiTurns,
+    });
+
+    if (!updated) {
+      return res.status(500).json({ message: "Failed to update entitlement overrides." });
+    }
+
+    const changed =
+      updated.subscriptionBypass !== target.subscriptionBypass ||
+      updated.campaignLimitBypass !== target.campaignLimitBypass ||
+      updated.unlimitedAiTurns !== target.unlimitedAiTurns;
+
+    if (changed) {
+      safeRecordSecurityEvent({
+        eventType: "ENTITLEMENTS_CHANGED",
+        actorUserId: req.user!.id,
+        subjectUserId: target.id,
+        metadata: {
+          reasonCode: parsed.data.reasonCode,
+          subscriptionBypassFrom: target.subscriptionBypass,
+          subscriptionBypassTo: updated.subscriptionBypass,
+          campaignLimitBypassFrom: target.campaignLimitBypass,
+          campaignLimitBypassTo: updated.campaignLimitBypass,
+          unlimitedAiTurnsFrom: target.unlimitedAiTurns,
+          unlimitedAiTurnsTo: updated.unlimitedAiTurns,
         },
       });
     }
