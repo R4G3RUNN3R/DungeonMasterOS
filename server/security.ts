@@ -174,3 +174,10 @@ export const authSensitiveIpLimit = createFixedWindowRateLimiter({
   maxAttempts: 30,
   key: (req) => requestIp(req),
 });
+
+export const authReauthUserLimit = createFixedWindowRateLimiter({
+  name: "auth-reauth-user",
+  windowMs: 15 * 60 * 1000,
+  maxAttempts: 10,
+  key: (req) => req.user?.id ? String(req.user.id) : null,
+});
