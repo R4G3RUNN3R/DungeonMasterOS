@@ -626,6 +626,37 @@ export const accessRoleUpdateSchema = z
     message: "Email or username is required.",
   });
 
+export const entitlementOverrideReasonSchema = z.enum([
+  "support",
+  "testing",
+  "internal",
+  "billing_correction",
+  "promotion",
+  "other",
+]);
+
+export const explicitEntitlementUpdateSchema = z
+  .object({
+    email: z.string().email("Invalid email address").optional(),
+    username: z.string().min(1, "Username is required").max(30).optional(),
+    subscriptionBypass: z.boolean().optional(),
+    campaignLimitBypass: z.boolean().optional(),
+    unlimitedAiTurns: z.boolean().optional(),
+    reasonCode: entitlementOverrideReasonSchema,
+  })
+  .refine((value) => !!value.email || !!value.username, {
+    message: "Email or username is required.",
+  })
+  .refine(
+    (value) =>
+      value.subscriptionBypass !== undefined ||
+      value.campaignLimitBypass !== undefined ||
+      value.unlimitedAiTurns !== undefined,
+    {
+      message: "At least one entitlement override is required.",
+    },
+  );
+
 export const createShopItemSchema = z.object({
   itemKey: z.string().min(1).max(100),
   name: z.string().min(1).max(100),
@@ -673,3 +704,5 @@ export type BuyShopItemInput = z.infer<typeof buyShopItemSchema>;
 export type AdjustCurrencyInput = z.infer<typeof adjustCurrencySchema>;
 export type DungeonMasterTargetInput = z.infer<typeof dungeonMasterTargetSchema>;
 export type AccessRoleUpdateInput = z.infer<typeof accessRoleUpdateSchema>;
+export type ExplicitEntitlementUpdateInput = z.infer<typeof explicitEntitlementUpdateSchema>;
+export type EntitlementOverrideReason = z.infer<typeof entitlementOverrideReasonSchema>;
