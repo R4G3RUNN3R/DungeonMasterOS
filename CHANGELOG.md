@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-09-18
+- Recent-authentication boundary: role assignment, DungeonMaster grant/revoke compatibility routes, and explicit entitlement overrides now require credential verification within the previous 15 minutes in addition to normal session and permission checks.
+- Reauthentication: authenticated users can confirm their password through a separately throttled endpoint that refreshes only the current owned opaque session's authentication timestamp; success and failure are recorded in the sanitized security ledger.
+- Legacy migration safety: opaque sessions created from legacy JWTs inherit the JWT's original issuance time instead of treating migration time as fresh authentication. Existing pre-feature legacy-upgrade rows are backfilled fail-closed to an old authentication timestamp, preventing session migration from bypassing the sensitive-action gate.
+- Session semantics: credential-authentication time is persisted separately from session creation and last activity, so ordinary browsing/touch updates never extend the recent-authentication window.
 - Session device metadata fix: login, registration, Google sign-in, password-rotation reissue, and legacy-JWT upgrade paths now carry the request user-agent into the opaque session ledger so Account Settings can identify browsers/platforms instead of showing most sessions as unknown.
 - Session metadata hardening: persisted user-agent and future IP-hash metadata are trimmed and length-bounded before storage; raw bearer values remain absent from the session ledger and UI.
 - Account session controls: Account Settings now lists active authenticated sessions with a concise browser/platform summary, sign-in method, current-session marker, last-active time, creation time, and expiry.
