@@ -291,3 +291,39 @@ test('auth version remains internal and is stripped from public user payloads', 
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
+
+
+test('Google OAuth PKCE uses a high-entropy verifier and S256 challenge', () => {
+  const result = runTsx(`
+    import('./server/google-auth.ts').then((auth) => {
+      const verifier = auth.generateGooglePkceVerifier();
+      const challenge = auth.buildGooglePkceChallenge(verifier);
+      const url = new URL(auth.buildGoogleAuthorizationUrl('state-pkce', challenge));
+
+      if (verifier.length < 43 || verifier.length > 128) throw new Error('invalid verifier length');
+      if (!/^[A-Za-z0-9_-]+$/.test(verifier)) throw new Error('verifier is not base64url');
+      if (!challenge || challenge.includes('=')) throw new Error('challenge is not base64url');
+      if (url.searchParams.get('code_challenge') !== challenge) throw new Error('missing PKCE challenge');
+      if (url.searchParams.get('code_challenge_method') !== 'S256') throw new Error('wrong PKCE method');
+    });
+  `, {
+    NODE_ENV: 'test',
+    APP_URL: 'https://dungeonmaster-os.com',
+    GOOGLE_CLIENT_ID: 'test-client-id',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+  });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('Google OAuth routes persist and consume the PKCE verifier while preserving legacy callback compatibility', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+  const googleAuth = readFileSync(path.join(repoRoot, 'server', 'google-auth.ts'), 'utf8');
+
+  assert.match(routes, /GOOGLE_PKCE_COOKIE/);
+  assert.match(routes, /generateGooglePkceVerifier\(\)/);
+  assert.match(routes, /buildGooglePkceChallenge\(codeVerifier\)/);
+  assert.match(routes, /setShortLivedCookie\(res, GOOGLE_PKCE_COOKIE, codeVerifier\)/);
+  assert.match(routes, /exchangeGoogleCodeForProfile\(code, codeVerifier\)/);
+  assert.match(googleAuth, /\.\.\.\(codeVerifier \? \{ code_verifier: codeVerifier \} : \{\}\)/);
+});

@@ -51,7 +51,9 @@ import {
 import { safeRecordSecurityEvent } from "./security-audit";
 import {
   buildGoogleAuthorizationUrl,
+  buildGooglePkceChallenge,
   exchangeGoogleCodeForProfile,
+  generateGooglePkceVerifier,
   generateGoogleUsernameBase,
   getGoogleFailureRedirect,
   getGooglePostLoginRedirect,
@@ -76,6 +78,7 @@ const anthropic = new Anthropic({
 });
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 const GOOGLE_STATE_COOKIE = "dmos_google_oauth_state";
+const GOOGLE_PKCE_COOKIE = "dmos_google_oauth_pkce";
 
 
 // ── WebSocket campaign registry ─────────────────────────────────────────────
@@ -735,15 +738,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const state = randomBytes(24).toString("hex");
+    const codeVerifier = generateGooglePkceVerifier();
+    const codeChallenge = buildGooglePkceChallenge(codeVerifier);
     setShortLivedCookie(res, GOOGLE_STATE_COOKIE, state);
-    return res.redirect(buildGoogleAuthorizationUrl(state));
+    setShortLivedCookie(res, GOOGLE_PKCE_COOKIE, codeVerifier);
+    return res.redirect(buildGoogleAuthorizationUrl(state, codeChallenge));
   });
 
   app.get("/api/auth/google/callback", async (req, res) => {
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const state = typeof req.query.state === "string" ? req.query.state : "";
     const expectedState = req.cookies?.[GOOGLE_STATE_COOKIE];
+    const codeVerifier =
+      typeof req.cookies?.[GOOGLE_PKCE_COOKIE] === "string"
+        ? req.cookies[GOOGLE_PKCE_COOKIE]
+        : undefined;
     clearShortLivedCookie(res, GOOGLE_STATE_COOKIE);
+    clearShortLivedCookie(res, GOOGLE_PKCE_COOKIE);
 
     if (!code || !state || !expectedState || state !== expectedState) {
       safeRecordSecurityEvent({
@@ -754,7 +765,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const profile = await exchangeGoogleCodeForProfile(code);
+      // Missing verifier is accepted only for OAuth attempts that began before
+      // PKCE was deployed. Newly-issued authorization requests always carry it.
+      const profile = await exchangeGoogleCodeForProfile(code, codeVerifier);
       const user = await findOrCreateGoogleUser(profile);
       setSessionCookie(res, user.id, "google", user.authVersion);
       safeRecordSecurityEvent({

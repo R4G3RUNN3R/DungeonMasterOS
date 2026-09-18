@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from "crypto";
+
 export type GoogleProfile = {
   sub: string;
   email: string;
@@ -51,7 +53,18 @@ export function getGoogleFailureRedirect(_reason: "state" | "failed"): string {
   return "/login";
 }
 
-export function buildGoogleAuthorizationUrl(state: string): string {
+export function generateGooglePkceVerifier(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function buildGooglePkceChallenge(verifier: string): string {
+  if (!verifier || verifier.length < 43 || verifier.length > 128) {
+    throw new Error("Google PKCE verifier must be between 43 and 128 characters.");
+  }
+  return createHash("sha256").update(verifier, "utf8").digest("base64url");
+}
+
+export function buildGoogleAuthorizationUrl(state: string, codeChallenge?: string): string {
   const { clientId } = getGoogleClientConfig();
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
@@ -59,6 +72,10 @@ export function buildGoogleAuthorizationUrl(state: string): string {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
   url.searchParams.set("state", state);
+  if (codeChallenge) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   url.searchParams.set("prompt", "select_account");
   return url.toString();
 }
@@ -72,7 +89,10 @@ export function generateGoogleUsernameBase(email: string, name: string): string 
   return rawBase || "player";
 }
 
-export async function exchangeGoogleCodeForProfile(code: string): Promise<GoogleProfile> {
+export async function exchangeGoogleCodeForProfile(
+  code: string,
+  codeVerifier?: string,
+): Promise<GoogleProfile> {
   const { clientId, clientSecret } = getGoogleClientConfig();
   if (!clientId || !clientSecret) {
     throw new Error("Google auth is not configured.");
@@ -87,6 +107,7 @@ export async function exchangeGoogleCodeForProfile(code: string): Promise<Google
       client_secret: clientSecret,
       redirect_uri: getGoogleRedirectUri(),
       grant_type: "authorization_code",
+      ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
     }),
   });
 
