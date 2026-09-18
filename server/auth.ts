@@ -33,7 +33,7 @@ export { hasDungeonMasterAccess } from "./access-policy";
 
 const DEV_JWT_SECRET = "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
-const OPAQUE_COOKIE_NAME = "dmos_session_v2";
+export const OPAQUE_COOKIE_NAME = "dmos_session_v2";
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getJwtSecret(): string {
