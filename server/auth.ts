@@ -59,11 +59,14 @@ export function setAccessRole(
 
   const updates: Partial<User> = { accessRole };
 
-  // Canonical authority wins in current releases. When an existing privileged
-  // account is demoted from admin, retire the legacy privilege shadows as well
-  // so an older rollback build cannot resurrect removed admin authority.
+  // Canonical authority wins in current releases. Any transition to a
+  // non-admin role retires legacy admin/DM privilege shadows so an older
+  // rollback build cannot resurrect authority that the canonical role removed.
   // Explicit entitlement overrides remain untouched and are managed separately.
-  if (user.accessRole === "admin" && accessRole !== "admin") {
+  if (
+    accessRole !== "admin" &&
+    (user.role === "dungeon_master" || user.isAdmin)
+  ) {
     updates.role = "player";
     updates.isAdmin = false;
   }
