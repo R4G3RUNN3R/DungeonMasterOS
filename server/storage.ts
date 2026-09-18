@@ -81,6 +81,14 @@ export type SecurityEventRecord = {
 
 export type NewSecurityEventRecord = Omit<SecurityEventRecord, "id">;
 
+export type LegacySessionMigrationStats = {
+  activeOpaqueSessions: number;
+  activeLegacyUpgradeSessions: number;
+  legacyUpgradesLast24Hours: number;
+  legacyUpgradesLast7Days: number;
+  latestLegacyUpgradeAt: string | null;
+};
+
 export type ShopPurchaseResult =
   | { ok: true; wallet: CharacterCurrency; remainingStock: number; item: Item }
   | { ok: false; reason: "not_found" | "stock" | "funds" };
@@ -286,6 +294,52 @@ export function insertSecurityEventRecord(
     FROM security_events
     WHERE id = ?
   `).get(Number(result.lastInsertRowid)) as SecurityEventRecord;
+}
+
+export function getLegacySessionMigrationStats(
+  now: Date = new Date(),
+): LegacySessionMigrationStats {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) {
+    throw new Error("Migration status time must be valid.");
+  }
+
+  const nowIso = now.toISOString();
+  const since24Hours = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+  const since7Days = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const active = sqlite.prepare(`
+    SELECT
+      COUNT(*) AS activeOpaqueSessions,
+      SUM(CASE WHEN auth_method = 'legacy-jwt' THEN 1 ELSE 0 END) AS activeLegacyUpgradeSessions
+    FROM auth_sessions
+    WHERE revoked_at IS NULL
+      AND expires_at > ?
+  `).get(nowIso) as {
+    activeOpaqueSessions: number;
+    activeLegacyUpgradeSessions: number | null;
+  };
+
+  const upgrades = sqlite.prepare(`
+    SELECT
+      SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS legacyUpgradesLast24Hours,
+      SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS legacyUpgradesLast7Days,
+      MAX(created_at) AS latestLegacyUpgradeAt
+    FROM security_events
+    WHERE event_type = 'AUTH_LEGACY_SESSION_UPGRADED'
+  `).get(since24Hours, since7Days) as {
+    legacyUpgradesLast24Hours: number | null;
+    legacyUpgradesLast7Days: number | null;
+    latestLegacyUpgradeAt: string | null;
+  };
+
+  return {
+    activeOpaqueSessions: active.activeOpaqueSessions ?? 0,
+    activeLegacyUpgradeSessions: active.activeLegacyUpgradeSessions ?? 0,
+    legacyUpgradesLast24Hours: upgrades.legacyUpgradesLast24Hours ?? 0,
+    legacyUpgradesLast7Days: upgrades.legacyUpgradesLast7Days ?? 0,
+    latestLegacyUpgradeAt: upgrades.latestLegacyUpgradeAt ?? null,
+  };
 }
 
 export function updateUserPasswordAndBumpAuthVersion(
