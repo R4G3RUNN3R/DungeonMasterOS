@@ -315,10 +315,12 @@ function columnExists(tableName: string, columnName: string): boolean {
   return rows.some((row) => row.name === columnName);
 }
 
-function addColumnIfMissing(tableName: string, columnName: string, columnDef: string) {
+function addColumnIfMissing(tableName: string, columnName: string, columnDef: string): boolean {
   if (!columnExists(tableName, columnName)) {
     sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
+    return true;
   }
+  return false;
 }
 
 // ── Run migrations on startup ──────────────────────────────────────────────
@@ -346,6 +348,9 @@ export function runMigrations() {
       ai_turns_used_this_month INTEGER NOT NULL DEFAULT 0,
       usage_reset_at TEXT,
       onboarding_complete INTEGER NOT NULL DEFAULT 0,
+      subscription_bypass INTEGER NOT NULL DEFAULT 0,
+      campaign_limit_bypass INTEGER NOT NULL DEFAULT 0,
+      unlimited_ai_turns INTEGER NOT NULL DEFAULT 0,
       unlimited_turns INTEGER NOT NULL DEFAULT 0,
       is_admin INTEGER NOT NULL DEFAULT 0,
       auth_version INTEGER NOT NULL DEFAULT 0,
@@ -602,6 +607,39 @@ export function runMigrations() {
     END
     WHERE access_role IS NULL OR access_role = '';
   `);
+
+  // Snapshot the legacy coupled privilege model into explicit entitlement
+  // overrides exactly once when these columns first appear. Keep the DDL and
+  // backfill atomic so a startup interruption cannot leave a newly-added column
+  // permanently un-backfilled.
+  sqlite.transaction(() => {
+    const addedSubscriptionBypass = addColumnIfMissing("users", "subscription_bypass", "INTEGER NOT NULL DEFAULT 0");
+    const addedCampaignLimitBypass = addColumnIfMissing("users", "campaign_limit_bypass", "INTEGER NOT NULL DEFAULT 0");
+    const addedUnlimitedAiTurns = addColumnIfMissing("users", "unlimited_ai_turns", "INTEGER NOT NULL DEFAULT 0");
+
+    if (addedSubscriptionBypass) {
+      sqlite.exec(`
+        UPDATE users
+        SET subscription_bypass = 1
+        WHERE access_role = 'admin' OR is_admin = 1 OR role = 'dungeon_master';
+      `);
+    }
+    if (addedCampaignLimitBypass) {
+      sqlite.exec(`
+        UPDATE users
+        SET campaign_limit_bypass = 1
+        WHERE access_role = 'admin' OR is_admin = 1 OR role = 'dungeon_master';
+      `);
+    }
+    if (addedUnlimitedAiTurns) {
+      sqlite.exec(`
+        UPDATE users
+        SET unlimited_ai_turns = 1
+        WHERE access_role = 'admin' OR is_admin = 1 OR role = 'dungeon_master' OR unlimited_turns = 1;
+      `);
+    }
+  })();
+
   addColumnIfMissing("users", "google_id", "TEXT");
   addColumnIfMissing("users", "google_email", "TEXT");
   addColumnIfMissing("users", "avatar_url", "TEXT");

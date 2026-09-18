@@ -54,6 +54,15 @@ export const users = sqliteTable("users", {
 
   // Admin / internal
   onboardingComplete: integer("onboarding_complete", { mode: "boolean" }).notNull().default(false),
+
+  // Explicit entitlement overrides. These are independent from authorization
+  // roles so DungeonMaster/moderator/admin status never silently changes billing
+  // or AI limits.
+  subscriptionBypass: integer("subscription_bypass", { mode: "boolean" }).notNull().default(false),
+  campaignLimitBypass: integer("campaign_limit_bypass", { mode: "boolean" }).notNull().default(false),
+  unlimitedAiTurns: integer("unlimited_ai_turns", { mode: "boolean" }).notNull().default(false),
+
+  // Legacy rollback fields retained during the compatibility window.
   unlimitedTurns: integer("unlimited_turns", { mode: "boolean" }).notNull().default(false),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
 

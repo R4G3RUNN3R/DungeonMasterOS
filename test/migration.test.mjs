@@ -138,10 +138,12 @@ test('current startup migrates an older V1 database in place without losing rows
   legacyDb.exec(`
     ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player';
     ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
-    INSERT INTO users (id, email, username, password_hash, role, is_admin)
+    ALTER TABLE users ADD COLUMN unlimited_turns INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO users (id, email, username, password_hash, role, is_admin, unlimited_turns)
     VALUES
-      (2, 'legacy-dm@example.invalid', 'legacy-dm', 'not-a-real-hash', 'dungeon_master', 0),
-      (3, 'legacy-admin@example.invalid', 'legacy-admin', 'not-a-real-hash', 'player', 1);
+      (2, 'legacy-dm@example.invalid', 'legacy-dm', 'not-a-real-hash', 'dungeon_master', 0, 0),
+      (3, 'legacy-admin@example.invalid', 'legacy-admin', 'not-a-real-hash', 'player', 1, 0),
+      (4, 'legacy-ai@example.invalid', 'legacy-ai', 'not-a-real-hash', 'player', 0, 1);
   `);
   legacyDb.close();
 
@@ -166,7 +168,7 @@ test('current startup migrates an older V1 database in place without losing rows
     assert.equal(db.pragma('quick_check', { simple: true }), 'ok');
 
     const userColumns = new Set(db.pragma('table_info(users)').map((row) => row.name));
-    for (const column of ['role', 'access_role', 'bonus_turns', 'onboarding_complete', 'unlimited_turns', 'is_admin', 'auth_version']) {
+    for (const column of ['role', 'access_role', 'bonus_turns', 'onboarding_complete', 'subscription_bypass', 'campaign_limit_bypass', 'unlimited_ai_turns', 'unlimited_turns', 'is_admin', 'auth_version']) {
       assert.equal(userColumns.has(column), true, `users.${column} was not migrated`);
     }
 
@@ -193,8 +195,19 @@ test('current startup migrates an older V1 database in place without losing rows
     assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 1').get().accessRole, 'player');
     assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 2').get().accessRole, 'admin');
     assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 3').get().accessRole, 'admin');
+    assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 4').get().accessRole, 'player');
     assert.equal(db.prepare('SELECT role FROM users WHERE id = 2').get().role, 'dungeon_master');
     assert.equal(db.prepare('SELECT is_admin AS isAdmin FROM users WHERE id = 3').get().isAdmin, 1);
+    for (const id of [2, 3]) {
+      const entitlements = db.prepare('SELECT subscription_bypass AS subscriptionBypass, campaign_limit_bypass AS campaignLimitBypass, unlimited_ai_turns AS unlimitedAiTurns FROM users WHERE id = ?').get(id);
+      assert.equal(entitlements.subscriptionBypass, 1);
+      assert.equal(entitlements.campaignLimitBypass, 1);
+      assert.equal(entitlements.unlimitedAiTurns, 1);
+    }
+    const normalEntitlements = db.prepare('SELECT subscription_bypass AS subscriptionBypass, campaign_limit_bypass AS campaignLimitBypass, unlimited_ai_turns AS unlimitedAiTurns FROM users WHERE id = 1').get();
+    assert.deepEqual(normalEntitlements, { subscriptionBypass: 0, campaignLimitBypass: 0, unlimitedAiTurns: 0 });
+    const legacyAiEntitlements = db.prepare('SELECT subscription_bypass AS subscriptionBypass, campaign_limit_bypass AS campaignLimitBypass, unlimited_ai_turns AS unlimitedAiTurns FROM users WHERE id = 4').get();
+    assert.deepEqual(legacyAiEntitlements, { subscriptionBypass: 0, campaignLimitBypass: 0, unlimitedAiTurns: 1 });
     assert.equal(db.prepare('SELECT auth_version AS authVersion FROM users WHERE id = 1').get().authVersion, 0);
     db.close();
   } catch (error) {

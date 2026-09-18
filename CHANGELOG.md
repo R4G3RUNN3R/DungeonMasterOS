@@ -1,6 +1,13 @@
 # Changelog
 
 ## 2026-09-18
+- Authorization role split: canonical `player`, `dungeon_master`, `moderator`, and `admin` roles now resolve through an explicit permission matrix. DungeonMaster receives DM authority only, moderator receives moderation authority only, and admin receives the combined privileged permission set.
+- Entitlement separation: subscription bypass, campaign-limit bypass, and unlimited AI are now explicit persisted entitlement overrides rather than implicit consequences of DungeonMaster/admin role membership.
+- Migration preservation: when the explicit entitlement columns are first introduced, existing legacy DungeonMaster/admin accounts are snapshotted into equivalent bypass entitlements and standalone legacy unlimited-turn accounts retain only unlimited AI. The backfill runs only when each column is first added, so later role changes cannot re-grant removed entitlements.
+- DungeonMaster grant/revoke safety: granting or revoking the canonical DungeonMaster role no longer edits admin flags, legacy role flags, subscription bypass, campaign limits, or AI quota. Admin accounts are not silently demoted by DungeonMaster grant/revoke operations.
+- Security audit accuracy: DungeonMaster grant/revoke routes now record privilege-change events only when the canonical role actually changes; no-op requests return `changed: false` instead of creating misleading audit history.
+- UI/operations: account badges now show the canonical privileged role, and the DungeonMaster grant script reports canonical role/entitlement state while retaining legacy fields only as diagnostic rollback information.
+- Rollback safety: legacy privilege columns remain intact for the compatibility window; newly granted canonical DungeonMasters fail closed to ordinary-player authority on an older rollback build instead of inheriting historical admin/subscription bypass semantics.
 - Canonical access roles: added an additive `access_role` field with the future-safe role vocabulary `player`, `dungeon_master`, `moderator`, and `admin`, while retaining the legacy `role`, `is_admin`, and `unlimited_turns` fields for rollback compatibility.
 - Privilege migration: existing users with either the legacy DungeonMaster role or admin flag are backfilled to canonical `admin`, while ordinary users are backfilled to `player`; legacy privilege data is not rewritten or discarded.
 - Rollback safety: current DungeonMaster grant/revoke operations continue mirroring the old coupled flags and now mirror `access_role` as well. The actual DM/admin/unlimited semantic split is intentionally deferred until a canonical-role-capable release is established as the rollback baseline.

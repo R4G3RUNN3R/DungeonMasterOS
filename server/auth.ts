@@ -16,7 +16,6 @@ import jwt from "jsonwebtoken";
 import { refundAiTurn, reserveAiTurn, storage, type AiTurnReservation } from "./storage";
 import { getNextTurnResetAt } from "../shared/tiers";
 import type { User, PublicUser } from "../shared/schema";
-import { hasDungeonMasterAccess } from "./access-policy";
 import { PERMISSIONS, requirePermission } from "./permissions";
 import {
   resolveAiEntitlement,
@@ -50,43 +49,18 @@ function getJwtSecret(): string {
   return DEV_JWT_SECRET;
 }
 
-function syncDungeonMasterFlags(user: User): User {
-  if (!hasDungeonMasterAccess(user)) {
-    return user;
-  }
-
-  const updates: Partial<User> = {};
-
-  if (user.role !== "dungeon_master") {
-    updates.role = "dungeon_master";
-  }
-  if (user.accessRole !== "admin") {
-    updates.accessRole = "admin";
-  }
-  if (!user.isAdmin) {
-    updates.isAdmin = true;
-  }
-  if (!user.unlimitedTurns) {
-    updates.unlimitedTurns = true;
-  }
-
-  if (Object.keys(updates).length === 0) {
-    return user;
-  }
-
-  storage.updateUser(user.id, updates);
-  return { ...user, ...updates };
-}
-
 export function grantDungeonMasterAccess(userId: number): User | undefined {
   const user = storage.getUser(userId);
   if (!user) return undefined;
 
+  // Admin already includes DungeonMaster permission. Do not demote an admin or
+  // attach billing/AI entitlements as a side effect of granting a role.
+  if (user.accessRole === "admin" || user.accessRole === "dungeon_master") {
+    return user;
+  }
+
   const updates: Partial<User> = {
-    role: "dungeon_master",
-    accessRole: "admin",
-    isAdmin: true,
-    unlimitedTurns: true,
+    accessRole: "dungeon_master",
   };
 
   storage.updateUser(user.id, updates);
@@ -97,11 +71,13 @@ export function revokeDungeonMasterAccess(userId: number): User | undefined {
   const user = storage.getUser(userId);
   if (!user) return undefined;
 
+  // Revoking the DungeonMaster role must never silently revoke admin authority.
+  if (user.accessRole !== "dungeon_master") {
+    return user;
+  }
+
   const updates: Partial<User> = {
-    role: "player",
     accessRole: "player",
-    isAdmin: false,
-    unlimitedTurns: false,
   };
 
   storage.updateUser(user.id, updates);
@@ -357,7 +333,7 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
     }
   }
 
-  const user = rawUser ? syncDungeonMasterFlags(rawUser) : undefined;
+  const user = rawUser;
   if (!user) return next();
 
   // Auto-expire trial
@@ -399,7 +375,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export function requireDungeonMaster(req: Request, res: Response, next: NextFunction) {
-  return requirePermission(PERMISSIONS.ADMIN_ACCESS)(req, res, next);
+  return requirePermission(PERMISSIONS.DUNGEON_MASTER_ACCESS)(req, res, next);
 }
 
 // ── Middleware: require active subscription or trial ───────────────────────
