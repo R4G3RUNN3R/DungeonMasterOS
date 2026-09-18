@@ -83,8 +83,15 @@ import { randomBytes } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { TRIAL_DAYS } from "../shared/tiers";
 import { ACHIEVEMENT_MAP, checkAchievements, scanDMResponseForAchievements } from "../shared/achievements";
+import { PUBLIC_UPDATES } from "../shared/public-updates";
 
 // ── Clients ────────────────────────────────────────────────────────────────
+const PUBLIC_UPDATES_CORS_ORIGINS = new Set([
+  "https://voidsmithindustries.com",
+  "https://www.voidsmithindustries.com",
+  "https://dungeonmaster-os.com",
+]);
+
 const configuredAnthropicTimeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS || 60_000);
 const AUX_ANTHROPIC_TIMEOUT_MS =
   Number.isFinite(configuredAnthropicTimeoutMs) && configuredAnthropicTimeoutMs > 0
@@ -742,6 +749,26 @@ function tryUnlockAchievements(
 // ── Route registration ──────────────────────────────────────────────────────
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   app.use(attachUser);
+
+  // Public, version-controlled release feed consumed by the Voidsmith Industries
+  // Updates page. This endpoint has no mutation path and no database authority.
+  app.get("/api/updates", (req, res) => {
+    const origin = req.get("origin");
+    res.setHeader("Vary", "Origin");
+    if (origin && PUBLIC_UPDATES_CORS_ORIGINS.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+    return res.json({
+      updates: PUBLIC_UPDATES.map((entry) => ({
+        product: "DMOS",
+        type: "RELEASE",
+        date: entry.date,
+        title: entry.title,
+        description: entry.description,
+      })),
+    });
+  });
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTH ROUTES
