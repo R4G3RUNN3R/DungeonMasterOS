@@ -127,4 +127,16 @@ test('auth and privilege routes emit the expected security events without error 
     routes,
     /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
+
+  // No-op role requests must not create false privilege-change audit history.
+  assert.match(routes, /const changed = updated\.accessRole !== target\.accessRole;/);
+  assert.match(
+    routes,
+    /if \(changed\) \{[\s\S]*?eventType: ["']DUNGEON_MASTER_GRANTED["']/,
+  );
+  assert.match(
+    routes,
+    /if \(changed\) \{[\s\S]*?eventType: ["']DUNGEON_MASTER_REVOKED["']/,
+  );
+  assert.match(routes, /return res\.json\(\{ user: toPublicUser\(updated\), changed \}\);/);
 });
