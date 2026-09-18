@@ -961,7 +961,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(req.user!) });
   });
 
-  app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = accessRoleUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -1004,7 +1004,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated), changed });
   });
 
-  app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -1035,7 +1035,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated), changed });
   });
 
-  app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
