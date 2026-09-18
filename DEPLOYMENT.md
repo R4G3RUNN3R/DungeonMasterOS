@@ -276,8 +276,12 @@ The v2 session rollout is deliberately additive:
 - JWT-only HTTP sessions are upgraded additively by setting `dmos_session_v2`; the existing JWT cookie is left untouched so the previous release can still authenticate the browser after an application rollback.
 - Logout revokes the current v2 session and clears both cookies.
 - While the rollback target is JWT-only, keep both `AUTH_LEGACY_SESSION_ACCEPT=true` and `AUTH_LEGACY_SESSION_ISSUE=true`.
-- Do not stop issuing the legacy cookie until the selected rollback release also understands v2 sessions. After that point, issuance may be disabled while acceptance remains enabled for at least the maximum seven-day legacy lifetime; only then may legacy acceptance be disabled.
-- During the compatibility window, a copied legacy JWT retains its historical non-revocable lifetime until credential-version enforcement is promoted.
+- Every successful JWT-only HTTP upgrade records a sanitized `AUTH_LEGACY_SESSION_UPGRADED` event. Administrators can inspect aggregate runtime evidence at `GET /api/admin/auth-migration-status`; it exposes compatibility flags, active-session counts, recent upgrade counts and the latest upgrade timestamp, never bearer/session material or account identities.
+- Do not stop issuing the legacy cookie until the selected rollback release also understands v2 sessions and `auth_version`. Record the exact production timestamp when `AUTH_LEGACY_SESSION_ISSUE=false` becomes effective.
+- Keep `AUTH_LEGACY_SESSION_ACCEPT=true` for at least the complete maximum seven-day legacy lifetime after that recorded issuance-off timestamp. Add an operational buffer for clock/deployment uncertainty rather than changing acceptance at the exact TTL boundary.
+- During the drain, review the migration-status aggregates and security events for continuing legacy-only upgrades. Telemetry is supporting evidence, not authority to shorten the seven-day drain.
+- Disable `AUTH_LEGACY_SESSION_ACCEPT` only after the full drain plus buffer has elapsed, the current/rollback releases both operate on v2 sessions and `auth_version`, and smoke/rollback checks are ready. Then verify HTTP and WebSocket authentication with legacy acceptance off before treating JWT compatibility as retired.
+- During the compatibility window, a copied legacy JWT retains its historical non-revocable lifetime until it expires or credential-version enforcement invalidates it.
 
 The `auth_sessions` migration is additive and does not rewrite users, credentials, campaigns, billing records, or existing JWT cookies. A code rollback therefore does not require a database rollback.
 
