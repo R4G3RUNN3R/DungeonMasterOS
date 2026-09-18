@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-09-18
+- Account session controls: Account Settings now lists active authenticated sessions with a concise browser/platform summary, sign-in method, current-session marker, last-active time, creation time, and expiry.
+- Self-service revocation UI: users can revoke another active session directly from Account Settings; revoking the current session clears cached account state and returns the browser to sign-in.
+- Session privacy: the UI consumes only the existing sanitized session inventory and does not display raw session tokens, token hashes, IP hashes, auth-version internals, or the full user-agent string.
+- Account render stability: moved auth-dependent redirects/early returns below the page hooks so loading-to-authenticated transitions cannot violate React hook ordering as the session query is mounted.
 - Explicit entitlement administration: added a separately authorized endpoint for partial updates to subscription bypass, campaign-limit bypass, and unlimited-AI overrides without mutating access roles or legacy authorization flags.
 - Entitlement least privilege: override changes require the dedicated `admin.entitlements.manage` permission; DungeonMaster and moderator roles do not receive it.
 - Financial-control guardrails: entitlement changes require a bounded categorical reason code, reject self-grants/self-revocations that would change access, and are throttled plus trusted-origin protected.
