@@ -979,12 +979,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(500).json({ message: "Failed to grant DungeonMaster access." });
     }
 
-    safeRecordSecurityEvent({
-      eventType: "DUNGEON_MASTER_GRANTED",
-      actorUserId: req.user!.id,
-      subjectUserId: target.id,
-    });
-    return res.json({ user: toPublicUser(updated) });
+    const changed = updated.accessRole !== target.accessRole;
+    if (changed) {
+      safeRecordSecurityEvent({
+        eventType: "DUNGEON_MASTER_GRANTED",
+        actorUserId: req.user!.id,
+        subjectUserId: target.id,
+      });
+    }
+    return res.json({ user: toPublicUser(updated), changed });
   });
 
   app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
@@ -1011,12 +1014,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(500).json({ message: "Failed to revoke DungeonMaster access." });
     }
 
-    safeRecordSecurityEvent({
-      eventType: "DUNGEON_MASTER_REVOKED",
-      actorUserId: req.user!.id,
-      subjectUserId: target.id,
-    });
-    return res.json({ user: toPublicUser(updated) });
+    const changed = updated.accessRole !== target.accessRole;
+    if (changed) {
+      safeRecordSecurityEvent({
+        eventType: "DUNGEON_MASTER_REVOKED",
+        actorUserId: req.user!.id,
+        subjectUserId: target.id,
+      });
+    }
+    return res.json({ user: toPublicUser(updated), changed });
   });
 
   app.post("/api/auth/complete-onboarding", requireAuth, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
