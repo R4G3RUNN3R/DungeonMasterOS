@@ -75,18 +75,21 @@ test('Google OAuth authorization URL uses the configured callback and state', ()
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('current DungeonMaster access accepts either the DungeonMaster role or legacy admin flag', () => {
+test('canonical DungeonMaster access is role-aware with legacy fallback', () => {
   const result = runTsx(`
     import('./server/auth.ts').then(({ hasDungeonMasterAccess }) => {
       const cases = [
         [{ role: 'player', isAdmin: false }, false],
         [{ role: 'dungeon_master', isAdmin: false }, true],
         [{ role: 'player', isAdmin: true }, true],
-        [{ role: 'dungeon_master', isAdmin: true }, true],
+        [{ role: 'player', accessRole: 'player', isAdmin: true }, false],
+        [{ role: 'player', accessRole: 'dungeon_master', isAdmin: false }, true],
+        [{ role: 'player', accessRole: 'moderator', isAdmin: false }, false],
+        [{ role: 'player', accessRole: 'admin', isAdmin: false }, true],
       ];
       for (const [user, expected] of cases) {
         if (hasDungeonMasterAccess(user) !== expected) {
-          throw new Error('DungeonMaster compatibility contract changed for ' + JSON.stringify(user));
+          throw new Error('DungeonMaster role mapping changed for ' + JSON.stringify(user));
         }
       }
     });
@@ -95,19 +98,50 @@ test('current DungeonMaster access accepts either the DungeonMaster role or lega
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('legacy DungeonMaster grant and revoke semantics stay pinned during auth migration', () => {
-  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+test('DungeonMaster grant and revoke change only the canonical role', () => {
+  const result = runTsx(`
+    Promise.all([
+      import('./server/auth.ts'),
+      import('./server/storage.ts'),
+    ]).then(([auth, storageMod]) => {
+      storageMod.runMigrations();
+      const created = storageMod.storage.createUser({
+        email: 'role-split@example.invalid',
+        username: 'role_split_user',
+        passwordHash: 'test-hash',
+      });
 
-  assert.match(
-    auth,
-    /grantDungeonMasterAccess[\s\S]*?role:\s*["']dungeon_master["'][\s\S]*?isAdmin:\s*true[\s\S]*?unlimitedTurns:\s*true/,
-    'grant compatibility must keep role/admin/unlimited access together until the entitlement migration is explicit',
-  );
-  assert.match(
-    auth,
-    /revokeDungeonMasterAccess[\s\S]*?role:\s*["']player["'][\s\S]*?isAdmin:\s*false[\s\S]*?unlimitedTurns:\s*false/,
-    'revoke compatibility must keep role/admin/unlimited access together until the entitlement migration is explicit',
-  );
+      const granted = auth.grantDungeonMasterAccess(created.id);
+      if (!granted || granted.accessRole !== 'dungeon_master') throw new Error('DungeonMaster role was not granted');
+      if (granted.role !== 'player' || granted.isAdmin || granted.unlimitedTurns) {
+        throw new Error('DungeonMaster grant mutated legacy privilege flags');
+      }
+      if (granted.subscriptionBypass || granted.campaignLimitBypass || granted.unlimitedAiTurns) {
+        throw new Error('DungeonMaster grant mutated entitlements');
+      }
+
+      const revoked = auth.revokeDungeonMasterAccess(created.id);
+      if (!revoked || revoked.accessRole !== 'player') throw new Error('DungeonMaster role was not revoked');
+      if (revoked.subscriptionBypass || revoked.campaignLimitBypass || revoked.unlimitedAiTurns) {
+        throw new Error('DungeonMaster revoke mutated entitlements');
+      }
+
+      const admin = storageMod.storage.createUser({
+        email: 'admin-role-split@example.invalid',
+        username: 'admin_role_split_user',
+        passwordHash: 'test-hash',
+        accessRole: 'admin',
+      });
+      if (auth.grantDungeonMasterAccess(admin.id)?.accessRole !== 'admin') {
+        throw new Error('granting DungeonMaster demoted an admin');
+      }
+      if (auth.revokeDungeonMasterAccess(admin.id)?.accessRole !== 'admin') {
+        throw new Error('revoking DungeonMaster demoted an admin');
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('browser session cookie contract remains rollback-compatible while v2 sessions migrate', () => {
@@ -121,32 +155,49 @@ test('browser session cookie contract remains rollback-compatible while v2 sessi
   assert.match(auth, /path:\s*["']\/["']/);
 });
 
-test('access policy preserves current legacy capability semantics during separation', () => {
+test('access policy separates canonical roles from explicit entitlements', () => {
   const result = runTsx(`
     import('./server/access-policy.ts').then(({ resolveAccessCapabilities }) => {
+      const canonicalBase = {
+        role: 'player',
+        isAdmin: false,
+        unlimitedTurns: false,
+        accessRole: 'player',
+        subscriptionBypass: false,
+        campaignLimitBypass: false,
+        unlimitedAiTurns: false,
+      };
       const cases = [
         [
-          { role: 'player', isAdmin: false, unlimitedTurns: false },
+          canonicalBase,
           { dungeonMasterAccess: false, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: false },
+        ],
+        [
+          { ...canonicalBase, accessRole: 'dungeon_master' },
+          { dungeonMasterAccess: true, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: false },
+        ],
+        [
+          { ...canonicalBase, accessRole: 'moderator' },
+          { dungeonMasterAccess: false, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: false },
+        ],
+        [
+          { ...canonicalBase, accessRole: 'admin' },
+          { dungeonMasterAccess: true, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: false },
+        ],
+        [
+          { ...canonicalBase, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
+          { dungeonMasterAccess: false, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
         ],
         [
           { role: 'dungeon_master', isAdmin: false, unlimitedTurns: false },
           { dungeonMasterAccess: true, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
-        ],
-        [
-          { role: 'player', isAdmin: true, unlimitedTurns: false },
-          { dungeonMasterAccess: true, subscriptionBypass: true, campaignLimitBypass: true, unlimitedAiTurns: true },
-        ],
-        [
-          { role: 'player', isAdmin: false, unlimitedTurns: true },
-          { dungeonMasterAccess: false, subscriptionBypass: false, campaignLimitBypass: false, unlimitedAiTurns: true },
         ],
       ];
 
       for (const [user, expected] of cases) {
         const actual = resolveAccessCapabilities(user);
         if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-          throw new Error('legacy capability mapping changed for ' + JSON.stringify(user) + ': ' + JSON.stringify(actual));
+          throw new Error('capability mapping changed for ' + JSON.stringify(user) + ': ' + JSON.stringify(actual));
         }
       }
     });
@@ -155,7 +206,7 @@ test('access policy preserves current legacy capability semantics during separat
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('entitlement resolvers preserve legacy subscription, campaign, and AI outcomes', () => {
+test('entitlement resolvers depend on explicit entitlements, not canonical roles', () => {
   const result = runTsx(`
     import('./server/entitlements.ts').then(({ resolvePlayEntitlement, resolveCampaignEntitlement, resolveAiEntitlement }) => {
       const base = {
@@ -167,6 +218,7 @@ test('entitlement resolvers preserve legacy subscription, campaign, and AI outco
         googleEmail: null,
         avatarUrl: null,
         role: 'player',
+        accessRole: 'player',
         tier: 'free',
         subscriptionStatus: 'expired',
         stripeCustomerId: null,
@@ -179,32 +231,42 @@ test('entitlement resolvers preserve legacy subscription, campaign, and AI outco
         bonusTurns: 0,
         usageResetAt: null,
         onboardingComplete: true,
+        subscriptionBypass: false,
+        campaignLimitBypass: false,
+        unlimitedAiTurns: false,
         unlimitedTurns: false,
         isAdmin: false,
+        authVersion: 0,
         createdAt: new Date().toISOString(),
       };
 
-      const normal = { ...base };
-      if (resolvePlayEntitlement(normal).canPlay !== false) throw new Error('expired player unexpectedly playable');
-      if (resolvePlayEntitlement(normal).readOnly !== true) throw new Error('expired player lost read-only mode');
-      if (resolveCampaignEntitlement(normal).unlimited !== false) throw new Error('normal player unexpectedly bypasses campaign limit');
-      if (resolveAiEntitlement(normal).unlimited !== false) throw new Error('normal player unexpectedly has unlimited AI');
+      for (const principal of [
+        base,
+        { ...base, accessRole: 'dungeon_master' },
+        { ...base, accessRole: 'moderator' },
+        { ...base, accessRole: 'admin' },
+      ]) {
+        if (resolvePlayEntitlement(principal).canPlay !== false) throw new Error('role unexpectedly bypassed subscription');
+        if (resolvePlayEntitlement(principal).readOnly !== true) throw new Error('expired role lost read-only mode');
+        if (resolveCampaignEntitlement(principal).unlimited !== false) throw new Error('role unexpectedly bypassed campaign limit');
+        if (resolveAiEntitlement(principal).unlimited !== false) throw new Error('role unexpectedly gained unlimited AI');
+      }
 
-      const dm = { ...base, role: 'dungeon_master' };
-      if (resolvePlayEntitlement(dm).canPlay !== true) throw new Error('DungeonMaster lost play bypass');
-      if (resolvePlayEntitlement(dm).readOnly !== false) throw new Error('DungeonMaster became read-only');
-      if (resolveCampaignEntitlement(dm).unlimited !== true) throw new Error('DungeonMaster lost campaign bypass');
-      if (resolveAiEntitlement(dm).unlimited !== true) throw new Error('DungeonMaster lost unlimited AI');
+      const explicit = {
+        ...base,
+        subscriptionBypass: true,
+        campaignLimitBypass: true,
+        unlimitedAiTurns: true,
+      };
+      if (resolvePlayEntitlement(explicit).canPlay !== true) throw new Error('explicit subscription bypass was ignored');
+      if (resolvePlayEntitlement(explicit).readOnly !== false) throw new Error('explicit subscription bypass stayed read-only');
+      if (resolveCampaignEntitlement(explicit).unlimited !== true) throw new Error('explicit campaign bypass was ignored');
+      if (resolveAiEntitlement(explicit).unlimited !== true) throw new Error('explicit unlimited AI entitlement was ignored');
 
-      const admin = { ...base, isAdmin: true };
-      if (resolvePlayEntitlement(admin).canPlay !== true) throw new Error('legacy admin lost play bypass');
-      if (resolveCampaignEntitlement(admin).unlimited !== true) throw new Error('legacy admin lost campaign bypass');
-      if (resolveAiEntitlement(admin).unlimited !== true) throw new Error('legacy admin lost unlimited AI');
-
-      const unlimitedOnly = { ...base, unlimitedTurns: true };
-      if (resolvePlayEntitlement(unlimitedOnly).canPlay !== false) throw new Error('unlimited-turn flag incorrectly bypassed subscription');
-      if (resolveCampaignEntitlement(unlimitedOnly).unlimited !== false) throw new Error('unlimited-turn flag incorrectly bypassed campaign limit');
-      if (resolveAiEntitlement(unlimitedOnly).unlimited !== true) throw new Error('unlimited-turn flag lost AI bypass');
+      const aiOnly = { ...base, unlimitedAiTurns: true };
+      if (resolvePlayEntitlement(aiOnly).canPlay !== false) throw new Error('AI entitlement incorrectly bypassed subscription');
+      if (resolveCampaignEntitlement(aiOnly).unlimited !== false) throw new Error('AI entitlement incorrectly bypassed campaign limit');
+      if (resolveAiEntitlement(aiOnly).unlimited !== true) throw new Error('AI entitlement did not grant unlimited AI');
     });
   `, { NODE_ENV: 'test' });
 
@@ -329,17 +391,35 @@ test('Google OAuth routes persist and consume the PKCE verifier while preserving
 });
 
 
-test('explicit permissions preserve current admin access while removing role-name checks from privileged routes', () => {
+test('explicit permission matrix separates player, DungeonMaster, moderator, and admin', () => {
   const result = runTsx(`
     import('./server/permissions.ts').then(({ PERMISSIONS, hasPermission, resolvePermissions }) => {
-      const player = { role: 'player', isAdmin: false };
-      const dm = { role: 'dungeon_master', isAdmin: false };
-      const legacyAdmin = { role: 'player', isAdmin: true };
+      const player = { role: 'player', accessRole: 'player', isAdmin: false };
+      const dm = { role: 'player', accessRole: 'dungeon_master', isAdmin: false };
+      const moderator = { role: 'player', accessRole: 'moderator', isAdmin: false };
+      const admin = { role: 'player', accessRole: 'admin', isAdmin: false };
 
-      if (resolvePermissions(player).size !== 0) throw new Error('player unexpectedly received admin permissions');
-      for (const principal of [dm, legacyAdmin]) {
-        if (!hasPermission(principal, PERMISSIONS.ADMIN_ACCESS)) throw new Error('existing admin access was lost');
-        if (!hasPermission(principal, PERMISSIONS.ADMIN_USERS_MANAGE)) throw new Error('existing user-management access was lost');
+      if (resolvePermissions(player).size !== 0) throw new Error('player unexpectedly received permissions');
+
+      if (!hasPermission(dm, PERMISSIONS.DUNGEON_MASTER_ACCESS)) throw new Error('DungeonMaster lost DM access');
+      if (hasPermission(dm, PERMISSIONS.MODERATION_ACCESS)) throw new Error('DungeonMaster gained moderation access');
+      if (hasPermission(dm, PERMISSIONS.ADMIN_ACCESS)) throw new Error('DungeonMaster gained admin access');
+      if (hasPermission(dm, PERMISSIONS.ADMIN_USERS_MANAGE)) throw new Error('DungeonMaster gained user management');
+
+      if (!hasPermission(moderator, PERMISSIONS.MODERATION_ACCESS)) throw new Error('moderator lost moderation access');
+      if (hasPermission(moderator, PERMISSIONS.DUNGEON_MASTER_ACCESS)) throw new Error('moderator gained DM access');
+      if (hasPermission(moderator, PERMISSIONS.ADMIN_ACCESS)) throw new Error('moderator gained admin access');
+
+      for (const permission of Object.values(PERMISSIONS)) {
+        if (!hasPermission(admin, permission)) throw new Error('admin missing permission ' + permission);
+      }
+
+      for (const legacy of [
+        { role: 'dungeon_master', isAdmin: false },
+        { role: 'player', isAdmin: true },
+      ]) {
+        if (!hasPermission(legacy, PERMISSIONS.ADMIN_ACCESS)) throw new Error('legacy privileged principal lost rollback access');
+        if (!hasPermission(legacy, PERMISSIONS.DUNGEON_MASTER_ACCESS)) throw new Error('legacy privileged principal lost DM access');
       }
     });
   `, { NODE_ENV: 'test' });
@@ -350,16 +430,15 @@ test('explicit permissions preserve current admin access while removing role-nam
   assert.match(routes, /\/api\/admin\/me", requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)/);
   assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
   assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
-  assert.doesNotMatch(routes, /\/api\/admin\/[^\"']+\", requireDungeonMaster/);
+  assert.doesNotMatch(routes, /\/api\/admin\/[^\"']+", requireDungeonMaster/);
 });
 
-test('legacy requireDungeonMaster remains a compatibility adapter over the permission boundary', () => {
+test('legacy requireDungeonMaster now targets the DungeonMaster permission boundary', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
-  assert.match(auth, /requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)\(req, res, next\)/);
+  assert.match(auth, /requirePermission\(PERMISSIONS\.DUNGEON_MASTER_ACCESS\)\(req, res, next\)/);
 });
 
-
-test('canonical access roles are additive and authoritative when present', () => {
+test('canonical access roles and entitlement defaults are authoritative when present', () => {
   const result = runTsx(`
     Promise.all([
       import('./server/storage.ts'),
@@ -372,6 +451,9 @@ test('canonical access roles are additive and authoritative when present', () =>
         passwordHash: 'test-hash',
       });
       if (created.accessRole !== 'player') throw new Error('new user did not default to player access role');
+      if (created.subscriptionBypass || created.campaignLimitBypass || created.unlimitedAiTurns) {
+        throw new Error('new user received entitlement overrides by default');
+      }
 
       const explicitPlayerWithLegacyAdmin = {
         role: 'player',
@@ -396,15 +478,19 @@ test('canonical access roles are additive and authoritative when present', () =>
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('legacy DungeonMaster grant and revoke mirror the canonical access role during rollback-safe migration', () => {
+test('DungeonMaster role mutation paths do not write legacy privileges or entitlements', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+  const grantBody = auth.match(/export function grantDungeonMasterAccess[\\s\\S]*?export function revokeDungeonMasterAccess/)?.[0] || '';
+  const revokeBody = auth.match(/export function revokeDungeonMasterAccess[\\s\\S]*?function useSecureCookies/)?.[0] || '';
 
-  assert.match(
-    auth,
-    /grantDungeonMasterAccess[\s\S]*?role:\s*["']dungeon_master["'][\s\S]*?accessRole:\s*["']admin["'][\s\S]*?isAdmin:\s*true[\s\S]*?unlimitedTurns:\s*true/,
-  );
-  assert.match(
-    auth,
-    /revokeDungeonMasterAccess[\s\S]*?role:\s*["']player["'][\s\S]*?accessRole:\s*["']player["'][\s\S]*?isAdmin:\s*false[\s\S]*?unlimitedTurns:\s*false/,
-  );
+  assert.match(grantBody, /accessRole:\\s*["']dungeon_master["']/);
+  assert.match(revokeBody, /accessRole:\\s*["']player["']/);
+  for (const body of [grantBody, revokeBody]) {
+    assert.doesNotMatch(body, /subscriptionBypass\\s*:/);
+    assert.doesNotMatch(body, /campaignLimitBypass\\s*:/);
+    assert.doesNotMatch(body, /unlimitedAiTurns\\s*:/);
+    assert.doesNotMatch(body, /unlimitedTurns\\s*:/);
+    assert.doesNotMatch(body, /isAdmin\\s*:/);
+    assert.doesNotMatch(body, /role:\\s*["'](?:player|dungeon_master)["']/);
+  }
 });
