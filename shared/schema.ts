@@ -88,8 +88,11 @@ export type PublicUser = Omit<User, "passwordHash" | "googleId" | "authVersion">
 export const passwordResetTokens = sqliteTable("password_reset_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
+  // New reset credentials are stored as SHA-256 digests, never raw
+  // bearer values. The legacy column name is retained for additive migration.
   token: text("token").notNull().unique(),
   expiresAt: text("expires_at").notNull(),
+  deliveredAt: text("delivered_at"),
   usedAt: text("used_at"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
