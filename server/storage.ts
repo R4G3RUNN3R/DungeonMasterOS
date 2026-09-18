@@ -39,7 +39,7 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, inArray, or, isNotNull } from "drizzle-orm";
+import { eq, and, desc, inArray, or } from "drizzle-orm";
 import path from "path";
 import { createHash } from "crypto";
 
@@ -810,9 +810,12 @@ export interface IStorage {
 
   // Password reset
   createPasswordResetToken(userId: number, token: string, expiresAt: Date): PasswordResetToken;
-  getPasswordResetToken(token: string): PasswordResetToken | undefined;
   markPasswordResetTokenDelivered(id: number): void;
-  markPasswordResetTokenUsed(id: number): void;
+  consumePasswordResetTokenAndUpdatePassword(
+    token: string,
+    passwordHash: string,
+    now?: Date,
+  ): { userId: number; authVersion: number } | null;
   deleteExpiredPasswordResetTokens(): void;
 
   // Campaigns
@@ -957,33 +960,68 @@ export class DatabaseStorage implements IStorage {
       .returning()
       .get();
   }
-  getPasswordResetToken(token: string): PasswordResetToken | undefined {
-    const digest = hashPasswordResetToken(token);
-    return db
-      .select()
-      .from(passwordResetTokens)
-      .where(
-        and(
-          or(
-            eq(passwordResetTokens.token, digest),
-            // Compatibility fallback for pre-hardening development rows only.
-            // Existing rows are not marked delivered by migration, so this
-            // cannot make an old production credential newly usable.
-            eq(passwordResetTokens.token, token),
-          ),
-          isNotNull(passwordResetTokens.deliveredAt),
-        ),
-      )
-      .get();
-  }
   markPasswordResetTokenDelivered(id: number): void {
     db.update(passwordResetTokens)
       .set({ deliveredAt: new Date().toISOString() })
       .where(eq(passwordResetTokens.id, id))
       .run();
   }
-  markPasswordResetTokenUsed(id: number): void {
-    db.update(passwordResetTokens).set({ usedAt: new Date().toISOString() }).where(eq(passwordResetTokens.id, id)).run();
+  consumePasswordResetTokenAndUpdatePassword(
+    token: string,
+    passwordHash: string,
+    now: Date = new Date(),
+  ): { userId: number; authVersion: number } | null {
+    const nowIso = now.toISOString();
+    const digest = hashPasswordResetToken(token);
+
+    return sqlite.transaction(() => {
+      const reset = sqlite.prepare(`
+        SELECT id, user_id AS userId
+        FROM password_reset_tokens
+        WHERE (token = ? OR token = ?)
+          AND delivered_at IS NOT NULL
+          AND used_at IS NULL
+          AND expires_at >= ?
+        ORDER BY CASE WHEN token = ? THEN 0 ELSE 1 END
+        LIMIT 1
+      `).get(digest, token, nowIso, digest) as
+        | { id: number; userId: number }
+        | undefined;
+
+      if (!reset) return null;
+
+      const consumed = sqlite.prepare(`
+        UPDATE password_reset_tokens
+        SET used_at = ?
+        WHERE id = ?
+          AND used_at IS NULL
+      `).run(nowIso, reset.id);
+
+      if (consumed.changes !== 1) return null;
+
+      const updated = sqlite.prepare(`
+        UPDATE users
+        SET password_hash = ?, auth_version = auth_version + 1
+        WHERE id = ?
+      `).run(passwordHash, reset.userId);
+
+      if (updated.changes !== 1) {
+        throw new Error("Password reset token references a missing user.");
+      }
+
+      const row = sqlite.prepare(
+        "SELECT auth_version AS authVersion FROM users WHERE id = ?",
+      ).get(reset.userId) as { authVersion: number } | undefined;
+
+      if (!row) {
+        throw new Error("Password reset user disappeared during rotation.");
+      }
+
+      return {
+        userId: reset.userId,
+        authVersion: row.authVersion,
+      };
+    })();
   }
   deleteExpiredPasswordResetTokens(): void {
     const now = new Date().toISOString();
