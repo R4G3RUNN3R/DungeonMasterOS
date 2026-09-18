@@ -791,8 +791,8 @@ export class DatabaseStorage implements IStorage {
   createUser(insertUser: InsertUser): User {
     try {
       return db.insert(users).values({
-        accessRole: "player",
         ...insertUser,
+        accessRole: (insertUser.accessRole ?? "player") as User["accessRole"],
       }).returning().get();
     } catch (err: any) {
       if (String(err?.message || '').toLowerCase().includes('unique')) {
