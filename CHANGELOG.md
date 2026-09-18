@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-09-18
+- Canonical role administration: added one validated admin endpoint for assigning `player`, `dungeon_master`, `moderator`, or `admin` by username/email, while retaining the older DungeonMaster grant/revoke routes as compatibility adapters.
+- Least-privilege authorization: role changes now require the dedicated `admin.roles.manage` permission instead of borrowing broader user-management authority.
+- Admin lockout protection: an administrator cannot change their own canonical role through the role-management endpoint; same-role no-op requests remain harmless and do not create false audit history.
+- Rollback-safe demotion: changing a privileged account to a non-admin canonical role retires legacy `role=dungeon_master` / `is_admin` privilege shadows so older rollback code cannot resurrect removed admin authority. Explicit subscription/campaign/AI entitlements remain unchanged.
+- Role-change auditing: effective canonical role changes emit `ACCESS_ROLE_CHANGED` with sanitized old/new role metadata; no-op changes are not recorded as privilege mutations.
 - Authorization role split: canonical `player`, `dungeon_master`, `moderator`, and `admin` roles now resolve through an explicit permission matrix. DungeonMaster receives DM authority only, moderator receives moderation authority only, and admin receives the combined privileged permission set.
 - Entitlement separation: subscription bypass, campaign-limit bypass, and unlimited AI are now explicit persisted entitlement overrides rather than implicit consequences of DungeonMaster/admin role membership.
 - Migration preservation: when the explicit entitlement columns are first introduced, existing legacy DungeonMaster/admin accounts are snapshotted into equivalent bypass entitlements and standalone legacy unlimited-turn accounts retain only unlimited AI. The backfill runs only when each column is first added, so later role changes cannot re-grant removed entitlements.
