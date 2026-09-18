@@ -15,6 +15,7 @@ import {
   registerSchema,
   loginSchema,
   dungeonMasterTargetSchema,
+  accessRoleUpdateSchema,
   createShopItemSchema,
   buyShopItemSchema,
   type Item,
@@ -35,6 +36,7 @@ import {
   releaseTurnClaim,
   grantDungeonMasterAccess,
   revokeDungeonMasterAccess,
+  setAccessRole,
   toPublicUser,
 } from "./auth";
 import {
@@ -957,6 +959,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/me", requirePermission(PERMISSIONS.ADMIN_ACCESS), (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
+  });
+
+  app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+    const parsed = accessRoleUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    const target =
+      parsed.data.email
+        ? storage.getUserByEmail(parsed.data.email)
+        : storage.getUserByUsername(parsed.data.username!);
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (target.id === req.user!.id && parsed.data.accessRole !== target.accessRole) {
+      return res.status(400).json({
+        message: "You cannot change your own access role.",
+        code: "SELF_ROLE_CHANGE_NOT_ALLOWED",
+      });
+    }
+
+    const updated = setAccessRole(target.id, parsed.data.accessRole);
+    if (!updated) {
+      return res.status(500).json({ message: "Failed to update access role." });
+    }
+
+    const changed = updated.accessRole !== target.accessRole;
+    if (changed) {
+      safeRecordSecurityEvent({
+        eventType: "ACCESS_ROLE_CHANGED",
+        actorUserId: req.user!.id,
+        subjectUserId: target.id,
+        metadata: {
+          fromRole: target.accessRole,
+          toRole: updated.accessRole,
+        },
+      });
+    }
+
+    return res.json({ user: toPublicUser(updated), changed });
   });
 
   app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
