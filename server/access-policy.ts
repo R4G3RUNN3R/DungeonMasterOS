@@ -1,15 +1,25 @@
 import type { User } from "../shared/schema";
 
 /**
- * Compatibility boundary between legacy account flags and the capabilities
- * consumed by authorization/entitlement middleware.
+ * Authorization and entitlement compatibility boundary.
  *
- * IMPORTANT: This mapping deliberately preserves the current V1 behaviour.
- * Changing these relationships is a separate, explicit migration.
+ * Canonical accessRole owns authorization when present. Explicit entitlement
+ * overrides own billing/campaign/AI bypasses when present. Legacy fields are
+ * consulted only for pre-migration principals so rollback-era data can still be
+ * interpreted without allowing old flags to override canonical state.
  */
 export type AccessPrincipal =
   Pick<User, "role" | "isAdmin"> &
-  Partial<Pick<User, "unlimitedTurns">>;
+  Partial<
+    Pick<
+      User,
+      | "accessRole"
+      | "unlimitedTurns"
+      | "subscriptionBypass"
+      | "campaignLimitBypass"
+      | "unlimitedAiTurns"
+    >
+  >;
 
 export type AccessCapabilities = Readonly<{
   dungeonMasterAccess: boolean;
@@ -18,24 +28,55 @@ export type AccessCapabilities = Readonly<{
   unlimitedAiTurns: boolean;
 }>;
 
+function hasLegacyDungeonMasterAccess(
+  user?: Pick<User, "role" | "isAdmin"> | null,
+): boolean {
+  return !!user && (user.role === "dungeon_master" || !!user.isAdmin);
+}
+
+function hasCanonicalEntitlements(
+  user?: AccessPrincipal | null,
+): user is AccessPrincipal & Pick<
+  User,
+  "subscriptionBypass" | "campaignLimitBypass" | "unlimitedAiTurns"
+> {
+  return (
+    user?.subscriptionBypass != null &&
+    user?.campaignLimitBypass != null &&
+    user?.unlimitedAiTurns != null
+  );
+}
+
 export function resolveAccessCapabilities(
   user?: AccessPrincipal | null,
 ): AccessCapabilities {
+  const legacyDungeonMasterAccess = hasLegacyDungeonMasterAccess(user);
   const dungeonMasterAccess =
-    !!user && (user.role === "dungeon_master" || !!user.isAdmin);
+    user?.accessRole != null
+      ? user.accessRole === "dungeon_master" || user.accessRole === "admin"
+      : legacyDungeonMasterAccess;
+
+  if (hasCanonicalEntitlements(user)) {
+    return {
+      dungeonMasterAccess,
+      subscriptionBypass: !!user.subscriptionBypass,
+      campaignLimitBypass: !!user.campaignLimitBypass,
+      unlimitedAiTurns: !!user.unlimitedAiTurns,
+    };
+  }
 
   return {
     dungeonMasterAccess,
-    subscriptionBypass: dungeonMasterAccess,
-    campaignLimitBypass: dungeonMasterAccess,
-    unlimitedAiTurns: dungeonMasterAccess || !!user?.unlimitedTurns,
+    subscriptionBypass: legacyDungeonMasterAccess,
+    campaignLimitBypass: legacyDungeonMasterAccess,
+    unlimitedAiTurns: legacyDungeonMasterAccess || !!user?.unlimitedTurns,
   };
 }
 
 export function hasDungeonMasterAccess(
-  user?: Pick<User, "role" | "isAdmin"> | null,
+  user?: AccessPrincipal | null,
 ): boolean {
-  return !!user && (user.role === "dungeon_master" || !!user.isAdmin);
+  return resolveAccessCapabilities(user).dungeonMasterAccess;
 }
 
 export function hasSubscriptionBypassAccess(
