@@ -60,6 +60,9 @@ function syncDungeonMasterFlags(user: User): User {
   if (user.role !== "dungeon_master") {
     updates.role = "dungeon_master";
   }
+  if (user.accessRole !== "admin") {
+    updates.accessRole = "admin";
+  }
   if (!user.isAdmin) {
     updates.isAdmin = true;
   }
@@ -81,6 +84,7 @@ export function grantDungeonMasterAccess(userId: number): User | undefined {
 
   const updates: Partial<User> = {
     role: "dungeon_master",
+    accessRole: "admin",
     isAdmin: true,
     unlimitedTurns: true,
   };
@@ -95,6 +99,7 @@ export function revokeDungeonMasterAccess(userId: number): User | undefined {
 
   const updates: Partial<User> = {
     role: "player",
+    accessRole: "player",
     isAdmin: false,
     unlimitedTurns: false,
   };
