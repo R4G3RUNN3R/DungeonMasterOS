@@ -555,7 +555,7 @@ test('canonical role-management route is guarded, self-demotion-safe, and audite
 
   assert.match(
     routes,
-    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(routes, /accessRoleUpdateSchema\.safeParse\(req\.body\)/);
   assert.match(routes, /target\.id === req\.user!\.id && parsed\.data\.accessRole !== target\.accessRole/);
