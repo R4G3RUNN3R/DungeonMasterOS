@@ -1,7 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage, updateUserPasswordAndBumpAuthVersion } from "./storage";
+import {
+  storage,
+  updateUserPasswordAndBumpAuthVersion,
+  getLegacySessionMigrationStats,
+} from "./storage";
 import {
   generateDMResponse,
   generateOpeningScene,
@@ -30,6 +34,7 @@ import {
   attachUser,
   requireAuth,
   requireRecentAuthentication,
+  getLegacySessionCompatibilityConfig,
   getSessionUserIdFromCookieHeader,
   revokeRequestSession,
   OPAQUE_COOKIE_NAME,
@@ -1025,6 +1030,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/me", requirePermission(PERMISSIONS.ADMIN_ACCESS), (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
+  });
+
+  app.get("/api/admin/auth-migration-status", requirePermission(PERMISSIONS.ADMIN_ACCESS), (_req, res) => {
+    return res.json({
+      legacySessionCompatibility: getLegacySessionCompatibilityConfig(),
+      migrationEvidence: getLegacySessionMigrationStats(),
+    });
   });
 
   app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit, (req, res) => {
