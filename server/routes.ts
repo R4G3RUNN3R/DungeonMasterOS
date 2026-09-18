@@ -26,7 +26,6 @@ import {
   clearSessionCookie,
   attachUser,
   requireAuth,
-  requireDungeonMaster,
   getSessionUserIdFromCookieHeader,
   revokeRequestSession,
   OPAQUE_COOKIE_NAME,
@@ -55,6 +54,7 @@ import {
   requireTrustedOrigin,
 } from "./security";
 import { safeRecordSecurityEvent } from "./security-audit";
+import { PERMISSIONS, requirePermission } from "./permissions";
 import {
   buildGoogleAuthorizationUrl,
   buildGooglePkceChallenge,
@@ -955,11 +955,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     },
   );
 
-  app.get("/api/admin/me", requireDungeonMaster, (req, res) => {
+  app.get("/api/admin/me", requirePermission(PERMISSIONS.ADMIN_ACCESS), (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
   });
 
-  app.post("/api/admin/grant-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -987,7 +987,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated) });
   });
 
-  app.post("/api/admin/revoke-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_USERS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });

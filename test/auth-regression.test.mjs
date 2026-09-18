@@ -327,3 +327,33 @@ test('Google OAuth routes persist and consume the PKCE verifier while preserving
   assert.match(routes, /exchangeGoogleCodeForProfile\(code, codeVerifier\)/);
   assert.match(googleAuth, /\.\.\.\(codeVerifier \? \{ code_verifier: codeVerifier \} : \{\}\)/);
 });
+
+
+test('explicit permissions preserve current admin access while removing role-name checks from privileged routes', () => {
+  const result = runTsx(`
+    import('./server/permissions.ts').then(({ PERMISSIONS, hasPermission, resolvePermissions }) => {
+      const player = { role: 'player', isAdmin: false };
+      const dm = { role: 'dungeon_master', isAdmin: false };
+      const legacyAdmin = { role: 'player', isAdmin: true };
+
+      if (resolvePermissions(player).size !== 0) throw new Error('player unexpectedly received admin permissions');
+      for (const principal of [dm, legacyAdmin]) {
+        if (!hasPermission(principal, PERMISSIONS.ADMIN_ACCESS)) throw new Error('existing admin access was lost');
+        if (!hasPermission(principal, PERMISSIONS.ADMIN_USERS_MANAGE)) throw new Error('existing user-management access was lost');
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+  assert.match(routes, /\/api\/admin\/me", requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)/);
+  assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
+  assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
+  assert.doesNotMatch(routes, /\/api\/admin\/[^\"']+\", requireDungeonMaster/);
+});
+
+test('legacy requireDungeonMaster remains a compatibility adapter over the permission boundary', () => {
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+  assert.match(auth, /requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)\(req, res, next\)/);
+});

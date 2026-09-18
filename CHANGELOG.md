@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-09-18
+- Authorization boundary: added explicit `admin.access` and `admin.users.manage` permissions and migrated privileged admin routes to permission middleware instead of binding route authorization directly to the DungeonMaster role name.
+- Authorization compatibility: the initial permission resolver deliberately maps the existing DungeonMaster role and legacy admin flag to the same effective access they had before this refactor; no account loses or gains privilege in this stage.
+- Authorization migration safety: the legacy `requireDungeonMaster` helper remains as a compatibility adapter over the new permission layer so older call sites cannot silently diverge while the role model is migrated in later stages.
+- Regression coverage: added executable permission-mapping tests and route assertions proving privileged endpoints consume permissions while preserving V1 outcomes.
 - Session management API: authenticated users can list their own active v2 sessions and revoke an individual session by ID. Session inventory exposes only bounded non-secret metadata and never returns token hashes, IP hashes, raw cookies, bearer values, or auth-version internals.
 - Session revocation isolation: revocation is scoped by both session ID and authenticated user ID, so one account cannot revoke another account's session even if an ID is guessed. Revoking the current session clears both browser compatibility cookies.
 - Session security auditing: explicit session revocations are recorded in the sanitized security ledger without credential material.

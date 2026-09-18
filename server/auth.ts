@@ -17,6 +17,7 @@ import { refundAiTurn, reserveAiTurn, storage, type AiTurnReservation } from "./
 import { getNextTurnResetAt } from "../shared/tiers";
 import type { User, PublicUser } from "../shared/schema";
 import { hasDungeonMasterAccess } from "./access-policy";
+import { PERMISSIONS, requirePermission } from "./permissions";
 import {
   resolveAiEntitlement,
   resolveCampaignEntitlement,
@@ -393,21 +394,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export function requireDungeonMaster(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({
-      message: "Sign in to continue.",
-      code: "UNAUTHENTICATED",
-    });
-  }
-
-  if (!hasDungeonMasterAccess(req.user)) {
-    return res.status(403).json({
-      message: "DungeonMaster access is required for that action.",
-      code: "DUNGEON_MASTER_REQUIRED",
-    });
-  }
-
-  next();
+  return requirePermission(PERMISSIONS.ADMIN_ACCESS)(req, res, next);
 }
 
 // ── Middleware: require active subscription or trial ───────────────────────
