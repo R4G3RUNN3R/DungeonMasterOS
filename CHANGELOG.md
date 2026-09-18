@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-18
+- Google OAuth PKCE: new Google sign-in attempts now use Authorization Code + PKCE with a 256-bit verifier and S256 challenge; the verifier is kept only in a short-lived HttpOnly cookie and sent to Google only during the token exchange.
+- OAuth deployment compatibility: callbacks that began before PKCE deployment may complete without a verifier, while all newly-issued authorization requests require PKCE at Google. This avoids deliberately breaking in-flight sign-ins during rollout.
+- Regression coverage: added executable PKCE verifier/challenge checks and route wiring assertions without changing Google identity linking, local login, session, billing, campaign, or gameplay contracts.
+- Risk: low-to-moderate and isolated to Google sign-in. Existing state validation remains in place and the DMOS session issued after Google authentication is unchanged.
+
 ## 2026-09-17
 - Security audit ledger: added an additive `security_events` table recording authentication, credential-rotation, logout, and DungeonMaster privilege changes with actor/subject user IDs and bounded sanitized metadata.
 - Security audit privacy: audit metadata rejects keys associated with passwords, tokens, cookies, authorization headers, API keys, secrets, and email addresses. Raw IPs and credential material are not stored.
