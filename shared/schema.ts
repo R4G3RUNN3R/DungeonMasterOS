@@ -616,6 +616,16 @@ export const dungeonMasterTargetSchema = z
     message: "Email or username is required.",
   });
 
+export const accessRoleUpdateSchema = z
+  .object({
+    email: z.string().email("Invalid email address").optional(),
+    username: z.string().min(1, "Username is required").max(30).optional(),
+    accessRole: accessRoleSchema,
+  })
+  .refine((value) => !!value.email || !!value.username, {
+    message: "Email or username is required.",
+  });
+
 export const createShopItemSchema = z.object({
   itemKey: z.string().min(1).max(100),
   name: z.string().min(1).max(100),
@@ -662,3 +672,4 @@ export type CreateShopItemInput = z.infer<typeof createShopItemSchema>;
 export type BuyShopItemInput = z.infer<typeof buyShopItemSchema>;
 export type AdjustCurrencyInput = z.infer<typeof adjustCurrencySchema>;
 export type DungeonMasterTargetInput = z.infer<typeof dungeonMasterTargetSchema>;
+export type AccessRoleUpdateInput = z.infer<typeof accessRoleUpdateSchema>;

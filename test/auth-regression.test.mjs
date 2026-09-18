@@ -405,10 +405,12 @@ test('explicit permission matrix separates player, DungeonMaster, moderator, and
       if (hasPermission(dm, PERMISSIONS.MODERATION_ACCESS)) throw new Error('DungeonMaster gained moderation access');
       if (hasPermission(dm, PERMISSIONS.ADMIN_ACCESS)) throw new Error('DungeonMaster gained admin access');
       if (hasPermission(dm, PERMISSIONS.ADMIN_USERS_MANAGE)) throw new Error('DungeonMaster gained user management');
+      if (hasPermission(dm, PERMISSIONS.ADMIN_ROLES_MANAGE)) throw new Error('DungeonMaster gained role management');
 
       if (!hasPermission(moderator, PERMISSIONS.MODERATION_ACCESS)) throw new Error('moderator lost moderation access');
       if (hasPermission(moderator, PERMISSIONS.DUNGEON_MASTER_ACCESS)) throw new Error('moderator gained DM access');
       if (hasPermission(moderator, PERMISSIONS.ADMIN_ACCESS)) throw new Error('moderator gained admin access');
+      if (hasPermission(moderator, PERMISSIONS.ADMIN_ROLES_MANAGE)) throw new Error('moderator gained role management');
 
       for (const permission of Object.values(PERMISSIONS)) {
         if (!hasPermission(admin, permission)) throw new Error('admin missing permission ' + permission);
@@ -428,8 +430,10 @@ test('explicit permission matrix separates player, DungeonMaster, moderator, and
 
   const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
   assert.match(routes, /\/api\/admin\/me", requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)/);
-  assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
-  assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
+  assert.match(routes, /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
+  assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
+  assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
+  assert.doesNotMatch(routes, /\/api\/admin\/(?:set-access-role|grant-dungeon-master|revoke-dungeon-master)", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
   assert.doesNotMatch(routes, /\/api\/admin\/[^\"']+", requireDungeonMaster/);
 });
 
@@ -478,13 +482,94 @@ test('canonical access roles and entitlement defaults are authoritative when pre
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('DungeonMaster role mutation paths do not write legacy privileges or entitlements', () => {
+test('canonical role management changes authority without changing entitlements', () => {
+  const result = runTsx(`
+    Promise.all([
+      import('./server/auth.ts'),
+      import('./server/storage.ts'),
+      import('./shared/schema.ts'),
+    ]).then(([auth, storageMod, schema]) => {
+      storageMod.runMigrations();
+
+      for (const accessRole of ['player', 'dungeon_master', 'moderator', 'admin']) {
+        const parsed = schema.accessRoleUpdateSchema.safeParse({
+          username: 'target-user',
+          accessRole,
+        });
+        if (!parsed.success) throw new Error('valid role was rejected: ' + accessRole);
+      }
+      if (schema.accessRoleUpdateSchema.safeParse({ username: 'target-user', accessRole: 'owner' }).success) {
+        throw new Error('invalid access role was accepted');
+      }
+
+      const created = storageMod.storage.createUser({
+        email: 'legacy-admin-role-change@example.invalid',
+        username: 'legacy_admin_role_change',
+        passwordHash: 'test-hash',
+        role: 'dungeon_master',
+        accessRole: 'admin',
+        isAdmin: true,
+        subscriptionBypass: true,
+        campaignLimitBypass: true,
+        unlimitedAiTurns: true,
+        unlimitedTurns: true,
+      });
+
+      const demoted = auth.setAccessRole(created.id, 'moderator');
+      if (!demoted || demoted.accessRole !== 'moderator') throw new Error('admin was not demoted to moderator');
+      if (demoted.role !== 'player' || demoted.isAdmin !== false) {
+        throw new Error('legacy privilege shadows survived canonical demotion');
+      }
+      if (!demoted.subscriptionBypass || !demoted.campaignLimitBypass || !demoted.unlimitedAiTurns) {
+        throw new Error('role change mutated explicit entitlements');
+      }
+      if (!demoted.unlimitedTurns) throw new Error('legacy AI rollback shadow was unexpectedly rewritten');
+
+      const promoted = auth.setAccessRole(created.id, 'admin');
+      if (!promoted || promoted.accessRole !== 'admin') throw new Error('moderator was not promoted to admin');
+      if (promoted.role !== 'player' || promoted.isAdmin !== false) {
+        throw new Error('canonical promotion recreated legacy privilege shadows');
+      }
+      if (!promoted.subscriptionBypass || !promoted.campaignLimitBypass || !promoted.unlimitedAiTurns) {
+        throw new Error('canonical promotion mutated explicit entitlements');
+      }
+
+      const dm = auth.setAccessRole(created.id, 'dungeon_master');
+      if (!dm || dm.accessRole !== 'dungeon_master') throw new Error('admin was not changed to DungeonMaster');
+      if (dm.role !== 'player' || dm.isAdmin !== false) {
+        throw new Error('DungeonMaster transition recreated legacy admin authority');
+      }
+      if (!dm.subscriptionBypass || !dm.campaignLimitBypass || !dm.unlimitedAiTurns) {
+        throw new Error('DungeonMaster transition mutated explicit entitlements');
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('canonical role-management route is guarded, self-demotion-safe, and audited', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+
+  assert.match(
+    routes,
+    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+  );
+  assert.match(routes, /accessRoleUpdateSchema\.safeParse\(req\.body\)/);
+  assert.match(routes, /target\.id === req\.user!\.id && parsed\.data\.accessRole !== target\.accessRole/);
+  assert.match(routes, /code: ["']SELF_ROLE_CHANGE_NOT_ALLOWED["']/);
+  assert.match(routes, /eventType: ["']ACCESS_ROLE_CHANGED["']/);
+  assert.match(routes, /fromRole: target\.accessRole/);
+  assert.match(routes, /toRole: updated\.accessRole/);
+});
+
+test('DungeonMaster compatibility mutations delegate to the canonical role setter without entitlement writes', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
   const grantBody = auth.match(/export function grantDungeonMasterAccess[\s\S]*?export function revokeDungeonMasterAccess/)?.[0] || '';
   const revokeBody = auth.match(/export function revokeDungeonMasterAccess[\s\S]*?function useSecureCookies/)?.[0] || '';
 
-  assert.match(grantBody, /accessRole:\s*["']dungeon_master["']/);
-  assert.match(revokeBody, /accessRole:\s*["']player["']/);
+  assert.match(grantBody, /setAccessRole\(user\.id, ["']dungeon_master["']\)/);
+  assert.match(revokeBody, /setAccessRole\(user\.id, ["']player["']\)/);
   for (const body of [grantBody, revokeBody]) {
     assert.doesNotMatch(body, /subscriptionBypass\s*:/);
     assert.doesNotMatch(body, /campaignLimitBypass\s*:/);
