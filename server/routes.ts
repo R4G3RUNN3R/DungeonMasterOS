@@ -67,6 +67,10 @@ import {
   requireTrustedOrigin,
 } from "./security";
 import { safeRecordSecurityEvent } from "./security-audit";
+import {
+  isPasswordResetEmailConfigured,
+  sendPasswordResetEmail,
+} from "./password-reset-mail";
 import { PERMISSIONS, requirePermission } from "./permissions";
 import {
   buildGoogleAuthorizationUrl,
@@ -1254,59 +1258,100 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required." });
 
-    // V1 has no production mail transport yet. Fail truthfully before creating
-    // a token instead of claiming a reset email was delivered when it was not.
-    if (process.env.NODE_ENV === "production") {
+    // Configuration availability is checked before account lookup so the
+    // response cannot disclose whether an address exists.
+    if (
+      process.env.NODE_ENV === "production" &&
+      !isPasswordResetEmailConfigured()
+    ) {
       return res.status(503).json({
         message: "Password reset email is temporarily unavailable. Please contact DungeonMasterOS support.",
         code: "PASSWORD_RESET_EMAIL_UNAVAILABLE",
       });
     }
 
+    const genericMessage =
+      "If that email exists and delivery is available, a reset link will arrive shortly.";
     const user = storage.getUserByEmail(email);
-    if (!user) return res.json({ ok: true, message: "If that email exists, a reset link has been sent." });
+    if (!user) {
+      return res.json({ ok: true, message: genericMessage });
+    }
 
     storage.deleteExpiredPasswordResetTokens();
 
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    storage.createPasswordResetToken(user.id, token, expiresAt);
+    const expiresInMinutes = 60;
+    const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
+    const resetRecord = storage.createPasswordResetToken(user.id, token, expiresAt);
 
-    const response: any = { ok: true, message: "If that email exists, a reset link has been sent." };
-    if (process.env.NODE_ENV !== "production") {
-      response.devToken = token;
+    if (process.env.NODE_ENV === "production") {
+      try {
+        await sendPasswordResetEmail({
+          to: user.email,
+          token,
+          resetRecordId: resetRecord.id,
+          expiresInMinutes,
+        });
+        storage.markPasswordResetTokenDelivered(resetRecord.id);
+        safeRecordSecurityEvent({
+          eventType: "PASSWORD_RESET_EMAIL_SENT",
+          subjectUserId: user.id,
+        });
+      } catch (error) {
+        // Keep the undelivered token unusable. Do not return an account-specific
+        // error, which would turn provider failure into email enumeration.
+        console.error(
+          "Password reset email delivery failed.",
+          error instanceof Error ? error.message : "Unknown provider failure.",
+        );
+        safeRecordSecurityEvent({
+          eventType: "PASSWORD_RESET_EMAIL_FAILED",
+          subjectUserId: user.id,
+        });
+      }
+
+      return res.json({ ok: true, message: genericMessage });
     }
-    return res.json(response);
+
+    // Development has no external delivery requirement; the token is surfaced
+    // explicitly and marked delivered so the same consumption rules are tested.
+    storage.markPasswordResetTokenDelivered(resetRecord.id);
+    return res.json({
+      ok: true,
+      message: genericMessage,
+      devToken: token,
+    });
   });
 
   app.post("/api/auth/reset-password", requireTrustedOrigin, authResetIpLimit, async (req, res) => {
     const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
+    if (
+      typeof token !== "string" ||
+      token.length === 0 ||
+      token.length > 512 ||
+      !newPassword
+    ) {
       return res.status(400).json({ message: "Token and new password are required." });
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ message: "Password must be at least 8 characters." });
     }
 
-    const resetToken = storage.getPasswordResetToken(token);
-    if (!resetToken) return res.status(400).json({ message: "Invalid or expired reset link." });
-    if (resetToken.usedAt) return res.status(400).json({ message: "This reset link has already been used." });
-    if (new Date() > new Date(resetToken.expiresAt)) {
-      return res.status(400).json({ message: "This reset link has expired. Request a new one." });
-    }
-
     const passwordHash = await hashPassword(newPassword);
-    const authVersion = updateUserPasswordAndBumpAuthVersion(resetToken.userId, passwordHash);
-    if (authVersion === null) {
+    const consumed = storage.consumePasswordResetTokenAndUpdatePassword(
+      token,
+      passwordHash,
+    );
+
+    if (!consumed) {
       return res.status(400).json({ message: "Invalid or expired reset link." });
     }
 
-    revokeAllOpaqueSessionsForUser(resetToken.userId);
-    storage.markPasswordResetTokenUsed(resetToken.id);
+    revokeAllOpaqueSessionsForUser(consumed.userId);
     clearSessionCookie(res);
     safeRecordSecurityEvent({
       eventType: "PASSWORD_RESET",
-      subjectUserId: resetToken.userId,
+      subjectUserId: consumed.userId,
       metadata: { method: "reset-link" },
     });
 
