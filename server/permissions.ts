@@ -7,6 +7,7 @@ export const PERMISSIONS = {
   MODERATION_ACCESS: "moderation.access",
   ADMIN_ACCESS: "admin.access",
   ADMIN_USERS_MANAGE: "admin.users.manage",
+  ADMIN_ROLES_MANAGE: "admin.roles.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -20,6 +21,7 @@ function addAdminPermissions(permissions: Set<Permission>): void {
   permissions.add(PERMISSIONS.MODERATION_ACCESS);
   permissions.add(PERMISSIONS.ADMIN_ACCESS);
   permissions.add(PERMISSIONS.ADMIN_USERS_MANAGE);
+  permissions.add(PERMISSIONS.ADMIN_ROLES_MANAGE);
 }
 
 export function resolvePermissions(
