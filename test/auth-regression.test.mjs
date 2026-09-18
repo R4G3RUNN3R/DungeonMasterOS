@@ -406,11 +406,13 @@ test('explicit permission matrix separates player, DungeonMaster, moderator, and
       if (hasPermission(dm, PERMISSIONS.ADMIN_ACCESS)) throw new Error('DungeonMaster gained admin access');
       if (hasPermission(dm, PERMISSIONS.ADMIN_USERS_MANAGE)) throw new Error('DungeonMaster gained user management');
       if (hasPermission(dm, PERMISSIONS.ADMIN_ROLES_MANAGE)) throw new Error('DungeonMaster gained role management');
+      if (hasPermission(dm, PERMISSIONS.ADMIN_ENTITLEMENTS_MANAGE)) throw new Error('DungeonMaster gained entitlement management');
 
       if (!hasPermission(moderator, PERMISSIONS.MODERATION_ACCESS)) throw new Error('moderator lost moderation access');
       if (hasPermission(moderator, PERMISSIONS.DUNGEON_MASTER_ACCESS)) throw new Error('moderator gained DM access');
       if (hasPermission(moderator, PERMISSIONS.ADMIN_ACCESS)) throw new Error('moderator gained admin access');
       if (hasPermission(moderator, PERMISSIONS.ADMIN_ROLES_MANAGE)) throw new Error('moderator gained role management');
+      if (hasPermission(moderator, PERMISSIONS.ADMIN_ENTITLEMENTS_MANAGE)) throw new Error('moderator gained entitlement management');
 
       for (const permission of Object.values(PERMISSIONS)) {
         if (!hasPermission(admin, permission)) throw new Error('admin missing permission ' + permission);
