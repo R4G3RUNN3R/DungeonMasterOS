@@ -3,35 +3,51 @@ import type { User } from "../shared/schema";
 import { hasDungeonMasterAccess } from "./access-policy";
 
 export const PERMISSIONS = {
+  DUNGEON_MASTER_ACCESS: "dungeon_master.access",
+  MODERATION_ACCESS: "moderation.access",
   ADMIN_ACCESS: "admin.access",
   ADMIN_USERS_MANAGE: "admin.users.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-/**
- * Compatibility permission projection.
- *
- * This deliberately preserves V1 effective access while routes migrate away
- * from role-name checks. The mapping can be changed independently once durable
- * admin/DM roles are introduced.
- */
 type PermissionPrincipal =
   Pick<User, "role" | "isAdmin"> &
   Partial<Pick<User, "accessRole">>;
+
+function addAdminPermissions(permissions: Set<Permission>): void {
+  permissions.add(PERMISSIONS.DUNGEON_MASTER_ACCESS);
+  permissions.add(PERMISSIONS.MODERATION_ACCESS);
+  permissions.add(PERMISSIONS.ADMIN_ACCESS);
+  permissions.add(PERMISSIONS.ADMIN_USERS_MANAGE);
+}
 
 export function resolvePermissions(
   user?: PermissionPrincipal | null,
 ): ReadonlySet<Permission> {
   const permissions = new Set<Permission>();
 
-  const hasAdminAccess =
-    user?.accessRole === "admin" ||
-    (user?.accessRole == null && hasDungeonMasterAccess(user));
+  if (user?.accessRole != null) {
+    switch (user.accessRole) {
+      case "admin":
+        addAdminPermissions(permissions);
+        break;
+      case "moderator":
+        permissions.add(PERMISSIONS.MODERATION_ACCESS);
+        break;
+      case "dungeon_master":
+        permissions.add(PERMISSIONS.DUNGEON_MASTER_ACCESS);
+        break;
+      case "player":
+        break;
+    }
+    return permissions;
+  }
 
-  if (hasAdminAccess) {
-    permissions.add(PERMISSIONS.ADMIN_ACCESS);
-    permissions.add(PERMISSIONS.ADMIN_USERS_MANAGE);
+  // Compatibility fallback for principals created before access_role existed.
+  // Legacy DungeonMaster/admin flags historically carried full admin authority.
+  if (hasDungeonMasterAccess(user)) {
+    addAdminPermissions(permissions);
   }
 
   return permissions;
@@ -54,9 +70,16 @@ export function requirePermission(permission: Permission) {
     }
 
     if (!hasPermission(req.user, permission)) {
+      if (permission === PERMISSIONS.DUNGEON_MASTER_ACCESS) {
+        return res.status(403).json({
+          message: "DungeonMaster access is required for that action.",
+          code: "DUNGEON_MASTER_REQUIRED",
+        });
+      }
+
       return res.status(403).json({
-        message: "DungeonMaster access is required for that action.",
-        code: "DUNGEON_MASTER_REQUIRED",
+        message: "You do not have permission to perform that action.",
+        code: "FORBIDDEN",
       });
     }
 
