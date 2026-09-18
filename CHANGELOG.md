@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-09-18
+- Explicit entitlement administration: added a separately authorized endpoint for partial updates to subscription bypass, campaign-limit bypass, and unlimited-AI overrides without mutating access roles or legacy authorization flags.
+- Entitlement least privilege: override changes require the dedicated `admin.entitlements.manage` permission; DungeonMaster and moderator roles do not receive it.
+- Financial-control guardrails: entitlement changes require a bounded categorical reason code, reject self-grants/self-revocations that would change access, and are throttled plus trusted-origin protected.
+- Entitlement audit trail: effective override changes emit `ENTITLEMENTS_CHANGED` with actor/subject IDs, categorical reason, and before/after boolean values; no-op requests remain unaudited as changes.
+- Partial-update safety: unspecified entitlement overrides remain untouched, so granting or revoking one bypass cannot silently reset the other two.
 - Canonical role administration: added one validated admin endpoint for assigning `player`, `dungeon_master`, `moderator`, or `admin` by username/email, while retaining the older DungeonMaster grant/revoke routes as compatibility adapters.
 - Least-privilege authorization: role changes now require the dedicated `admin.roles.manage` permission instead of borrowing broader user-management authority.
 - Admin lockout protection: an administrator cannot change their own canonical role through the role-management endpoint; same-role no-op requests remain harmless and do not create false audit history.
