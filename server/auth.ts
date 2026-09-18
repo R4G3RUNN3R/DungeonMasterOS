@@ -344,7 +344,10 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
         const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
           expiresAt: legacySession.expiresAt,
           authVersion: legacySession.authVersion,
-          userAgent: req.get("user-agent") ?? null,
+          userAgent:
+            typeof req.get === "function"
+              ? req.get("user-agent") ?? null
+              : null,
         });
         setOpaqueSessionCookie(res, token);
       } catch (error) {
