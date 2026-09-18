@@ -110,6 +110,7 @@ test('auth and privilege routes emit the expected security events without error 
     'AUTH_LOGOUT',
     'PASSWORD_CHANGED',
     'PASSWORD_RESET',
+    'ACCESS_ROLE_CHANGED',
     'DUNGEON_MASTER_GRANTED',
     'DUNGEON_MASTER_REVOKED',
   ]) {
@@ -121,12 +122,17 @@ test('auth and privilege routes emit the expected security events without error 
 
   assert.match(
     routes,
-    /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
   assert.match(
     routes,
-    /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
+  assert.match(
+    routes,
+    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+  );
+  assert.match(routes, /metadata:\s*\{[\s\S]*?fromRole: target\.accessRole,[\s\S]*?toRole: updated\.accessRole/);
 
   // No-op role requests must not create false privilege-change audit history.
   assert.match(routes, /const changed = updated\.accessRole !== target\.accessRole;/);
