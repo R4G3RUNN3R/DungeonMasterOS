@@ -184,6 +184,37 @@ export function getAuthSessionByTokenHash(tokenHash: string): AuthSessionRecord 
     .get(tokenHash) as AuthSessionRecord | undefined;
 }
 
+export function listActiveAuthSessionsForUser(
+  userId: number,
+  nowIso: string,
+): AuthSessionRecord[] {
+  return sqlite
+    .prepare(`${AUTH_SESSION_SELECT}
+      WHERE user_id = ?
+        AND revoked_at IS NULL
+        AND expires_at > ?
+      ORDER BY last_seen_at DESC, id DESC
+    `)
+    .all(userId, nowIso) as AuthSessionRecord[];
+}
+
+export function revokeAuthSessionByIdForUser(
+  sessionId: number,
+  userId: number,
+  revokedAt: string,
+): boolean {
+  const result = sqlite
+    .prepare(`
+      UPDATE auth_sessions
+      SET revoked_at = ?
+      WHERE id = ?
+        AND user_id = ?
+        AND revoked_at IS NULL
+    `)
+    .run(revokedAt, sessionId, userId);
+  return result.changes > 0;
+}
+
 export function touchAuthSession(id: number, lastSeenAt: string): void {
   sqlite
     .prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL")
