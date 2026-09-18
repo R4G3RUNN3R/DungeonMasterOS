@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-09-18
+- Public release feed: restored the version-controlled `GET /api/updates` endpoint used by the Voidsmith Industries Updates page, with only public-safe release copy and bounded CORS for the approved Voidsmith/DMOS origins.
+- Release-note durability: recovered the previously published DungeonMasterOS update history into the repository and added regression coverage so the feed cannot silently disappear or expose sensitive authentication internals in future releases.
 - Password-reset token storage: newly issued reset credentials are now persisted only as SHA-256 digests with an explicit format prefix; the raw bearer token exists only in the outbound reset-link flow and development-only response path.
 - Password-reset rollback compatibility: reset links issued before this hardening remain valid until their normal expiry by using a narrowly scoped legacy 64-hex lookup fallback. Stored `sha256:...` values are never accepted directly as bearer credentials.
 - Password-reset database exposure safety: reading the password-reset table no longer yields newly issued reset credentials that can be replayed against the reset endpoint.
