@@ -121,10 +121,10 @@ test('auth and privilege routes emit the expected security events without error 
 
   assert.match(
     routes,
-    /\/api\/admin\/grant-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
   assert.match(
     routes,
-    /\/api\/admin\/revoke-dungeon-master", requireDungeonMaster, requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
 });
