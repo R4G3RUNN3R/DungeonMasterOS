@@ -41,6 +41,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, desc, inArray, or } from "drizzle-orm";
 import path from "path";
+import { createHash } from "crypto";
 
 const dbPath = process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db");
 const sqlite = new Database(dbPath);
@@ -48,6 +49,12 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite);
+
+const PASSWORD_RESET_TOKEN_HASH_PREFIX = "sha256:";
+
+function hashPasswordResetToken(token: string): string {
+  return PASSWORD_RESET_TOKEN_HASH_PREFIX + createHash("sha256").update(token, "utf8").digest("hex");
+}
 
 export type AiTurnReservation = "regular" | "bonus";
 
@@ -941,12 +948,32 @@ export class DatabaseStorage implements IStorage {
   createPasswordResetToken(userId: number, token: string, expiresAt: Date): PasswordResetToken {
     return db
       .insert(passwordResetTokens)
-      .values({ userId, token, expiresAt: expiresAt.toISOString() })
+      .values({
+        userId,
+        token: hashPasswordResetToken(token),
+        expiresAt: expiresAt.toISOString(),
+      })
       .returning()
       .get();
   }
   getPasswordResetToken(token: string): PasswordResetToken | undefined {
-    return db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token)).get();
+    const hashed = db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, hashPasswordResetToken(token)))
+      .get();
+    if (hashed) return hashed;
+
+    // Rollback-safe compatibility for links issued before reset-token hashing
+    // was introduced. Legacy reset tokens were 32 random bytes encoded as hex.
+    // Do not allow the stored sha256:... representation itself to become a
+    // bearer credential if the database is exposed.
+    if (!/^[a-f0-9]{64}$/i.test(token)) return undefined;
+    return db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token))
+      .get();
   }
   markPasswordResetTokenUsed(id: number): void {
     db.update(passwordResetTokens).set({ usedAt: new Date().toISOString() }).where(eq(passwordResetTokens.id, id)).run();
