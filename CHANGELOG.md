@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-09-18
+- Password-reset token storage: newly issued reset credentials are now persisted only as SHA-256 digests with an explicit format prefix; the raw bearer token exists only in the outbound reset-link flow and development-only response path.
+- Password-reset rollback compatibility: reset links issued before this hardening remain valid until their normal expiry by using a narrowly scoped legacy 64-hex lookup fallback. Stored `sha256:...` values are never accepted directly as bearer credentials.
+- Password-reset database exposure safety: reading the password-reset table no longer yields newly issued reset credentials that can be replayed against the reset endpoint.
 - Legacy-session retirement telemetry: each successful JWT-only HTTP session upgrade now emits one sanitized `AUTH_LEGACY_SESSION_UPGRADED` event, giving operations evidence that legacy-only clients are still arriving without storing bearer values or identity metadata in the event payload.
 - Migration readiness view: administrators can read aggregate legacy-session compatibility flags, active opaque/legacy-upgrade session counts, recent upgrade counts, and the latest upgrade timestamp through a permission-guarded status endpoint. The endpoint deliberately does not declare retirement safe, because deployment timing and rollback-target validity remain operational gates.
 - Retirement sequencing: disabling legacy issuance and disabling legacy acceptance remain separate production actions. The repository now documents the required v2-capable rollback baseline, issuance-off timestamp, full seven-day drain plus buffer, telemetry review, and only then acceptance shutdown.
