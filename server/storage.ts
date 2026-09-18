@@ -39,8 +39,9 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, inArray, or } from "drizzle-orm";
+import { eq, and, desc, inArray, or, isNotNull } from "drizzle-orm";
 import path from "path";
+import { createHash } from "crypto";
 
 const dbPath = process.env.DATABASE_URL || path.resolve(process.cwd(), "data.db");
 const sqlite = new Database(dbPath);
@@ -50,6 +51,10 @@ sqlite.pragma("foreign_keys = ON");
 export const db = drizzle(sqlite);
 
 export type AiTurnReservation = "regular" | "bonus";
+
+export function hashPasswordResetToken(token: string): string {
+  return `sha256:${createHash("sha256").update(token, "utf8").digest("hex")}`;
+}
 
 export type AuthSessionRecord = {
   id: number;
@@ -475,6 +480,7 @@ export function runMigrations() {
       user_id INTEGER NOT NULL,
       token TEXT NOT NULL UNIQUE,
       expires_at TEXT NOT NULL,
+      delivered_at TEXT,
       used_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -723,6 +729,7 @@ export function runMigrations() {
   sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique ON users(google_id) WHERE google_id IS NOT NULL");
 
   addColumnIfMissing("auth_sessions", "auth_version", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("password_reset_tokens", "delivered_at", "TEXT");
 
   // Existing opaque sessions predate explicit authentication freshness.
   // Preserve known fresh login time for ordinary sessions, but fail closed for
@@ -804,6 +811,7 @@ export interface IStorage {
   // Password reset
   createPasswordResetToken(userId: number, token: string, expiresAt: Date): PasswordResetToken;
   getPasswordResetToken(token: string): PasswordResetToken | undefined;
+  markPasswordResetTokenDelivered(id: number): void;
   markPasswordResetTokenUsed(id: number): void;
   deleteExpiredPasswordResetTokens(): void;
 
@@ -941,12 +949,38 @@ export class DatabaseStorage implements IStorage {
   createPasswordResetToken(userId: number, token: string, expiresAt: Date): PasswordResetToken {
     return db
       .insert(passwordResetTokens)
-      .values({ userId, token, expiresAt: expiresAt.toISOString() })
+      .values({
+        userId,
+        token: hashPasswordResetToken(token),
+        expiresAt: expiresAt.toISOString(),
+      })
       .returning()
       .get();
   }
   getPasswordResetToken(token: string): PasswordResetToken | undefined {
-    return db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token)).get();
+    const digest = hashPasswordResetToken(token);
+    return db
+      .select()
+      .from(passwordResetTokens)
+      .where(
+        and(
+          or(
+            eq(passwordResetTokens.token, digest),
+            // Compatibility fallback for pre-hardening development rows only.
+            // Existing rows are not marked delivered by migration, so this
+            // cannot make an old production credential newly usable.
+            eq(passwordResetTokens.token, token),
+          ),
+          isNotNull(passwordResetTokens.deliveredAt),
+        ),
+      )
+      .get();
+  }
+  markPasswordResetTokenDelivered(id: number): void {
+    db.update(passwordResetTokens)
+      .set({ deliveredAt: new Date().toISOString() })
+      .where(eq(passwordResetTokens.id, id))
+      .run();
   }
   markPasswordResetTokenUsed(id: number): void {
     db.update(passwordResetTokens).set({ usedAt: new Date().toISOString() }).where(eq(passwordResetTokens.id, id)).run();
