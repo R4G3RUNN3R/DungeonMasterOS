@@ -29,6 +29,7 @@ import {
   requireDungeonMaster,
   getSessionUserIdFromCookieHeader,
   revokeRequestSession,
+  OPAQUE_COOKIE_NAME,
   requireCanPlay,
   checkCampaignLimit,
   claimTurn,
@@ -37,7 +38,12 @@ import {
   revokeDungeonMasterAccess,
   toPublicUser,
 } from "./auth";
-import { revokeAllOpaqueSessionsForUser } from "./session-service";
+import {
+  listActiveOpaqueSessionsForUser,
+  resolveOpaqueSession,
+  revokeAllOpaqueSessionsForUser,
+  revokeOpaqueSessionByIdForUser,
+} from "./session-service";
 import {
   authLoginIdentityLimit,
   authLoginIpLimit,
@@ -891,6 +897,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/auth/me", requireAuth, (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });
   });
+
+  app.get("/api/auth/sessions", requireAuth, (req, res) => {
+    const currentToken = req.cookies?.[OPAQUE_COOKIE_NAME];
+    const currentSession =
+      typeof currentToken === "string"
+        ? resolveOpaqueSession(currentToken, { touch: false })
+        : null;
+
+    const sessions = listActiveOpaqueSessionsForUser(req.user!.id).map((session) => ({
+      id: session.id,
+      authMethod: session.authMethod,
+      createdAt: session.createdAt,
+      lastSeenAt: session.lastSeenAt,
+      expiresAt: session.expiresAt,
+      userAgent: session.userAgent,
+      current: currentSession?.id === session.id,
+    }));
+
+    return res.json({ sessions });
+  });
+
+  app.delete(
+    "/api/auth/sessions/:sessionId",
+    requireAuth,
+    requireTrustedOrigin,
+    authSensitiveIpLimit,
+    (req, res) => {
+      const sessionId = Number(req.params.sessionId);
+      if (!Number.isInteger(sessionId) || sessionId <= 0) {
+        return res.status(400).json({ message: "Invalid session id." });
+      }
+
+      const currentToken = req.cookies?.[OPAQUE_COOKIE_NAME];
+      const currentSession =
+        typeof currentToken === "string"
+          ? resolveOpaqueSession(currentToken, { touch: false })
+          : null;
+      const isCurrent = currentSession?.id === sessionId;
+
+      if (!revokeOpaqueSessionByIdForUser(req.user!.id, sessionId)) {
+        return res.status(404).json({ message: "Session not found." });
+      }
+
+      if (isCurrent) {
+        clearSessionCookie(res);
+      }
+
+      safeRecordSecurityEvent({
+        eventType: "AUTH_SESSION_REVOKED",
+        actorUserId: req.user!.id,
+        subjectUserId: req.user!.id,
+        metadata: { sessionId, current: isCurrent },
+      });
+
+      return res.json({ ok: true, signedOutCurrentSession: isCurrent });
+    },
+  );
 
   app.get("/api/admin/me", requireDungeonMaster, (req, res) => {
     return res.json({ user: toPublicUser(req.user!) });

@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-09-18
+- Session management API: authenticated users can list their own active v2 sessions and revoke an individual session by ID. Session inventory exposes only bounded non-secret metadata and never returns token hashes, IP hashes, raw cookies, bearer values, or auth-version internals.
+- Session revocation isolation: revocation is scoped by both session ID and authenticated user ID, so one account cannot revoke another account's session even if an ID is guessed. Revoking the current session clears both browser compatibility cookies.
+- Session security auditing: explicit session revocations are recorded in the sanitized security ledger without credential material.
+- Regression coverage: added executable ownership/isolation tests plus route-contract checks for origin validation, sensitive-action throttling, and response sanitization.
 - Google OAuth PKCE: new Google sign-in attempts now use Authorization Code + PKCE with a 256-bit verifier and S256 challenge; the verifier is kept only in a short-lived HttpOnly cookie and sent to Google only during the token exchange.
 - OAuth deployment compatibility: callbacks that began before PKCE deployment may complete without a verifier, while all newly-issued authorization requests require PKCE at Google. This avoids deliberately breaking in-flight sign-ins during rollout.
 - Regression coverage: added executable PKCE verifier/challenge checks and route wiring assertions without changing Google identity linking, local login, session, billing, campaign, or gameplay contracts.

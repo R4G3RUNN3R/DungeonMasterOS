@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -321,4 +321,65 @@ test('credential rotation invalidates both pre-version legacy JWTs and existing 
   });
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+
+test('session inventory exposes only active sessions owned by the user and supports scoped revocation', () => {
+  const result = runTsx(`
+    import('./server/storage.ts').then(async (storageMod) => {
+      storageMod.runMigrations();
+      const sessions = await import('./server/session-service.ts');
+      const user = storageMod.storage.createUser({
+        email: 'session-inventory@example.invalid',
+        username: 'session_inventory_user',
+        passwordHash: 'test-hash',
+      });
+      const other = storageMod.storage.createUser({
+        email: 'session-inventory-other@example.invalid',
+        username: 'session_inventory_other',
+        passwordHash: 'test-hash',
+      });
+
+      const first = sessions.createOpaqueSession(user.id, 'password');
+      const second = sessions.createOpaqueSession(user.id, 'google');
+      const foreign = sessions.createOpaqueSession(other.id, 'password');
+
+      let visible = sessions.listActiveOpaqueSessionsForUser(user.id);
+      if (visible.length !== 2) throw new Error('session inventory returned wrong session count');
+      if (visible.some((entry) => entry.userId !== user.id)) throw new Error('foreign session leaked into inventory');
+
+      if (sessions.revokeOpaqueSessionByIdForUser(user.id, foreign.session.id)) {
+        throw new Error('user revoked another account session');
+      }
+      if (!sessions.resolveOpaqueSession(foreign.token)) {
+        throw new Error('foreign session was modified');
+      }
+
+      if (!sessions.revokeOpaqueSessionByIdForUser(user.id, first.session.id)) {
+        throw new Error('owned session was not revoked');
+      }
+      if (sessions.resolveOpaqueSession(first.token) !== null) {
+        throw new Error('revoked inventory session still resolves');
+      }
+
+      visible = sessions.listActiveOpaqueSessionsForUser(user.id);
+      if (visible.length !== 1 || visible[0].id !== second.session.id) {
+        throw new Error('revoked session remained in active inventory');
+      }
+    });
+  `);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('authenticated session-management routes expose sanitized inventory and scoped revoke controls', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+
+  assert.match(routes, /app\.get\("\/api\/auth\/sessions", requireAuth/);
+  assert.match(routes, /app\.delete\([\s\S]*"\/api\/auth\/sessions\/:sessionId"[\s\S]*requireTrustedOrigin[\s\S]*authSensitiveIpLimit/);
+  assert.match(routes, /revokeOpaqueSessionByIdForUser\(req\.user!\.id, sessionId\)/);
+  assert.match(routes, /AUTH_SESSION_REVOKED/);
+  assert.doesNotMatch(routes, /tokenHash:\s*session\.tokenHash/);
+  assert.doesNotMatch(routes, /ipHash:\s*session\.ipHash/);
+  assert.doesNotMatch(routes, /authVersion:\s*session\.authVersion/);
 });
