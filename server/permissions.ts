@@ -16,12 +16,20 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
  * from role-name checks. The mapping can be changed independently once durable
  * admin/DM roles are introduced.
  */
+type PermissionPrincipal =
+  Pick<User, "role" | "isAdmin"> &
+  Partial<Pick<User, "accessRole">>;
+
 export function resolvePermissions(
-  user?: Pick<User, "role" | "isAdmin"> | null,
+  user?: PermissionPrincipal | null,
 ): ReadonlySet<Permission> {
   const permissions = new Set<Permission>();
 
-  if (hasDungeonMasterAccess(user)) {
+  const hasAdminAccess =
+    user?.accessRole === "admin" ||
+    (user?.accessRole == null && hasDungeonMasterAccess(user));
+
+  if (hasAdminAccess) {
     permissions.add(PERMISSIONS.ADMIN_ACCESS);
     permissions.add(PERMISSIONS.ADMIN_USERS_MANAGE);
   }
@@ -30,7 +38,7 @@ export function resolvePermissions(
 }
 
 export function hasPermission(
-  user: Pick<User, "role" | "isAdmin"> | null | undefined,
+  user: PermissionPrincipal | null | undefined,
   permission: Permission,
 ): boolean {
   return resolvePermissions(user).has(permission);

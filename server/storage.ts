@@ -333,6 +333,7 @@ export function runMigrations() {
       google_email TEXT,
       avatar_url TEXT,
       role TEXT NOT NULL DEFAULT 'player',
+      access_role TEXT NOT NULL DEFAULT 'player',
       tier TEXT NOT NULL DEFAULT 'free',
       subscription_status TEXT NOT NULL DEFAULT 'trial',
       stripe_customer_id TEXT,
@@ -592,6 +593,15 @@ export function runMigrations() {
   addColumnIfMissing("users", "unlimited_turns", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("users", "role", "TEXT NOT NULL DEFAULT 'player'");
+  addColumnIfMissing("users", "access_role", "TEXT");
+  sqlite.exec(`
+    UPDATE users
+    SET access_role = CASE
+      WHEN is_admin = 1 OR role = 'dungeon_master' THEN 'admin'
+      ELSE 'player'
+    END
+    WHERE access_role IS NULL OR access_role = '';
+  `);
   addColumnIfMissing("users", "google_id", "TEXT");
   addColumnIfMissing("users", "google_email", "TEXT");
   addColumnIfMissing("users", "avatar_url", "TEXT");
@@ -780,7 +790,10 @@ export class DatabaseStorage implements IStorage {
   }
   createUser(insertUser: InsertUser): User {
     try {
-      return db.insert(users).values(insertUser).returning().get();
+      return db.insert(users).values({
+        ...insertUser,
+        accessRole: (insertUser.accessRole ?? "player") as User["accessRole"],
+      }).returning().get();
     } catch (err: any) {
       if (String(err?.message || '').toLowerCase().includes('unique')) {
         throw new Error('A user with that email or username already exists.');

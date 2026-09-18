@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-09-18
+- Canonical access roles: added an additive `access_role` field with the future-safe role vocabulary `player`, `dungeon_master`, `moderator`, and `admin`, while retaining the legacy `role`, `is_admin`, and `unlimited_turns` fields for rollback compatibility.
+- Privilege migration: existing users with either the legacy DungeonMaster role or admin flag are backfilled to canonical `admin`, while ordinary users are backfilled to `player`; legacy privilege data is not rewritten or discarded.
+- Rollback safety: current DungeonMaster grant/revoke operations continue mirroring the old coupled flags and now mirror `access_role` as well. The actual DM/admin/unlimited semantic split is intentionally deferred until a canonical-role-capable release is established as the rollback baseline.
+- Permission authority: explicit canonical roles take precedence when present; the legacy role/admin mapping is used only as compatibility fallback for pre-migration principals.
+- Regression coverage: migration tests preserve old rows and prove legacy DungeonMaster/admin accounts retain canonical admin access, while new users default to canonical player access.
 - Authorization boundary: added explicit `admin.access` and `admin.users.manage` permissions and migrated privileged admin routes to permission middleware instead of binding route authorization directly to the DungeonMaster role name.
 - Authorization compatibility: the initial permission resolver deliberately maps the existing DungeonMaster role and legacy admin flag to the same effective access they had before this refactor; no account loses or gains privilege in this stage.
 - Authorization migration safety: the legacy `requireDungeonMaster` helper remains as a compatibility adapter over the new permission layer so older call sites cannot silently diverge while the role model is migrated in later stages.

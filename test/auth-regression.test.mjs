@@ -357,3 +357,54 @@ test('legacy requireDungeonMaster remains a compatibility adapter over the permi
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
   assert.match(auth, /requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)\(req, res, next\)/);
 });
+
+
+test('canonical access roles are additive and authoritative when present', () => {
+  const result = runTsx(`
+    Promise.all([
+      import('./server/storage.ts'),
+      import('./server/permissions.ts'),
+    ]).then(([storageMod, permissions]) => {
+      storageMod.runMigrations();
+      const created = storageMod.storage.createUser({
+        email: 'canonical-role@example.invalid',
+        username: 'canonical_role_user',
+        passwordHash: 'test-hash',
+      });
+      if (created.accessRole !== 'player') throw new Error('new user did not default to player access role');
+
+      const explicitPlayerWithLegacyAdmin = {
+        role: 'player',
+        accessRole: 'player',
+        isAdmin: true,
+      };
+      if (permissions.hasPermission(explicitPlayerWithLegacyAdmin, permissions.PERMISSIONS.ADMIN_ACCESS)) {
+        throw new Error('legacy flag overrode an explicit canonical player role');
+      }
+
+      const canonicalAdmin = {
+        role: 'player',
+        accessRole: 'admin',
+        isAdmin: false,
+      };
+      if (!permissions.hasPermission(canonicalAdmin, permissions.PERMISSIONS.ADMIN_ACCESS)) {
+        throw new Error('canonical admin role did not grant admin access');
+      }
+    });
+  `, { NODE_ENV: 'test' });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('legacy DungeonMaster grant and revoke mirror the canonical access role during rollback-safe migration', () => {
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+
+  assert.match(
+    auth,
+    /grantDungeonMasterAccess[\s\S]*?role:\s*["']dungeon_master["'][\s\S]*?accessRole:\s*["']admin["'][\s\S]*?isAdmin:\s*true[\s\S]*?unlimitedTurns:\s*true/,
+  );
+  assert.match(
+    auth,
+    /revokeDungeonMasterAccess[\s\S]*?role:\s*["']player["'][\s\S]*?accessRole:\s*["']player["'][\s\S]*?isAdmin:\s*false[\s\S]*?unlimitedTurns:\s*false/,
+  );
+});

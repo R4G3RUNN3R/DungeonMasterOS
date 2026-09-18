@@ -5,6 +5,9 @@ import { z } from "zod";
 export const userRoleSchema = z.enum(["player", "dungeon_master"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
+export const accessRoleSchema = z.enum(["player", "dungeon_master", "moderator", "admin"]);
+export type AccessRole = z.infer<typeof accessRoleSchema>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,9 +21,13 @@ export const users = sqliteTable("users", {
   googleEmail: text("google_email"),
   avatarUrl: text("avatar_url"),
 
-  // Account role
+  // Legacy account role retained during rollback-safe authorization migration.
   role: text("role").notNull().default("player"),
   // player | dungeon_master
+
+  // Canonical authorization role. Existing privileged accounts are migrated
+  // to admin without rewriting the legacy role/flag fields.
+  accessRole: text("access_role").$type<AccessRole>().notNull().default("player"),
 
   // Subscription
   tier: text("tier").notNull().default("free"),
