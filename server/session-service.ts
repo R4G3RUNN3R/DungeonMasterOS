@@ -2,7 +2,9 @@ import { createHash, randomBytes } from "crypto";
 import {
   createAuthSessionRecord,
   getAuthSessionByTokenHash,
+  listActiveAuthSessionsForUser,
   revokeAllAuthSessionsForUser,
+  revokeAuthSessionByIdForUser,
   revokeAuthSessionByTokenHash,
   touchAuthSession,
   storage,
@@ -118,4 +120,21 @@ export function revokeOpaqueSession(token: string): boolean {
 
 export function revokeAllOpaqueSessionsForUser(userId: number): number {
   return revokeAllAuthSessionsForUser(userId, new Date().toISOString());
+}
+
+
+export function listActiveOpaqueSessionsForUser(userId: number): AuthSessionRecord[] {
+  return listActiveAuthSessionsForUser(userId, new Date().toISOString());
+}
+
+export function revokeOpaqueSessionByIdForUser(
+  userId: number,
+  sessionId: number,
+): boolean {
+  if (!Number.isInteger(sessionId) || sessionId <= 0) return false;
+  return revokeAuthSessionByIdForUser(
+    sessionId,
+    userId,
+    new Date().toISOString(),
+  );
 }
