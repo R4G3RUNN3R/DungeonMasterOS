@@ -111,6 +111,7 @@ test('auth and privilege routes emit the expected security events without error 
     'PASSWORD_CHANGED',
     'PASSWORD_RESET',
     'ACCESS_ROLE_CHANGED',
+    'ENTITLEMENTS_CHANGED',
     'DUNGEON_MASTER_GRANTED',
     'DUNGEON_MASTER_REVOKED',
   ]) {
@@ -132,6 +133,12 @@ test('auth and privilege routes emit the expected security events without error 
     routes,
     /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
   );
+  assert.match(
+    routes,
+    /\/api\/admin\/set-entitlements", requirePermission\(PERMISSIONS\.ADMIN_ENTITLEMENTS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+  );
+  assert.match(routes, /eventType: ["']ENTITLEMENTS_CHANGED["']/);
+  assert.match(routes, /reasonCode: parsed\.data\.reasonCode/);
   assert.match(routes, /metadata:\s*\{[\s\S]*?fromRole: target\.accessRole,[\s\S]*?toRole: updated\.accessRole/);
 
   // No-op role requests must not create false privilege-change audit history.
