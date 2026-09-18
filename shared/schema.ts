@@ -607,6 +607,10 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const reauthenticateSchema = z.object({
+  password: z.string().min(1, "Password is required"),
+});
+
 export const dungeonMasterTargetSchema = z
   .object({
     email: z.string().email("Invalid email address").optional(),
