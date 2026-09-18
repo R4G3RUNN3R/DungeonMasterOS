@@ -14,6 +14,7 @@ import {
   playerActionSchema,
   registerSchema,
   loginSchema,
+  reauthenticateSchema,
   dungeonMasterTargetSchema,
   accessRoleUpdateSchema,
   explicitEntitlementUpdateSchema,
@@ -28,6 +29,7 @@ import {
   clearSessionCookie,
   attachUser,
   requireAuth,
+  requireRecentAuthentication,
   getSessionUserIdFromCookieHeader,
   revokeRequestSession,
   OPAQUE_COOKIE_NAME,
@@ -46,6 +48,7 @@ import {
   resolveOpaqueSession,
   revokeAllOpaqueSessionsForUser,
   revokeOpaqueSessionByIdForUser,
+  markOpaqueSessionReauthenticated,
 } from "./session-service";
 import {
   authLoginIdentityLimit,
@@ -55,6 +58,7 @@ import {
   authRegisterIpLimit,
   authResetIpLimit,
   authSensitiveIpLimit,
+  authReauthUserLimit,
   requireTrustedOrigin,
 } from "./security";
 import { safeRecordSecurityEvent } from "./security-audit";
@@ -908,6 +912,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(req.user!) });
   });
 
+  app.post(
+    "/api/auth/reauthenticate",
+    requireAuth,
+    requireTrustedOrigin,
+    authSensitiveIpLimit,
+    authReauthUserLimit,
+    async (req, res) => {
+      const parsed = reauthenticateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0].message });
+      }
+
+      const user = storage.getUser(req.user!.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      const valid = await verifyPassword(parsed.data.password, user.passwordHash);
+      if (!valid) {
+        safeRecordSecurityEvent({
+          eventType: "AUTH_REAUTH_FAILED",
+          actorUserId: user.id,
+          subjectUserId: user.id,
+          metadata: { reason: "credentials" },
+        });
+        return res.status(401).json({
+          message: "Password is incorrect.",
+          code: "REAUTHENTICATION_FAILED",
+        });
+      }
+
+      const sessionId = req.authSession?.id;
+      const refreshed =
+        sessionId !== undefined
+          ? markOpaqueSessionReauthenticated(user.id, sessionId)
+          : null;
+
+      if (!refreshed) {
+        return res.status(403).json({
+          message: "A current revocable session is required to re-authenticate.",
+          code: "RECENT_AUTH_REQUIRED",
+        });
+      }
+
+      req.authSession = refreshed;
+      safeRecordSecurityEvent({
+        eventType: "AUTH_REAUTH_SUCCESS",
+        actorUserId: user.id,
+        subjectUserId: user.id,
+      });
+      return res.json({ ok: true });
+    },
+  );
+
   app.get("/api/auth/sessions", requireAuth, (req, res) => {
     const currentToken = req.cookies?.[OPAQUE_COOKIE_NAME];
     const currentSession =
@@ -969,7 +1027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(req.user!) });
   });
 
-  app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/set-access-role", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit, (req, res) => {
     const parsed = accessRoleUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -1012,7 +1070,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated), changed });
   });
 
-  app.post("/api/admin/set-entitlements", requirePermission(PERMISSIONS.ADMIN_ENTITLEMENTS_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/set-entitlements", requirePermission(PERMISSIONS.ADMIN_ENTITLEMENTS_MANAGE), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit, (req, res) => {
     const parsed = explicitEntitlementUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -1077,7 +1135,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated), changed });
   });
 
-  app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/grant-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -1108,7 +1166,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ user: toPublicUser(updated), changed });
   });
 
-  app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, authSensitiveIpLimit, (req, res) => {
+  app.post("/api/admin/revoke-dungeon-master", requirePermission(PERMISSIONS.ADMIN_ROLES_MANAGE), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit, (req, res) => {
     const parsed = dungeonMasterTargetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0].message });
