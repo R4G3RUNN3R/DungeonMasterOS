@@ -15,7 +15,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { refundAiTurn, reserveAiTurn, storage, type AiTurnReservation } from "./storage";
 import { getNextTurnResetAt } from "../shared/tiers";
-import type { User, PublicUser } from "../shared/schema";
+import type { User, PublicUser, AccessRole } from "../shared/schema";
 import { PERMISSIONS, requirePermission } from "./permissions";
 import {
   resolveAiEntitlement,
@@ -49,6 +49,29 @@ function getJwtSecret(): string {
   return DEV_JWT_SECRET;
 }
 
+export function setAccessRole(
+  userId: number,
+  accessRole: AccessRole,
+): User | undefined {
+  const user = storage.getUser(userId);
+  if (!user) return undefined;
+  if (user.accessRole === accessRole) return user;
+
+  const updates: Partial<User> = { accessRole };
+
+  // Canonical authority wins in current releases. When an existing privileged
+  // account is demoted from admin, retire the legacy privilege shadows as well
+  // so an older rollback build cannot resurrect removed admin authority.
+  // Explicit entitlement overrides remain untouched and are managed separately.
+  if (user.accessRole === "admin" && accessRole !== "admin") {
+    updates.role = "player";
+    updates.isAdmin = false;
+  }
+
+  storage.updateUser(user.id, updates);
+  return { ...user, ...updates };
+}
+
 export function grantDungeonMasterAccess(userId: number): User | undefined {
   const user = storage.getUser(userId);
   if (!user) return undefined;
@@ -59,12 +82,7 @@ export function grantDungeonMasterAccess(userId: number): User | undefined {
     return user;
   }
 
-  const updates: Partial<User> = {
-    accessRole: "dungeon_master",
-  };
-
-  storage.updateUser(user.id, updates);
-  return { ...user, ...updates };
+  return setAccessRole(user.id, "dungeon_master");
 }
 
 export function revokeDungeonMasterAccess(userId: number): User | undefined {
@@ -76,12 +94,7 @@ export function revokeDungeonMasterAccess(userId: number): User | undefined {
     return user;
   }
 
-  const updates: Partial<User> = {
-    accessRole: "player",
-  };
-
-  storage.updateUser(user.id, updates);
-  return { ...user, ...updates };
+  return setAccessRole(user.id, "player");
 }
 
 function useSecureCookies(): boolean {
