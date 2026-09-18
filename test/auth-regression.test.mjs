@@ -480,17 +480,17 @@ test('canonical access roles and entitlement defaults are authoritative when pre
 
 test('DungeonMaster role mutation paths do not write legacy privileges or entitlements', () => {
   const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
-  const grantBody = auth.match(/export function grantDungeonMasterAccess[\\s\\S]*?export function revokeDungeonMasterAccess/)?.[0] || '';
-  const revokeBody = auth.match(/export function revokeDungeonMasterAccess[\\s\\S]*?function useSecureCookies/)?.[0] || '';
+  const grantBody = auth.match(/export function grantDungeonMasterAccess[\s\S]*?export function revokeDungeonMasterAccess/)?.[0] || '';
+  const revokeBody = auth.match(/export function revokeDungeonMasterAccess[\s\S]*?function useSecureCookies/)?.[0] || '';
 
-  assert.match(grantBody, /accessRole:\\s*["']dungeon_master["']/);
-  assert.match(revokeBody, /accessRole:\\s*["']player["']/);
+  assert.match(grantBody, /accessRole:\s*["']dungeon_master["']/);
+  assert.match(revokeBody, /accessRole:\s*["']player["']/);
   for (const body of [grantBody, revokeBody]) {
-    assert.doesNotMatch(body, /subscriptionBypass\\s*:/);
-    assert.doesNotMatch(body, /campaignLimitBypass\\s*:/);
-    assert.doesNotMatch(body, /unlimitedAiTurns\\s*:/);
-    assert.doesNotMatch(body, /unlimitedTurns\\s*:/);
-    assert.doesNotMatch(body, /isAdmin\\s*:/);
-    assert.doesNotMatch(body, /role:\\s*["'](?:player|dungeon_master)["']/);
+    assert.doesNotMatch(body, /subscriptionBypass\s*:/);
+    assert.doesNotMatch(body, /campaignLimitBypass\s*:/);
+    assert.doesNotMatch(body, /unlimitedAiTurns\s*:/);
+    assert.doesNotMatch(body, /unlimitedTurns\s*:/);
+    assert.doesNotMatch(body, /isAdmin\s*:/);
+    assert.doesNotMatch(body, /role:\s*["'](?:player|dungeon_master)["']/);
   }
 });
