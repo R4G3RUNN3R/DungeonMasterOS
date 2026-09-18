@@ -308,7 +308,7 @@ test('password rotation routes invalidate prior sessions and preserve the intend
 
   assert.match(changePassword, /updateUserPasswordAndBumpAuthVersion\(user\.id, passwordHash\)/);
   assert.match(changePassword, /revokeAllOpaqueSessionsForUser\(user\.id\)/);
-  assert.match(changePassword, /setSessionCookie\(res, user\.id, ["']password["'], authVersion\)/);
+  assert.match(changePassword, /setSessionCookie\(res, user\.id, ["']password["'], authVersion, \{[\s\S]*?userAgent:/);
 
   assert.match(resetPassword, /updateUserPasswordAndBumpAuthVersion\(resetToken\.userId, passwordHash\)/);
   assert.match(resetPassword, /revokeAllOpaqueSessionsForUser\(resetToken\.userId\)/);

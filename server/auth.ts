@@ -27,6 +27,7 @@ import {
   resolveOpaqueSession,
   revokeOpaqueSession,
   type SessionAuthMethod,
+  type SessionMetadata,
 } from "./session-service";
 
 export { hasDungeonMasterAccess } from "./access-policy";
@@ -210,6 +211,7 @@ export function setSessionCookie(
   userId: number,
   authMethod: SessionAuthMethod = "password",
   authVersion?: number,
+  metadata: Pick<SessionMetadata, "userAgent" | "ipHash"> = {},
 ): void {
   const effectiveAuthVersion =
     authVersion ?? storage.getUser(userId)?.authVersion ?? 0;
@@ -220,6 +222,8 @@ export function setSessionCookie(
   try {
     const { token } = createOpaqueSession(userId, authMethod, {
       authVersion: effectiveAuthVersion,
+      userAgent: metadata.userAgent,
+      ipHash: metadata.ipHash,
     });
     setOpaqueSessionCookie(res, token);
   } catch (error) {
@@ -340,6 +344,10 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
         const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
           expiresAt: legacySession.expiresAt,
           authVersion: legacySession.authVersion,
+          userAgent:
+            typeof req.get === "function"
+              ? req.get("user-agent") ?? null
+              : null,
         });
         setOpaqueSessionCookie(res, token);
       } catch (error) {

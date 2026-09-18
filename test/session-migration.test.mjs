@@ -65,6 +65,60 @@ test('opaque sessions persist only a SHA-256 token hash and revoke immediately',
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
+test('session issuance persists bounded client metadata for account device summaries', () => {
+  const result = runTsx(`
+    Promise.all([
+      import('./server/storage.ts'),
+      import('./server/session-service.ts'),
+      import('better-sqlite3'),
+    ]).then(([storageMod, sessions, dbMod]) => {
+      storageMod.runMigrations();
+      const user = storageMod.storage.createUser({
+        email: 'session-metadata@example.invalid',
+        username: 'session_metadata_user',
+        passwordHash: 'test-hash',
+      });
+
+      const longAgent = '  Firefox/155 Windows ' + 'x'.repeat(700);
+      const created = sessions.createOpaqueSession(user.id, 'password', {
+        userAgent: longAgent,
+      });
+
+      const Database = dbMod.default;
+      const db = new Database(process.env.DATABASE_URL);
+      const row = db.prepare(
+        'SELECT user_agent AS userAgent, ip_hash AS ipHash FROM auth_sessions WHERE id = ?'
+      ).get(created.session.id);
+
+      if (!row?.userAgent?.startsWith('Firefox/155 Windows')) {
+        throw new Error('session user agent was not persisted');
+      }
+      if (row.userAgent.length !== 512) {
+        throw new Error('session user agent was not bounded to 512 characters');
+      }
+      if (row.ipHash !== null) {
+        throw new Error('missing IP hash metadata should remain null');
+      }
+
+      db.close();
+    });
+  `);
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('HTTP login paths pass the request user-agent into session issuance', () => {
+  const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
+  const auth = readFileSync(path.join(repoRoot, 'server', 'auth.ts'), 'utf8');
+
+  assert.match(routes, /setSessionCookie\(res, user\.id, ["']google["'], user\.authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
+  assert.match(routes, /setSessionCookie\(res, user\.id, ["']register["'], user\.authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
+  assert.match(routes, /setSessionCookie\(res, user\.id, ["']password["'], user\.authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
+  assert.match(routes, /setSessionCookie\(res, user\.id, ["']password["'], authVersion, \{[\s\S]*?userAgent: req\.get\(["']user-agent["']\) \?\? null/);
+  assert.match(auth, /createOpaqueSession\(rawUser\.id, ["']legacy-jwt["'], \{[\s\S]*?userAgent:[\s\S]*?typeof req\.get === ["']function["'][\s\S]*?req\.get\(["']user-agent["']\) \?\? null/);
+});
+
+
 test('new login session creation issues both v2 and legacy cookies during rollback-safe compatibility', () => {
   const result = runTsx(`
     import('./server/storage.ts').then(async (storageMod) => {

@@ -25,6 +25,19 @@ export type SessionMetadata = {
   authVersion?: number;
 };
 
+const MAX_USER_AGENT_LENGTH = 512;
+const MAX_IP_HASH_LENGTH = 128;
+
+function normalizeOptionalMetadata(
+  value: string | null | undefined,
+  maxLength: number,
+): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
 export function generateOpaqueSessionToken(): string {
   return `${OPAQUE_SESSION_PREFIX}${randomBytes(32).toString("base64url")}`;
 }
@@ -76,8 +89,8 @@ export function createOpaqueSession(
     lastSeenAt: nowIso,
     expiresAt,
     revokedAt: null,
-    userAgent: metadata.userAgent ?? null,
-    ipHash: metadata.ipHash ?? null,
+    userAgent: normalizeOptionalMetadata(metadata.userAgent, MAX_USER_AGENT_LENGTH),
+    ipHash: normalizeOptionalMetadata(metadata.ipHash, MAX_IP_HASH_LENGTH),
     authVersion,
   });
 

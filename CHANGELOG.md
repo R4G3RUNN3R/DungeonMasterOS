@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-09-18
+- Session device metadata fix: login, registration, Google sign-in, password-rotation reissue, and legacy-JWT upgrade paths now carry the request user-agent into the opaque session ledger so Account Settings can identify browsers/platforms instead of showing most sessions as unknown.
+- Session metadata hardening: persisted user-agent and future IP-hash metadata are trimmed and length-bounded before storage; raw bearer values remain absent from the session ledger and UI.
 - Account session controls: Account Settings now lists active authenticated sessions with a concise browser/platform summary, sign-in method, current-session marker, last-active time, creation time, and expiry.
 - Self-service revocation UI: users can revoke another active session directly from Account Settings; revoking the current session clears cached account state and returns the browser to sign-in.
 - Session privacy: the UI consumes only the existing sanitized session inventory and does not display raw session tokens, token hashes, IP hashes, auth-version internals, or the full user-agent string.

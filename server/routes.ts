@@ -779,7 +779,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // PKCE was deployed. Newly-issued authorization requests always carry it.
       const profile = await exchangeGoogleCodeForProfile(code, codeVerifier);
       const user = await findOrCreateGoogleUser(profile);
-      setSessionCookie(res, user.id, "google", user.authVersion);
+      setSessionCookie(res, user.id, "google", user.authVersion, {
+        userAgent: req.get("user-agent") ?? null,
+      });
       safeRecordSecurityEvent({
         eventType: "AUTH_GOOGLE_SUCCESS",
         actorUserId: user.id,
@@ -832,7 +834,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         onboardingComplete: false,
       } as any);
 
-      setSessionCookie(res, user.id, "register", user.authVersion);
+      setSessionCookie(res, user.id, "register", user.authVersion, {
+        userAgent: req.get("user-agent") ?? null,
+      });
       safeRecordSecurityEvent({
         eventType: "AUTH_REGISTER_SUCCESS",
         actorUserId: user.id,
@@ -875,7 +879,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
-    setSessionCookie(res, user.id, "password", user.authVersion);
+    setSessionCookie(res, user.id, "password", user.authVersion, {
+      userAgent: req.get("user-agent") ?? null,
+    });
     safeRecordSecurityEvent({
       eventType: "AUTH_LOGIN_SUCCESS",
       actorUserId: user.id,
@@ -1163,7 +1169,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     revokeAllOpaqueSessionsForUser(user.id);
-    setSessionCookie(res, user.id, "password", authVersion);
+    setSessionCookie(res, user.id, "password", authVersion, {
+      userAgent: req.get("user-agent") ?? null,
+    });
     safeRecordSecurityEvent({
       eventType: "PASSWORD_CHANGED",
       actorUserId: user.id,
