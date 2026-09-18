@@ -132,6 +132,19 @@ test('current startup migrates an older V1 database in place without losing rows
   const dir = mkdtempSync(path.join(tmpdir(), 'dmos-old-v1-'));
   const dbPath = path.join(dir, 'old.db');
   createOldV1Database(dbPath);
+
+  // Simulate the last pre-canonical-role schema with both legacy privilege paths.
+  const legacyDb = new Database(dbPath);
+  legacyDb.exec(`
+    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player';
+    ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO users (id, email, username, password_hash, role, is_admin)
+    VALUES
+      (2, 'legacy-dm@example.invalid', 'legacy-dm', 'not-a-real-hash', 'dungeon_master', 0),
+      (3, 'legacy-admin@example.invalid', 'legacy-admin', 'not-a-real-hash', 'player', 1);
+  `);
+  legacyDb.close();
+
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['dist/index.cjs'], {
@@ -153,7 +166,7 @@ test('current startup migrates an older V1 database in place without losing rows
     assert.equal(db.pragma('quick_check', { simple: true }), 'ok');
 
     const userColumns = new Set(db.pragma('table_info(users)').map((row) => row.name));
-    for (const column of ['role', 'bonus_turns', 'onboarding_complete', 'unlimited_turns', 'is_admin', 'auth_version']) {
+    for (const column of ['role', 'access_role', 'bonus_turns', 'onboarding_complete', 'unlimited_turns', 'is_admin', 'auth_version']) {
       assert.equal(userColumns.has(column), true, `users.${column} was not migrated`);
     }
 
@@ -177,6 +190,11 @@ test('current startup migrates an older V1 database in place without losing rows
     assert.equal(db.prepare('SELECT name FROM characters WHERE id = 1').get().name, 'Old Hero');
     assert.equal(db.prepare('SELECT name FROM items WHERE id = 1').get().name, 'Old Sword');
     assert.equal(db.prepare('SELECT role FROM users WHERE id = 1').get().role, 'player');
+    assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 1').get().accessRole, 'player');
+    assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 2').get().accessRole, 'admin');
+    assert.equal(db.prepare('SELECT access_role AS accessRole FROM users WHERE id = 3').get().accessRole, 'admin');
+    assert.equal(db.prepare('SELECT role FROM users WHERE id = 2').get().role, 'dungeon_master');
+    assert.equal(db.prepare('SELECT is_admin AS isAdmin FROM users WHERE id = 3').get().isAdmin, 1);
     assert.equal(db.prepare('SELECT auth_version AS authVersion FROM users WHERE id = 1').get().authVersion, 0);
     db.close();
   } catch (error) {
