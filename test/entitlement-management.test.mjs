@@ -109,7 +109,7 @@ test('entitlement management route is separately authorized, self-grant-safe, an
 
   assert.match(
     routes,
-    /\/api\/admin\/set-entitlements", requirePermission\(PERMISSIONS\.ADMIN_ENTITLEMENTS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/set-entitlements", requirePermission\(PERMISSIONS\.ADMIN_ENTITLEMENTS_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(routes, /explicitEntitlementUpdateSchema\.safeParse\(req\.body\)/);
   assert.match(routes, /target\.id === req\.user!\.id && requestsChange/);
