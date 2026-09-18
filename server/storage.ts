@@ -57,6 +57,7 @@ export type AuthSessionRecord = {
   userId: number;
   authMethod: string;
   createdAt: string;
+  authenticatedAt: string;
   lastSeenAt: string;
   expiresAt: string;
   revokedAt: string | null;
@@ -137,6 +138,7 @@ const AUTH_SESSION_SELECT = `
     user_id AS userId,
     auth_method AS authMethod,
     created_at AS createdAt,
+    authenticated_at AS authenticatedAt,
     last_seen_at AS lastSeenAt,
     expires_at AS expiresAt,
     revoked_at AS revokedAt,
@@ -153,18 +155,20 @@ export function createAuthSessionRecord(input: NewAuthSessionRecord): AuthSessio
       user_id,
       auth_method,
       created_at,
+      authenticated_at,
       last_seen_at,
       expires_at,
       revoked_at,
       user_agent,
       ip_hash,
       auth_version
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.tokenHash,
     input.userId,
     input.authMethod,
     input.createdAt,
+    input.authenticatedAt,
     input.lastSeenAt,
     input.expiresAt,
     input.revokedAt ?? null,
@@ -219,6 +223,23 @@ export function touchAuthSession(id: number, lastSeenAt: string): void {
   sqlite
     .prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL")
     .run(lastSeenAt, id);
+}
+
+export function markAuthSessionAuthenticated(
+  id: number,
+  userId: number,
+  authenticatedAt: string,
+): boolean {
+  const result = sqlite
+    .prepare(`
+      UPDATE auth_sessions
+      SET authenticated_at = ?
+      WHERE id = ?
+        AND user_id = ?
+        AND revoked_at IS NULL
+    `)
+    .run(authenticatedAt, id, userId);
+  return result.changes > 0;
 }
 
 export function revokeAuthSessionByTokenHash(tokenHash: string, revokedAt: string): boolean {
@@ -363,6 +384,7 @@ export function runMigrations() {
       user_id INTEGER NOT NULL,
       auth_method TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      authenticated_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       revoked_at TEXT,
@@ -647,6 +669,24 @@ export function runMigrations() {
   sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique ON users(google_id) WHERE google_id IS NOT NULL");
 
   addColumnIfMissing("auth_sessions", "auth_version", "INTEGER NOT NULL DEFAULT 0");
+
+  // Existing opaque sessions predate explicit authentication freshness.
+  // Preserve known fresh login time for ordinary sessions, but fail closed for
+  // legacy-JWT upgrade rows whose created_at reflects upgrade time rather than
+  // the original credential verification.
+  sqlite.transaction(() => {
+    const addedAuthenticatedAt = addColumnIfMissing("auth_sessions", "authenticated_at", "TEXT");
+    if (addedAuthenticatedAt) {
+      sqlite.exec(`
+        UPDATE auth_sessions
+        SET authenticated_at = CASE
+          WHEN auth_method = 'legacy-jwt' THEN '1970-01-01T00:00:00.000Z'
+          ELSE created_at
+        END
+        WHERE authenticated_at IS NULL OR authenticated_at = '';
+      `);
+    }
+  })();
 
   addColumnIfMissing("campaigns", "is_archived", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("campaigns", "combat_style", "TEXT NOT NULL DEFAULT 'cinematic'");
