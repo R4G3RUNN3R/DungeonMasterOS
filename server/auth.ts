@@ -30,6 +30,7 @@ import {
   type SessionMetadata,
 } from "./session-service";
 import type { AuthSessionRecord } from "./storage";
+import { safeRecordSecurityEvent } from "./security-audit";
 
 export { hasDungeonMasterAccess } from "./access-policy";
 
@@ -192,6 +193,14 @@ function acceptsLegacySessions(): boolean {
 
 function issuesLegacySessions(): boolean {
   return envFlag("AUTH_LEGACY_SESSION_ISSUE", true);
+}
+
+export function getLegacySessionCompatibilityConfig() {
+  return {
+    accepting: acceptsLegacySessions(),
+    issuing: issuesLegacySessions(),
+    maximumLifetimeSeconds: Math.floor(SESSION_MAX_AGE_MS / 1000),
+  } as const;
 }
 
 function sessionCookieOptions() {
@@ -364,6 +373,11 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
         });
         req.authSession = session;
         setOpaqueSessionCookie(res, token);
+        safeRecordSecurityEvent({
+          eventType: "AUTH_LEGACY_SESSION_UPGRADED",
+          actorUserId: rawUser.id,
+          subjectUserId: rawUser.id,
+        });
       } catch (error) {
         // A valid legacy session must remain usable during the migration window.
         console.error("Legacy session upgrade to opaque session failed.", error);
