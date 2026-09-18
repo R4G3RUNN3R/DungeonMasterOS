@@ -108,6 +108,8 @@ test('auth and privilege routes emit the expected security events without error 
     'AUTH_GOOGLE_SUCCESS',
     'AUTH_GOOGLE_FAILED',
     'AUTH_LOGOUT',
+    'AUTH_REAUTH_SUCCESS',
+    'AUTH_REAUTH_FAILED',
     'PASSWORD_CHANGED',
     'PASSWORD_RESET',
     'ACCESS_ROLE_CHANGED',
@@ -123,19 +125,19 @@ test('auth and privilege routes emit the expected security events without error 
 
   assert.match(
     routes,
-    /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(
     routes,
-    /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(
     routes,
-    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(
     routes,
-    /\/api\/admin\/set-entitlements", requirePermission\(PERMISSIONS\.ADMIN_ENTITLEMENTS_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/set-entitlements", requirePermission\(PERMISSIONS\.ADMIN_ENTITLEMENTS_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(routes, /eventType: ["']ENTITLEMENTS_CHANGED["']/);
   assert.match(routes, /reasonCode: parsed\.data\.reasonCode/);

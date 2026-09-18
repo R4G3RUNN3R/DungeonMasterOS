@@ -29,6 +29,7 @@ import {
   type SessionAuthMethod,
   type SessionMetadata,
 } from "./session-service";
+import type { AuthSessionRecord } from "./storage";
 
 export { hasDungeonMasterAccess } from "./access-policy";
 
@@ -36,6 +37,7 @@ const DEV_JWT_SECRET = "dmos-dev-secret-change-in-production";
 const COOKIE_NAME = "dmos_session";
 export const OPAQUE_COOKIE_NAME = "dmos_session_v2";
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1000;
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET?.trim();
@@ -124,6 +126,7 @@ export function signToken(userId: number, authVersion = 0): string {
 
 type VerifiedLegacySession = {
   sub: number;
+  issuedAt: Date | null;
   expiresAt: Date | null;
   authVersion: number;
 };
@@ -140,6 +143,10 @@ function verifyLegacySession(token: string): VerifiedLegacySession | null {
       return null;
     }
 
+    const issuedAt =
+      typeof payload === "string" || typeof payload.iat !== "number"
+        ? null
+        : new Date(payload.iat * 1000);
     const exp =
       typeof payload === "string" || typeof payload.exp !== "number"
         ? null
@@ -156,6 +163,8 @@ function verifyLegacySession(token: string): VerifiedLegacySession | null {
 
     return {
       sub,
+      issuedAt:
+        issuedAt && Number.isFinite(issuedAt.getTime()) ? issuedAt : null,
       expiresAt: exp && Number.isFinite(exp.getTime()) ? exp : null,
       authVersion,
     };
@@ -308,6 +317,7 @@ declare global {
     interface Request {
       userId?: number;
       user?: User;
+      authSession?: AuthSessionRecord;
     }
   }
 }
@@ -328,6 +338,7 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
     if (!rawUser || session.authVersion !== rawUser.authVersion) {
       return next();
     }
+    req.authSession = session;
   } else if (acceptsLegacySessions()) {
     const legacyToken = req.cookies?.[COOKIE_NAME];
     if (typeof legacyToken !== "string" || !legacyToken) return next();
@@ -341,14 +352,17 @@ export function attachUser(req: Request, res: Response, next: NextFunction) {
     }
     if (rawUser) {
       try {
-        const { token } = createOpaqueSession(rawUser.id, "legacy-jwt", {
+        const { token, session } = createOpaqueSession(rawUser.id, "legacy-jwt", {
           expiresAt: legacySession.expiresAt,
+          authenticatedAt:
+            legacySession.issuedAt ?? new Date(0),
           authVersion: legacySession.authVersion,
           userAgent:
             typeof req.get === "function"
               ? req.get("user-agent") ?? null
               : null,
         });
+        req.authSession = session;
         setOpaqueSessionCookie(res, token);
       } catch (error) {
         // A valid legacy session must remain usable during the migration window.
@@ -395,6 +409,40 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
       code: "UNAUTHENTICATED",
     });
   }
+  next();
+}
+
+export function requireRecentAuthentication(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!req.user) {
+    return res.status(401).json({
+      message: "Sign in to continue.",
+      code: "UNAUTHENTICATED",
+    });
+  }
+
+  const authenticatedAt = req.authSession
+    ? Date.parse(req.authSession.authenticatedAt)
+    : Number.NaN;
+  const ageMs = Date.now() - authenticatedAt;
+
+  if (
+    !Number.isFinite(authenticatedAt) ||
+    !Number.isFinite(ageMs) ||
+    ageMs < 0 ||
+    ageMs > RECENT_AUTH_MAX_AGE_MS
+  ) {
+    return res.status(403).json({
+      message: "Please re-authenticate before performing this sensitive action.",
+      code: "RECENT_AUTH_REQUIRED",
+      maxAgeSeconds: Math.floor(RECENT_AUTH_MAX_AGE_MS / 1000),
+      googleReauthAvailable: !!req.user.googleId,
+    });
+  }
+
   next();
 }
 

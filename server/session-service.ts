@@ -7,6 +7,7 @@ import {
   revokeAuthSessionByIdForUser,
   revokeAuthSessionByTokenHash,
   touchAuthSession,
+  markAuthSessionAuthenticated,
   storage,
   type AuthSessionRecord,
 } from "./storage";
@@ -22,6 +23,7 @@ export type SessionMetadata = {
   userAgent?: string | null;
   ipHash?: string | null;
   expiresAt?: Date | string | null;
+  authenticatedAt?: Date | string | null;
   authVersion?: number;
 };
 
@@ -75,6 +77,22 @@ export function createOpaqueSession(
   }
 
   const expiresAt = new Date(Math.min(requestedExpiry, maximumExpiry)).toISOString();
+  const requestedAuthenticatedAt =
+    metadata.authenticatedAt instanceof Date
+      ? metadata.authenticatedAt.getTime()
+      : metadata.authenticatedAt
+        ? Date.parse(metadata.authenticatedAt)
+        : now.getTime();
+
+  if (
+    !Number.isFinite(requestedAuthenticatedAt) ||
+    requestedAuthenticatedAt < 0 ||
+    requestedAuthenticatedAt > now.getTime()
+  ) {
+    throw new Error("Session authentication timestamp must be a valid past timestamp.");
+  }
+
+  const authenticatedAt = new Date(requestedAuthenticatedAt).toISOString();
   const authVersion = metadata.authVersion ?? storage.getUser(userId)?.authVersion ?? 0;
 
   if (!Number.isInteger(authVersion) || authVersion < 0) {
@@ -86,6 +104,7 @@ export function createOpaqueSession(
     userId,
     authMethod,
     createdAt: nowIso,
+    authenticatedAt,
     lastSeenAt: nowIso,
     expiresAt,
     revokedAt: null,
@@ -150,4 +169,18 @@ export function revokeOpaqueSessionByIdForUser(
     userId,
     new Date().toISOString(),
   );
+}
+
+export function markOpaqueSessionReauthenticated(
+  userId: number,
+  sessionId: number,
+): AuthSessionRecord | null {
+  if (!Number.isInteger(sessionId) || sessionId <= 0) return null;
+  const authenticatedAt = new Date().toISOString();
+  if (!markAuthSessionAuthenticated(sessionId, userId, authenticatedAt)) {
+    return null;
+  }
+
+  const sessions = listActiveAuthSessionsForUser(userId, authenticatedAt);
+  return sessions.find((session) => session.id === sessionId) ?? null;
 }

@@ -432,9 +432,9 @@ test('explicit permission matrix separates player, DungeonMaster, moderator, and
 
   const routes = readFileSync(path.join(repoRoot, 'server', 'routes.ts'), 'utf8');
   assert.match(routes, /\/api\/admin\/me", requirePermission\(PERMISSIONS\.ADMIN_ACCESS\)/);
-  assert.match(routes, /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
-  assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
-  assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\)/);
+  assert.match(routes, /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication/);
+  assert.match(routes, /\/api\/admin\/grant-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication/);
+  assert.match(routes, /\/api\/admin\/revoke-dungeon-master", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication/);
   assert.doesNotMatch(routes, /\/api\/admin\/(?:set-access-role|grant-dungeon-master|revoke-dungeon-master)", requirePermission\(PERMISSIONS\.ADMIN_USERS_MANAGE\)/);
   assert.doesNotMatch(routes, /\/api\/admin\/[^\"']+", requireDungeonMaster/);
 });
@@ -555,7 +555,7 @@ test('canonical role-management route is guarded, self-demotion-safe, and audite
 
   assert.match(
     routes,
-    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, authSensitiveIpLimit/,
+    /\/api\/admin\/set-access-role", requirePermission\(PERMISSIONS\.ADMIN_ROLES_MANAGE\), requireTrustedOrigin, requireRecentAuthentication, authSensitiveIpLimit/,
   );
   assert.match(routes, /accessRoleUpdateSchema\.safeParse\(req\.body\)/);
   assert.match(routes, /target\.id === req\.user!\.id && parsed\.data\.accessRole !== target\.accessRole/);
