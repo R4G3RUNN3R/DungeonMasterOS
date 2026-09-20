@@ -95,6 +95,27 @@ function renderPrivateShell(template: string) {
   return html;
 }
 
+const PRIVATE_SPA_PATHS = new Set([
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/dashboard",
+  "/billing",
+  "/account",
+  "/home",
+]);
+
+const PRIVATE_SPA_PATTERNS = [
+  /^\/character-sheet\/[^/]+$/,
+  /^\/campaign\/[^/]+$/,
+];
+
+function isPrivateSpaPath(requestPath: string) {
+  return PRIVATE_SPA_PATHS.has(requestPath)
+    || PRIVATE_SPA_PATTERNS.some((pattern) => pattern.test(requestPath));
+}
+
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
@@ -118,10 +139,16 @@ export function serveStatic(app: Express) {
   // implicit directory index so `/` cannot bypass the route-aware response above.
   app.use(express.static(distPath, { index: false }));
 
-  // Express 4 SPA fallback: application/auth routes still receive the client
-  // shell, but the server response is noindex and does not canonicalize them to
-  // the public homepage. `/{*path}` is Express 5 syntax and does not work here.
-  app.use("*", (_req, res) => {
-    res.type("html").send(renderPrivateShell(template));
+  // Known application/auth routes still receive the client shell with noindex
+  // metadata. Unknown paths also render the client NotFound experience, but with
+  // a real HTTP 404 so crawlers do not classify arbitrary URLs as valid pages.
+  app.use((req, res) => {
+    const html = renderPrivateShell(template);
+    if (isPrivateSpaPath(req.path)) {
+      res.type("html").send(html);
+      return;
+    }
+
+    res.status(404).type("html").send(html);
   });
 }
