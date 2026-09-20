@@ -133,3 +133,14 @@ test('production HTML marks auth and application routes noindex without homepage
     }
   });
 });
+
+
+test('production returns a real 404 for unknown routes while preserving noindex shell metadata', async () => {
+  await withProductionServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/__seo_probe_missing__`);
+    assert.equal(response.status, 404, 'unknown route must return HTTP 404');
+    const html = await response.text();
+    assert.match(robotsFrom(html) ?? '', /^noindex/i, 'unknown-route shell must remain noindex');
+    assert.equal(canonicalFrom(html), null, 'unknown-route shell must not advertise a canonical URL');
+  });
+});
