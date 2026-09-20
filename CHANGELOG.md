@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-20
+- SEO soft-404 hardening: arbitrary unknown browser routes now return a real HTTP 404 while still rendering the private noindex application shell so the client NotFound experience remains intact.
+- Known authentication and application routes continue to return HTTP 200 with noindex metadata, while the three intentional public marketing routes remain indexable and self-canonical.
+- Added regression coverage preventing the blanket HTTP 200 SPA fallback from returning.
+- Risk: low. No authentication, campaign, gameplay, billing, API, WebSocket, database, or public marketing route behavior changed.
+
+
 ## 2026-09-18
 - Public release feed: restored the version-controlled `GET /api/updates` endpoint used by the Voidsmith Industries Updates page, with only public-safe release copy and bounded CORS for the approved Voidsmith/DMOS origins.
 - Release-note durability: recovered the previously published DungeonMasterOS update history into the repository and added regression coverage so the feed cannot silently disappear or expose sensitive authentication internals in future releases.
